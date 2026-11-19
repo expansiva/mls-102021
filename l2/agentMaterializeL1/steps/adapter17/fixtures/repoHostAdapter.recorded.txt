@@ -1,0 +1,28 @@
+/// <mls fileReference="_102099_/l1/codeReview/layer_1_external/connections/repoHostAdapter.ts" enhancement="_blank"/>
+
+import type { ExternalSystemAdapter } from '/_102034_/l1/server/layer_1_external/connections/external/types.js';
+import type { RepoHostChange, RepoHostListChangesInput, RepoHostListChangesOutput } from '/_102099_/l1/codeReview/layer_1_external/connections/repoHost.js';
+
+const adapter: ExternalSystemAdapter = {
+  async listChanges(input, ctx) {
+    const typed = input as RepoHostListChangesInput;
+    const result = await ctx.send('listChanges', {
+      method: 'GET',
+      path: '/changes',
+      query: typed.limit === undefined ? {} : { limit: String(typed.limit) },
+      headers: { authorization: 'Bearer {{secret:accessKey}}' },
+    });
+    if (!result.ok) return result;
+    let parsed: { changes?: RepoHostChange[] };
+    try {
+      parsed = JSON.parse(result.output.body) as { changes?: RepoHostChange[] };
+    } catch {
+      return { ok: false, code: 'invalid', message: 'The answer of the system is not JSON.' };
+    }
+    if (!Array.isArray(parsed.changes)) return { ok: false, code: 'invalid', message: 'The answer of the system has no list of changes.' };
+    const output: RepoHostListChangesOutput = { changes: parsed.changes };
+    return { ok: true, output };
+  },
+};
+
+export default adapter;

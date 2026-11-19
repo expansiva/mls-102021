@@ -8,6 +8,8 @@ import { unitNeedsLlm } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materia
 import '/_102021_/l2/agentMaterializeL1/steps/domain10/agentM12Domain.js';
 import '/_102021_/l2/agentMaterializeL1/steps/external15/agentM12External.js';
 import '/_102021_/l2/agentMaterializeL1/steps/external15/agentM12ExternalUnit.js';
+import '/_102021_/l2/agentMaterializeL1/steps/adapter17/agentM12Adapter.js';
+import '/_102021_/l2/agentMaterializeL1/steps/adapter17/agentM12AdapterUnit.js';
 import '/_102021_/l2/agentMaterializeL1/steps/persistence20/agentM12Persistence.js';
 import '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRows.js';
 import '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';

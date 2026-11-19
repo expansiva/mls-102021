@@ -79,16 +79,18 @@ export function declarationTypeShown(source: string): string {
  * The object the file default-exports, read as JSON: either `export default { ... }` or `export default name;` with
  * `const name[: Type] = { ... }`. The object is data and is written with JSON syntax so the gate and the platform read the same value.
  */
-export function declarationLiteral(code: string): { value: unknown } | { problem: string } {
-  let start = -1;
+export function defaultObjectStart(code: string): number {
   const named = /export\s+default\s+([A-Za-z_$][\w$]*)\s*;/u.exec(code);
   if (named) {
-    const declaration = new RegExp(`(?:const|let|var)\\s+${named[1]}\\s*(?::\\s*[A-Za-z_$][\\w$.]*)?\\s*=\\s*\\{`, 'u').exec(code);
-    if (declaration) start = declaration.index + declaration[0].length - 1;
-  } else {
-    const direct = /export\s+default\s*\{/u.exec(code);
-    if (direct) start = direct.index + direct[0].length - 1;
+    const declaration = new RegExp(`(?:const|let|var)\\s+${named[1]}\\s*(?::\\s*[A-Za-z_$][\\w$.<>]*)?\\s*=\\s*\\{`, 'u').exec(code);
+    return declaration ? declaration.index + declaration[0].length - 1 : -1;
   }
+  const direct = /export\s+default\s*\{/u.exec(code);
+  return direct ? direct.index + direct[0].length - 1 : -1;
+}
+
+export function declarationLiteral(code: string): { value: unknown } | { problem: string } {
+  const start = defaultObjectStart(code);
   if (start < 0) return { problem: 'The file must default-export the declaration object: `export default { ... }` or `const declaration: ExternalSystemDeclaration = { ... }; export default declaration;`.' };
   let depth = 0;
   let quote = '';

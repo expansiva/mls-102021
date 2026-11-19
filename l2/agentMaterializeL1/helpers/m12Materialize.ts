@@ -171,6 +171,10 @@ export function processUnitsOf(units: readonly M12Unit[], unit: M12Unit): M12Uni
 export async function blockingDependencies(ctx: M12Context, unit: M12Unit): Promise<string[]> {
   const out: string[] = [];
   const own = M12_LAYERS.indexOf(unit.layer);
+  if (unit.layer === 'adapter') {
+    const declaration = ctx.units.find(item => item.layer === 'external' && item.defRef === unit.defRef);
+    if (declaration && !storExists(declaration.output)) out.push(`${declaration.defRef} (the declaration is not generated: run the external15 phase first)`);
+  }
   for (const dep of [...dependencyUnits(ctx, unit), ...processUnitsOf(ctx.units, unit)]) {
     if (M12_LAYERS.indexOf(dep.layer) > own) continue;
     if (storExists(dep.output)) continue;
@@ -219,6 +223,11 @@ export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: reado
   if (unit.definition.artifactType === 'usecase') parts.push((await readOptional(rulesFile(ctx.run.project, ctx.run.module))) ?? '');
   // The declaration is read against the type and the validator of the runtime: a change there is a change of its input (d1_208).
   if (unit.definition.artifactType === 'externalConnection') parts.push((await ctx.read(DECLARATION_TYPES_REF)) ?? '<absent>');
+  // The adapter is written against the declaration this run generated (d1_209).
+  if (unit.layer === 'adapter') {
+    const declaration = ctx.units.find(item => item.layer === 'external' && item.defRef === unit.defRef);
+    parts.push(declaration ? (await ctx.read(declaration.outputRef)) ?? '<absent>' : '<no declaration unit>');
+  }
   // A port and its adapter also carry the methods the workflow processes apply through them (§11).
   if (unit.definition.artifactType === 'repositoryPort' || unit.definition.artifactType === 'repositoryAdapter') {
     parts.push(JSON.stringify(ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.data.methods)));

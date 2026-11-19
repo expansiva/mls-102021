@@ -11,6 +11,8 @@ export const M12_BUILD = 'm12-2026-10-21.48 (an import the Studio could not fetc
 export const M12_DOMAIN_AGENT_NAME = 'agentM12Domain' as const;
 export const M12_EXTERNAL_AGENT_NAME = 'agentM12External' as const;
 export const M12_EXTERNAL_UNIT_AGENT_NAME = 'agentM12ExternalUnit' as const;
+export const M12_ADAPTER_AGENT_NAME = 'agentM12Adapter' as const;
+export const M12_ADAPTER_UNIT_AGENT_NAME = 'agentM12AdapterUnit' as const;
 export const M12_PERSISTENCE_AGENT_NAME = 'agentM12Persistence' as const;
 export const M12_SEED_ROWS_AGENT_NAME = 'agentM12SeedRows' as const;
 export const M12_SEED_ROW_UNIT_AGENT_NAME = 'agentM12SeedRowUnit' as const;
@@ -35,15 +37,16 @@ export const M12_FINALIZE_AGENT_NAME = 'agentM12Finalize' as const;
  */
 // The workflow service (§11) calls the usecases and is called by the request services: between the two.
 // d1_208: the declaration of a system outside the app comes before the gateways (persistence) and the routes (requests) that read its types.
-export const M12_LAYERS = ['domain', 'external', 'persistence', 'seedRows', 'usecases', 'workflows', 'requests', 'controllers', 'tests'] as const;
+export const M12_LAYERS = ['domain', 'external', 'adapter', 'persistence', 'seedRows', 'usecases', 'workflows', 'requests', 'controllers', 'tests'] as const;
 export type M12Layer = typeof M12_LAYERS[number];
 
-export const M12_STEP_IDS = ['domain10', 'external15', 'persistence20', 'seedRows25', 'usecases40', 'workflows45', 'requests50', 'controllers30', 'tests60', 'register70', 'finalize80'] as const;
+export const M12_STEP_IDS = ['domain10', 'external15', 'adapter17', 'persistence20', 'seedRows25', 'usecases40', 'workflows45', 'requests50', 'controllers30', 'tests60', 'register70', 'finalize80'] as const;
 export type M12StepId = typeof M12_STEP_IDS[number];
 
 const LAYER_STEP: Record<M12Layer, M12StepId> = {
   domain: 'domain10',
   external: 'external15',
+  adapter: 'adapter17',
   persistence: 'persistence20',
   seedRows: 'seedRows25',
   usecases: 'usecases40',
@@ -56,6 +59,7 @@ const LAYER_STEP: Record<M12Layer, M12StepId> = {
 const STEP_AGENT: Record<M12StepId, string> = {
   domain10: M12_DOMAIN_AGENT_NAME,
   external15: M12_EXTERNAL_AGENT_NAME,
+  adapter17: M12_ADAPTER_AGENT_NAME,
   persistence20: M12_PERSISTENCE_AGENT_NAME,
   seedRows25: M12_SEED_ROWS_AGENT_NAME,
   usecases40: M12_USECASES_AGENT_NAME,
@@ -70,6 +74,7 @@ const STEP_AGENT: Record<M12StepId, string> = {
 const STEP_TITLE: Record<M12StepId, string> = {
   domain10: 'Materialize domain',
   external15: 'Materialize the declarations of the outside systems',
+  adapter17: 'Materialize the adapters of the outside systems',
   persistence20: 'Materialize persistence',
   seedRows25: 'Materialize reference seed rows',
   usecases40: 'Materialize usecases',

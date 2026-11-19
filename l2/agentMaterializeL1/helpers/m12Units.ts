@@ -88,6 +88,11 @@ export async function loadModuleUnits(project: number, moduleName: string, entri
       ? await usecasePlan(read, async ref => { const info = infoOfRef(ref, project); return info ? readOptional(info) : null; })
       : { definition: read, detail: '' };
     units.push({ layer, unitId: def.shortName, def, defRef, output, outputRef: fileRef(output), definition: plan.definition, declared: read, planIssue: plan.detail, text });
+    // d1_209: the adapter of a system is a second file of the same def: its own unit (layer `adapter`, id `<systemId>Adapter`), after the declaration.
+    if (read.artifactType === 'externalConnection') {
+      const adapter: M12FileInfo = { ...output, shortName: `${output.shortName}Adapter` };
+      units.push({ layer: 'adapter', unitId: adapter.shortName, def, defRef, output: adapter, outputRef: fileRef(adapter), definition: read, declared: read, planIssue: '', text });
+    }
   }
   units.sort((left, right) => left.defRef < right.defRef ? -1 : left.defRef > right.defRef ? 1 : 0);
   // A port also carries the methods a workflow process applies through it and no usecase brings (§11), and the ones

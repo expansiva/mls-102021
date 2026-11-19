@@ -43,6 +43,24 @@
       }
     },
     {
+      "planId": "adapter17-<module>",
+      "agentName": "agentM12Adapter",
+      "llm": "always (every externalConnection, one adapter per system the module declares)",
+      "types": [
+        "externalConnection"
+      ],
+      "goal": "The adapter of each system outside the app (l1/<module>/layer_1_external/connections/<systemId>Adapter.ts, d1_209): one function per call operation of the declaration, which builds the request and sends it only through ctx.send. The adapter is a second unit of the same def (layer adapter, id <systemId>Adapter) and waits for its declaration.",
+      "worker": {
+        "agentName": "agentM12AdapterUnit",
+        "planIdPattern": "adapter17-<module>-<systemId>Adapter-<attempt>",
+        "prompt": "steps/adapter17/prompt.md",
+        "context": "the generated declaration (source), the L4 system and the call lines that use it (source), the contract of the adapter and the result type of the runtime (source)",
+        "tool": "writeExternalAdapter { code }",
+        "gate": "the runtime validator (validateExternalSystemAdapter: one function per call, no other key), no fetch, HTTP or socket client, child_process, eval, Function, dynamic import, require or process.env, no read of a secret setting, only type imports of the runtime and of the declaration, then the Studio compile",
+        "repairBudget": 2
+      }
+    },
+    {
       "planId": "persistence20-<module>",
       "agentName": "agentM12Persistence",
       "llm": false,
