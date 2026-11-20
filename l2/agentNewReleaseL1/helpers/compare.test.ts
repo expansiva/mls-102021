@@ -789,4 +789,113 @@ test('a controller of a page whose request is in the effort is not missing', asy
   assert.match(result, /effort extra: request inicio /);
 });
 
+function domainDraft(
+  fields: Array<{ name: string; type: string; derived?: boolean }>,
+  transitions: Array<{ transitionId: string; payload: string[] }> = [],
+): string {
+  return `${JSON.stringify({
+    entities: [{
+      entityId: 'Tarefa',
+      definition: { data: { entityId: 'Tarefa', fields, transitions } },
+    }],
+  })}\n`;
+}
+
+function usecaseDef(id: string, operation: string, transitionRef?: string): string {
+  return defText({
+    ...createTarefa,
+    artifactId: id,
+    data: {
+      ...createTarefa.data,
+      usecaseId: id,
+      operation,
+      ...(transitionRef ? { transitionRef } : {}),
+    },
+  });
+}
+
+const refreshProcess = {
+  schemaVersion: '2026-09-24-d1-definition-v2',
+  artifactType: 'workflowProcess',
+  artifactId: 'toolCatalogRefresh',
+  moduleName: 'tarefas',
+  status: 'pending',
+  data: { processId: 'toolCatalogRefresh' },
+};
+
+test('a new domain field marks write usecases and old code that calls them', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const create = usecaseDef('createTarefa', 'create');
+  const update = usecaseDef('updateTarefa', 'update');
+  const list = usecaseDef('listTarefa', 'list');
+  const flow = defText(refreshProcess);
+  const oldFields = [{ name: 'title', type: 'string' }];
+  const nextFields = [...oldFields, { name: 'details.catalogItem', type: 'json' }];
+  stor.add(1, 'tarefas_old/pipeline/agentDefsL1/drafts', 'domain30', '.json', domainDraft(oldFields));
+  stor.add(1, 'tarefas/pipeline/agentDefsL1/drafts', 'domain30', '.json', domainDraft(nextFields));
+  for (const [id, body] of [['createTarefa', create], ['updateTarefa', update], ['listTarefa', list]] as const) {
+    stor.add(1, 'tarefas_old/layer_2_application/usecases', id, '.defs.ts', body);
+    stor.add(1, 'tarefas/layer_2_application/usecases', id, '.defs.ts', body);
+  }
+  stor.add(1, 'tarefas_old/layer_2_application/workflows', 'toolCatalogRefresh', '.defs.ts', flow);
+  stor.add(1, 'tarefas_old/layer_2_application/workflows', 'toolCatalogRefresh', '.ts', 'await updateTarefa(row);\n');
+  stor.add(1, 'tarefas/layer_2_application/workflows', 'toolCatalogRefresh', '.defs.ts', flow);
+  stor.add(1, 'tarefas/layer_2_application/workflows', 'toolCatalogRefresh', '.ts', 'NEW\n');
+  const result = await run();
+  assert.match(result, /usecase createTarefa: mudou \(new field Tarefa\.details\.catalogItem\)/);
+  assert.match(result, /usecase updateTarefa: mudou \(new field Tarefa\.details\.catalogItem\)/);
+  assert.match(result, /usecase listTarefa: igual /);
+  assert.match(result, /workflowProcess toolCatalogRefresh: mudou \(calls updateTarefa\)/);
+});
+
+test('a derived field and a transition with an empty payload stay igual', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const create = usecaseDef('createTarefa', 'create');
+  const move = usecaseDef('moveTarefa', 'transition', 'moveTarefa');
+  const oldFields = [{ name: 'title', type: 'string' }];
+  const nextFields = [...oldFields, { name: 'rank', type: 'number', derived: true }];
+  const transitions = [{ transitionId: 'moveTarefa', payload: [] as string[] }];
+  stor.add(1, 'tarefas_old/pipeline/agentDefsL1/drafts', 'domain30', '.json', domainDraft(oldFields, transitions));
+  stor.add(1, 'tarefas/pipeline/agentDefsL1/drafts', 'domain30', '.json', domainDraft(nextFields, transitions));
+  for (const [id, body] of [['createTarefa', create], ['moveTarefa', move]] as const) {
+    stor.add(1, 'tarefas_old/layer_2_application/usecases', id, '.defs.ts', body);
+    stor.add(1, 'tarefas/layer_2_application/usecases', id, '.defs.ts', body);
+  }
+  const result = await run();
+  assert.match(result, /usecase createTarefa: igual /);
+  assert.match(result, /usecase moveTarefa: igual /);
+});
+
+test('a reshaped field marks a transition that carries a payload', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const move = usecaseDef('moveTarefa', 'transition', 'moveTarefa');
+  const list = usecaseDef('listTarefa', 'list');
+  const before = domainDraft(
+    [{ name: 'title', type: 'string' }],
+    [{ transitionId: 'moveTarefa', payload: ['title'] }],
+  );
+  const after = domainDraft(
+    [{ name: 'title', type: 'text' }],
+    [{ transitionId: 'moveTarefa', payload: ['title'] }],
+  );
+  stor.add(1, 'tarefas_old/pipeline/agentDefsL1/drafts', 'domain30', '.json', before);
+  stor.add(1, 'tarefas/pipeline/agentDefsL1/drafts', 'domain30', '.json', after);
+  for (const [id, body] of [['moveTarefa', move], ['listTarefa', list]] as const) {
+    stor.add(1, 'tarefas_old/layer_2_application/usecases', id, '.defs.ts', body);
+    stor.add(1, 'tarefas/layer_2_application/usecases', id, '.defs.ts', body);
+  }
+  const result = await run();
+  assert.match(result, /usecase moveTarefa: mudou \(changed field Tarefa\.title\)/);
+  assert.match(result, /usecase listTarefa: igual /);
+});
+
 });

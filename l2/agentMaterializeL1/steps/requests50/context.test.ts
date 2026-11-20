@@ -201,7 +201,7 @@ test('d1_199/d1_200: the usecase section of a request shows its input type resol
     requests: [{ route: `${MODULE}.${PAGE}.abertas`, uses: ['getAgentDraft', 'listAbertas', 'getOther'], output: [] }],
   }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/requests/${PAGE}.ts`);
   const generated = [
-    `import type { CmReadAgentInput, CmReadAgentOutput } from '${catalogDir}/cm.js';`,
+    `export type { CmReadAgentInput, CmReadAgentOutput } from '${catalogDir}/cm.js';`,
     'export interface GetAgentDraftInput extends CmReadAgentInput {}',
     'export interface GetAgentDraftOutput extends CmReadAgentOutput {}',
     'export async function getAgentDraft(input: GetAgentDraftInput): Promise<GetAgentDraftOutput> { return input as never; }',
@@ -249,6 +249,42 @@ test('d1_199/d1_200: the usecase section of a request shows its input type resol
       assert.equal(section.includes('CmAgentCard'), false, 'the card type is expanded, not named');
       assert.equal(human.split('Input type, resolved').length - 1, 2, 'the usecase that extends a catalog type and the one that extends a module type that cannot be read; the plain one has none');
     }
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});
+
+test('d1_237: the page workflow section resolves the process function input, including one that is not the first export', async () => {
+  const previous = globalThis.mls;
+  const contractInfo: M12FileInfo = { project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: PAGE, extension: '.defs.ts' };
+  const usecase = unit('usecase', 'createExecutionSummary', { entityId: 'ExecutionSummary', operation: 'create' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/createExecutionSummary.ts`);
+  const process = unit('workflowProcess', 'executionRecording', {
+    processId: 'executionRecording',
+    operations: [{ operation: 'ExecutionSummary.create' }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/executionRecording.ts`);
+  const request = unit('requestService', PAGE, {
+    pageId: PAGE,
+    requests: [{ route: `${MODULE}.${PAGE}.abertas`, uses: ['createExecutionSummary'], output: [] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/requests/${PAGE}.ts`);
+  const workflowInfo: M12FileInfo = { project: PROJECT, level: 1, folder: `${MODULE}/layer_2_application/workflows`, shortName: 'executionRecording', extension: '.ts' };
+  const workflow = [
+    'export interface OpenInput { note: string }',
+    'export interface OpenOutput { ok: boolean }',
+    'export async function openRecording(input: OpenInput, ctx: RequestContext): Promise<OpenOutput> { return { ok: true }; }',
+    'export interface CreateExecutionSummaryInput { cost: number; tookOver: boolean; conversationLink: string }',
+    'export interface RecordExecutionSummaryInput extends CreateExecutionSummaryInput {}',
+    'export interface RecordExecutionSummaryOutput { id: string }',
+    'export async function recordExecutionSummary(input: RecordExecutionSummaryInput, ctx: RequestContext): Promise<RecordExecutionSummaryOutput> { return { id: "1" }; }',
+  ].join('\n');
+  (globalThis as { mls: unknown }).mls = {
+    actualProject: PROJECT,
+    stor: { files: { [keyOf(contractInfo)]: file(contractInfo, CONTRACT), [keyOf(workflowInfo)]: file(workflowInfo, workflow) }, getKeyToFile: keyOf },
+  };
+  try {
+    const human = (await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [request, usecase, process], read: async () => null } as never, request)).human;
+    const section = human.slice(human.indexOf('## Workflow service of process executionRecording'));
+    assert.match(section, /RecordExecutionSummaryInput = \{\n  cost: number;\n  tookOver: boolean;\n  conversationLink: string;\n\}/u);
+    assert.equal(section.includes('OpenInput ='), false);
   } finally {
     (globalThis as { mls: unknown }).mls = previous;
   }

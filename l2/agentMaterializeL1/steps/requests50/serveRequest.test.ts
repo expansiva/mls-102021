@@ -230,7 +230,8 @@ void test('d1_206: the serve a process starts on carries the workflow service of
   }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/toolCatalogRefresh.ts`);
   const manual = unit('workflowProcess', 'creation', { processId: 'creation', trigger: { kind: 'manual', actorRef: 'companyAdmin' }, functions: ['open'] }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/creation.ts`);
   const service = [
-    'export interface ApplyReleaseCatalogInput { releaseLabel?: string; catalog: unknown[] }',
+    'export interface CreateExecutionSummaryInput { cost: number; tookOver: boolean; conversationLink: string }',
+    'export interface ApplyReleaseCatalogInput extends CreateExecutionSummaryInput { releaseLabel?: string; catalog: unknown[] }',
     'export async function applyReleaseCatalog(input: ApplyReleaseCatalogInput, ctx: RequestContext): Promise<{ added: number }> { return { added: input.catalog.length }; }',
   ].join('\n');
   const serviceInfo = { project: PROJECT, level: 1, folder: `${MODULE}/layer_2_application/workflows`, shortName: 'toolCatalogRefresh', extension: '.ts' };
@@ -248,6 +249,10 @@ void test('d1_206: the serve a process starts on carries the workflow service of
     assert.deepEqual(loaded.workflowRoutes.map(item => [item.route, item.processId, item.specifier]), [[`${MODULE}.platform.releaseCatalogChanged`, 'toolCatalogRefresh', specifier]]);
     assert.match(loaded.human, /## Workflow service of process toolCatalogRefresh \(the message of these routes starts it\)/u);
     assert.match(loaded.human, /export async function applyReleaseCatalog\(input: ApplyReleaseCatalogInput/u);
+    const recording = loaded.human.slice(loaded.human.indexOf('## Workflow service of process toolCatalogRefresh'));
+    assert.match(recording, /cost: number;/u);
+    assert.match(recording, /tookOver: boolean;/u);
+    assert.match(recording, /conversationLink: string;/u);
     assert.match(loaded.human, /builds the input of the entry function of the process/u);
     assert.equal(loaded.human.includes('Workflow service of process creation'), false, 'a manual process is not the trigger of the serve');
     assert.equal(loaded.human.includes('## Usecases of the routes'), false);

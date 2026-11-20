@@ -81,6 +81,20 @@ void test('d1_200: a type with everything in place expands nothing; an unknown t
   assert.equal((await resolve('export interface In { a: string }', 'Other')).text, '');
 });
 
+void test('d1_237: export type { A as B } from is an import; GetAgentDraftInput is CmReadAgentInput and CmSimulationLevel is its union', async () => {
+  const cm = [
+    'export interface CmReadAgentInput { agentId: string }',
+    "export type CmSimulationLevel = 'canDo' | 'understands';",
+  ].join('\n');
+  const entry = "export type { CmReadAgentInput as GetAgentDraftInput, CmSimulationLevel } from '/_1_/cm.js';\n";
+  const read = async (specifier: string) => (specifier === '/_1_/cm.js' ? cm : null);
+  const input = await resolveInputType({ entry, typeName: 'GetAgentDraftInput', readImport: read });
+  assert.match(input.text, /agentId: string;/u);
+  assert.deepEqual(input.unresolved, []);
+  const level = await resolveInputType({ entry, typeName: 'CmSimulationLevel', readImport: read });
+  assert.equal(level.text, "'canDo' | 'understands'");
+});
+
 void test('d1_200: a type the reader cannot parse is kept as written', async () => {
   const r = await resolve('export interface In { run: (x: number) => void; ok: string }', 'In');
   assert.match(r.text, /run: \(x: number\) => void;/u);

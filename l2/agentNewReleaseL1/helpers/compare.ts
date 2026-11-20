@@ -32,6 +32,8 @@ interface UnitRow {
   citeField?: { field: string; op: 'removed' | 'changed' };
   /** Restore the old def and drop sibling sources. Set when master 102021 lists the unit under `materialize`. */
   effortMaterialize?: boolean;
+  /** Parenthetical after `mudou`, from a draft field the unit writes or calls. */
+  draftNote?: string;
 }
 
 const SHAPE_KEYS = ['type', 'values', 'required', 'collection', 'to'] as const;
@@ -63,6 +65,7 @@ export async function compareModule(moduleName: string): Promise<CompareOutcome>
     for (const file of [...freshDefs.values(), ...oldDefs.values()]) texts.set(storeKey(file.info), await readSourceText(file.info));
     const rows = rowsOf(moduleName, freshDefs, oldDefs, texts);
     await markCitedFields(moduleName, rows, oldFiles);
+    await markDraftFields(moduleName, rows, oldFiles, texts);
     await markEffortMaterialize(moduleName, rows);
     const allEqual = rows.every(row => row.verdict === 'igual');
     const engineBack = workflowEngineBack(rows);
@@ -101,6 +104,7 @@ function lineOf(row: UnitRow): string {
     return `${row.kind} ${row.id}: ${row.verdict} (code cites ${label} ${row.citeField.field}) ${row.path}`;
   }
   if (row.effortMaterialize) return `${row.kind} ${row.id}: mudou (effort materialize) ${row.path}`;
+  if (row.draftNote) return `${row.kind} ${row.id}: mudou (${row.draftNote}) ${row.path}`;
   return `${row.kind} ${row.id}: ${row.verdict} ${row.path}`;
 }
 
@@ -510,6 +514,197 @@ async function markEffortMaterialize(moduleName: string, rows: UnitRow[]): Promi
     row.verdict = 'mudou';
     row.effortMaterialize = true;
   }
+}
+
+interface DraftFieldDiff { entityId: string; path: string; op: 'added' | 'changed' }
+
+interface UsecaseWrite { entityId: string; operation: string; transitionRef: string }
+
+/** New and reshaped entity fields from the domain drafts. `changeEffort` is not required. */
+async function markDraftFields(
+  moduleName: string,
+  rows: UnitRow[],
+  oldFiles: readonly ListedFile[],
+  texts: Map<string, string>,
+): Promise<void> {
+  const fresh = await readDomainDraft(moduleName, moduleName);
+  const prior = await readDomainDraft(moduleName, `${moduleName}_old`);
+  if (!fresh || !prior) return;
+  const diffs = fieldDiffs(prior, fresh);
+  if (diffs.length === 0) return;
+  const transitions = transitionPayloads(fresh);
+  const writers = new Map<string, string>();
+  for (const row of rows) {
+    if (row.kind !== 'usecase') continue;
+    const data = usecaseWrite(texts.get(defKey(moduleName, row.rel)) || '');
+    if (!data || !writesEntity(data, transitions)) continue;
+    const note = noteFor(diffs, data.entityId);
+    if (note) writers.set(row.id, note);
+  }
+  if (writers.size === 0) return;
+  const byRel = new Map(oldFiles.map(file => [file.rel, file]));
+  for (const row of rows) {
+    if (row.verdict !== 'igual') continue;
+    const own = writers.get(row.id);
+    if (row.kind === 'usecase' && own) {
+      row.verdict = 'mudou';
+      row.draftNote = own;
+      continue;
+    }
+    const sourceRel = row.rel.replace(/\.defs\.ts$/u, '.ts');
+    const testRel = row.rel.includes('/controllers/') ? sourceRel.replace(/\.ts$/u, '.test.ts') : '';
+    const source = await textOf(byRel.get(sourceRel));
+    const test = testRel ? await textOf(byRel.get(testRel)) : '';
+    let called = '';
+    for (const id of writers.keys()) {
+      if (id === row.id) continue;
+      if (!citesWholeWord(source, id) && !citesWholeWord(test, id)) continue;
+      called = id;
+      break;
+    }
+    if (!called) continue;
+    row.verdict = 'mudou';
+    row.draftNote = `calls ${called}`;
+  }
+}
+
+function defKey(moduleName: string, rel: string): string {
+  return storeKey({
+    project: moduleFile(moduleName).project,
+    level: 1,
+    folder: `${moduleName}/${rel.slice(0, rel.lastIndexOf('/'))}`,
+    shortName: rel.slice(rel.lastIndexOf('/') + 1).replace(/\.defs\.ts$/u, ''),
+    extension: '.defs.ts',
+  });
+}
+
+async function readDomainDraft(moduleName: string, root: string): Promise<Record<string, unknown> | null> {
+  const info: Ns5FileInfo = {
+    project: moduleFile(moduleName).project,
+    level: 1,
+    folder: `${root}/pipeline/agentDefsL1/drafts`,
+    shortName: 'domain30',
+    extension: '.json',
+  };
+  if (!fileExists(info)) return null;
+  try {
+    const parsed = JSON.parse(await readSourceText(info)) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`agentNewReleaseL1 could not read domain30.json for field cites: ${reason}`);
+    return null;
+  }
+}
+
+function fieldDiffs(prior: Record<string, unknown>, fresh: Record<string, unknown>): DraftFieldDiff[] {
+  const before = fieldsByEntity(prior);
+  const after = fieldsByEntity(fresh);
+  const diffs: DraftFieldDiff[] = [];
+  for (const [entityId, nextFields] of after) {
+    const oldFields = before.get(entityId) || new Map<string, { derived: boolean; shape: string }>();
+    for (const [path, field] of nextFields) {
+      if (field.derived) continue;
+      const previous = oldFields.get(path);
+      if (!previous) diffs.push({ entityId, path, op: 'added' });
+      else if (previous.shape !== field.shape) diffs.push({ entityId, path, op: 'changed' });
+    }
+  }
+  return diffs;
+}
+
+function fieldsByEntity(domain: Record<string, unknown>): Map<string, Map<string, { derived: boolean; shape: string }>> {
+  const out = new Map<string, Map<string, { derived: boolean; shape: string }>>();
+  const entities = domain.entities;
+  if (!Array.isArray(entities)) return out;
+  for (const entity of entities) {
+    if (!entity || typeof entity !== 'object') continue;
+    const record = entity as { entityId?: unknown; definition?: unknown };
+    const data = definitionData(record.definition);
+    const entityId = typeof record.entityId === 'string' && record.entityId
+      ? record.entityId
+      : typeof data?.entityId === 'string' ? data.entityId : '';
+    if (!entityId || !data) continue;
+    const fields = new Map<string, { derived: boolean; shape: string }>();
+    collectFields(data.fields, '', fields);
+    out.set(entityId, fields);
+  }
+  return out;
+}
+
+function definitionData(definition: unknown): Record<string, unknown> | null {
+  if (!definition || typeof definition !== 'object' || Array.isArray(definition)) return null;
+  const data = (definition as { data?: unknown }).data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  return data as Record<string, unknown>;
+}
+
+function collectFields(nodes: unknown, prefix: string, out: Map<string, { derived: boolean; shape: string }>): void {
+  if (!Array.isArray(nodes)) return;
+  for (const node of nodes) {
+    if (!node || typeof node !== 'object') continue;
+    const rec = node as Record<string, unknown>;
+    const name = typeof rec.name === 'string' ? rec.name : '';
+    if (!name) continue;
+    const path = prefix ? `${prefix}.${name}` : name;
+    const shape: Record<string, unknown> = {};
+    for (const key of SHAPE_KEYS) shape[key] = rec[key];
+    out.set(path, { derived: rec.derived === true, shape: JSON.stringify(shape) });
+    if (Array.isArray(rec.fields)) collectFields(rec.fields, path, out);
+  }
+}
+
+function transitionPayloads(domain: Record<string, unknown>): Map<string, Map<string, readonly unknown[]>> {
+  const out = new Map<string, Map<string, readonly unknown[]>>();
+  const entities = domain.entities;
+  if (!Array.isArray(entities)) return out;
+  for (const entity of entities) {
+    if (!entity || typeof entity !== 'object') continue;
+    const record = entity as { entityId?: unknown; definition?: unknown };
+    const data = definitionData(record.definition);
+    const entityId = typeof record.entityId === 'string' && record.entityId
+      ? record.entityId
+      : typeof data?.entityId === 'string' ? data.entityId : '';
+    if (!entityId || !data || !Array.isArray(data.transitions)) continue;
+    const byId = new Map<string, readonly unknown[]>();
+    for (const item of data.transitions) {
+      if (!item || typeof item !== 'object') continue;
+      const transition = item as { transitionId?: unknown; payload?: unknown };
+      if (typeof transition.transitionId !== 'string' || !transition.transitionId) continue;
+      byId.set(transition.transitionId, Array.isArray(transition.payload) ? transition.payload : []);
+    }
+    out.set(entityId, byId);
+  }
+  return out;
+}
+
+function usecaseWrite(source: string): UsecaseWrite | null {
+  const parsed = definitionOrNull(source);
+  const data = parsed?.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const record = data as { entityId?: unknown; operation?: unknown; transitionRef?: unknown };
+  if (typeof record.entityId !== 'string' || typeof record.operation !== 'string') return null;
+  return {
+    entityId: record.entityId,
+    operation: record.operation,
+    transitionRef: typeof record.transitionRef === 'string' ? record.transitionRef : '',
+  };
+}
+
+function writesEntity(data: UsecaseWrite, transitions: Map<string, Map<string, readonly unknown[]>>): boolean {
+  if (data.operation === 'create' || data.operation === 'update') return true;
+  if (data.operation !== 'transition' || !data.transitionRef) return false;
+  const payload = transitions.get(data.entityId)?.get(data.transitionRef);
+  return !!payload && payload.length > 0;
+}
+
+function noteFor(diffs: readonly DraftFieldDiff[], entityId: string): string {
+  const mine = diffs.filter(diff => diff.entityId === entityId).sort((left, right) => left.path.localeCompare(right.path));
+  const picked = mine.find(diff => diff.op === 'added') || mine[0];
+  if (!picked) return '';
+  const label = picked.op === 'added' ? 'new field' : 'changed field';
+  return `${label} ${picked.entityId}.${picked.path}`;
 }
 
 async function markCitedFields(moduleName: string, rows: UnitRow[], oldFiles: readonly ListedFile[]): Promise<void> {

@@ -607,6 +607,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
       '',
       `Import from \`${specifier}\`. The route does not call a usecase for this message: it checks the catalog input as above, builds the input of the entry function of the process (the one that opens the occurrence, chosen by its signature and by the l4 prose) from the message, calls it with \`ctx\`, and returns the catalog output. The function owns the occurrence and the writes; the route does not repeat them.`,
       generated ? fence('ts', exportSignatures(generated)) : '(the workflow service was not generated: the phase before this one failed for it)',
+      ...(generated ? [await resolvedInputSection(ctx, generated)].filter(Boolean) : []),
     ].join('\n')));
   }
   // d1_232: a route of an arrival that creates and updates an entity looks the record up by its key (a route a process owns leaves it to the process).
@@ -853,6 +854,7 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
       '',
       `Import from \`${specifier}\`. The handler of each route above calls the function of the process that the l4 prose names for that step (open the occurrence, advance it, reassign who acts): the function reuses the usecase, keeps the Task of the occurrence and decides; this service does not open a Task or call the usecase of that operation on its own. Pass \`ctx\` (or \`bound\` inside a command).`,
       generated ? fence('ts', exportSignatures(generated)) : '(the workflow service was not generated: the phase before this one failed for it)',
+      ...(generated ? [await resolvedInputSection(ctx, generated)].filter(Boolean) : []),
     ].join('\n')));
   }
   // The children a route writes with its parent and no usecase writes (the checklist items of a task): through the
@@ -950,22 +952,23 @@ function catalogIdOf(specifier: string): string {
  * resolver. One is shown when something was expanded or not found; a type that already has everything in place adds nothing.
  */
 async function resolvedInputSection(ctx: M12Context, generated: string): Promise<string> {
-  const inputName = /export\s+(?:async\s+)?function\s+\w+\s*\(\s*\w+\s*:\s*([A-Za-z_$][\w$]*)/u.exec(generated)?.[1];
-  const outputName = /export\s+(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*:\s*Promise<\s*([A-Za-z_$][\w$]*)\s*>/u.exec(generated)?.[1];
+  const functions = [...generated.matchAll(/export\s+(?:async\s+)?function\s+\w+\s*\(\s*\w+\s*:\s*([A-Za-z_$][\w$]*)[^)]*\)(?:\s*:\s*Promise<\s*([A-Za-z_$][\w$]*)\s*>)?/gu)];
   const readImport = async (specifier: string): Promise<string | null> => {
     const id = catalogIdOf(specifier);
     if (id) return ctx.read(catalogFilePath(id));
     return specifier.startsWith('/_') ? ctx.read(specifier.replace(/\.js$/u, '.ts')) : null;
   };
   const blocks: string[] = [];
-  for (const [label, typeName] of [['Input', inputName], ['Output', outputName]] as const) {
-    if (!typeName) continue;
-    const resolved = await resolveInputType({ entry: generated, typeName, readImport });
-    if (!resolved.text || (resolved.expanded === 0 && !resolved.unresolved.length)) continue;
-    blocks.push([
-      `${label} type, resolved as the compiler sees it (aliases, unions and extended types expanded; \`(truncated)\` and \`(not resolved)\` mark what was not):`,
-      fence('ts', `${typeName} = ${resolved.text}`),
-    ].join('\n'));
+  for (const match of functions) {
+    for (const [label, typeName] of [['Input', match[1]], ['Output', match[2]]] as const) {
+      if (!typeName) continue;
+      const resolved = await resolveInputType({ entry: generated, typeName, readImport });
+      if (!resolved.text || (resolved.expanded === 0 && !resolved.unresolved.length)) continue;
+      blocks.push([
+        `${label} type, resolved as the compiler sees it (aliases, unions and extended types expanded; \`(truncated)\` and \`(not resolved)\` mark what was not):`,
+        fence('ts', `${typeName} = ${resolved.text}`),
+      ].join('\n'));
+    }
   }
   return blocks.join('\n\n');
 }

@@ -315,15 +315,20 @@ function splitList(text: string): string[] {
   return parts.map(part => part.trim()).filter(Boolean);
 }
 
+function addNamedImports(env: FileEnv, list: string, specifier: string): void {
+  for (const raw of splitList(list)) {
+    const parts = raw.replace(/^type\s+/u, '').split(/\s+as\s+/u).map(item => item.trim());
+    const original = parts[0];
+    const local = parts[parts.length - 1];
+    if (local) env.imports.set(local, { specifier, original });
+  }
+}
+
 function parseFile(source: string): FileEnv {
   const env: FileEnv = { decls: new Map(), imports: new Map() };
-  for (const match of source.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+['"]([^'"]+)['"]/gu)) {
-    for (const raw of splitList(match[1])) {
-      const parts = raw.replace(/^type\s+/u, '').split(/\s+as\s+/u).map(item => item.trim());
-      const original = parts[0];
-      const local = parts[parts.length - 1];
-      if (local) env.imports.set(local, { specifier: match[2], original });
-    }
+  // `export type { A as B } from` is the same binding as `import type`: the local name is the alias.
+  for (const match of source.matchAll(/(?:import\s+(?:type\s+)?|export\s+type\s+)\{([^}]*)\}\s+from\s+['"]([^'"]+)['"]/gu)) {
+    addNamedImports(env, match[1], match[2]);
   }
   const header = /(?:^|\n)\s*(?:export\s+)?(?:declare\s+)?(interface|type)\s+([A-Za-z_$][\w$]*)\s*(<[^{=]*>)?/gu;
   for (let match = header.exec(source); match; match = header.exec(source)) {
