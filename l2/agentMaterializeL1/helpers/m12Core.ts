@@ -141,6 +141,7 @@ export const M12_HELP = [
   'Usage: @@agentMaterializeL1 [{"scope":"<folder>"} | {"target":"<path of a .defs.ts>"}]',
   'No JSON: every l1 module of the current project. scope: an l1 folder prefix, e.g. "comandaRestaurante" (the whole backend of the module) or "comandaRestaurante/layer_2_application/usecases".',
   'target: one unit by its .defs.ts or the .ts generated from it, e.g. "_102047_/l1/comandaRestaurante/layer_2_application/usecases/createMesa.defs.ts" (regenerated regardless of reuse).',
+  'target also names a unit an emitter writes (it has no def): the module engine by its file, "_102047_/l1/<module>/layer_1_external/adapters/workflow/engine.ts", or "<module>/engine".',
   'Optional "force": true regenerates reusable units and overwrites outputs this agent did not write.',
   'Order per module: domain10 -> persistence20 (recipes) -> seedRows25 (model, only tables the l4 says the module seed loads) -> usecases40 -> requests50 (model) -> controllers30 (recipe, imports the request service) -> tests60 (model) -> register70 -> finalize80. A unit whose dependency is not ready is blocked.',
 ].join('\n');

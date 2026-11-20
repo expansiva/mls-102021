@@ -3,7 +3,7 @@
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_AGENT_NAME, M12_BUILD, M12_HELP, buildM12PlannedSteps, isM12PhasePlanId, parseM12MessageInvocation, type M12Layer, type M12Request } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { addM12Step, m12Result, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
-import { loadModuleUnits, registersModule, requestModules, selectUnits, selectedLayers, storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { EMITTER_TARGET_FORMS, emitterTargetLayer, loadModuleUnits, registersModule, requestModules, selectUnits, selectedLayers, storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { unitNeedsLlm } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import '/_102021_/l2/agentMaterializeL1/steps/domain10/agentM12Domain.js';
 import '/_102021_/l2/agentMaterializeL1/steps/external15/agentM12External.js';
@@ -40,6 +40,8 @@ export interface M12ModulePlan {
   layers: M12Layer[];
   register: boolean;
   units: M12Unit[];
+  /** d1_246: units an emitter writes (no def), named by `target`; they are not in `units`. */
+  emitted?: string[];
   problems: Array<{ defRef: string; code: string; detail: string }>;
 }
 
@@ -51,7 +53,7 @@ export function planReport(request: M12Request, modules: readonly M12ModulePlan[
       if (layer === 'tests') { lines.push('- tests: one LLM worker per page whose controller is ready'); continue; }
       const units = item.units.filter(unit => unit.layer === layer);
       const llm = units.filter(unitNeedsLlm).map(unit => unit.unitId);
-      lines.push(`- ${layer}: ${units.map(unit => unit.unitId).join(', ')}${llm.length ? ` (LLM: ${llm.join(', ')})` : ''}`);
+      lines.push(`- ${layer}: ${[...units.map(unit => unit.unitId), ...(layer === 'workflows' ? item.emitted ?? [] : [])].join(', ')}${llm.length ? ` (LLM: ${llm.join(', ')})` : ''}`);
     }
     if (item.register) lines.push('- register: l5/project.json backend of the module');
     for (const problem of item.problems) lines.push(`- not planned: ${problem.defRef} ${problem.code} ${problem.detail}`);
@@ -59,7 +61,7 @@ export function planReport(request: M12Request, modules: readonly M12ModulePlan[
   return lines.join('\n');
 }
 
-async function planModules(project: number, request: M12Request): Promise<{ modules: M12ModulePlan[]; refusal: string }> {
+export async function planModules(project: number, request: M12Request): Promise<{ modules: M12ModulePlan[]; refusal: string }> {
   const entries = storEntries();
   const found = requestModules(project, request, entries);
   if (found.refusal) return { modules: [], refusal: found.refusal };
@@ -67,10 +69,15 @@ async function planModules(project: number, request: M12Request): Promise<{ modu
   for (const moduleName of found.modules) {
     const loaded = await loadModuleUnits(project, moduleName, entries);
     const units = selectUnits(project, moduleName, loaded.units, request);
+    // d1_246: the module engine has no def; `target` names its file. Only a module with a workflow process has one.
+    if (!units.length && emitterTargetLayer(project, moduleName, request.target) && loaded.units.some(unit => unit.definition.artifactType === 'workflowProcess')) {
+      modules.push({ module: moduleName, layers: ['workflows'], register: false, units, emitted: ['engine'], problems: loaded.problems });
+      continue;
+    }
     if (!units.length) continue;
     modules.push({ module: moduleName, layers: selectedLayers(units), register: registersModule(request, moduleName), units, problems: loaded.problems });
   }
-  if (!modules.length) return { modules: [], refusal: `Nothing selected: ${request.target || request.scope || 'the project'} matches no l1 def.` };
+  if (!modules.length) return { modules: [], refusal: `Nothing selected: ${request.target || request.scope || 'the project'} matches no l1 def${request.target ? ` or emitted unit. Accepted: ${EMITTER_TARGET_FORMS}` : ''}.` };
   return { modules, refusal: '' };
 }
 

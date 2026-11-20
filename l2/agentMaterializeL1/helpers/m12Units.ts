@@ -7,6 +7,7 @@ import { parseDefinitionSource, readDefinition, type M1Definition } from '/_1020
 import { LAYER_OF_TYPE, M12_LAYERS, type M12Layer, type M12Request } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { defOfRef, fileRef, infoOfRef, outputOfDef, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { workflowEngineFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import { childWriteMethods, routeChildWrites, withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 
@@ -125,12 +126,36 @@ export function selectUnits(project: number, moduleName: string, units: readonly
   return units.filter(unit => underScope(unit.def.folder, request.scope) || underScope(moduleName, request.scope));
 }
 
+/**
+ * d1_246: a unit an emitter writes has no def (the module engine of the workflows layer). `target` names it by its output file
+ * (`_<project>_/l1/<module>/layer_1_external/adapters/workflow/engine.ts`) or by `<module>/engine`.
+ */
+export const EMITTER_TARGET_FORMS = 'the .defs.ts or .ts of a def, the output file of an emitted unit (`_<project>_/l1/<module>/layer_1_external/adapters/workflow/engine.ts`), or `<module>/engine`';
+
+export function emitterTarget(project: number, target: string): { module: string; layer: M12Layer } | null {
+  const byId = /^([A-Za-z][A-Za-z0-9_]*)\/engine$/u.exec(String(target || '').trim());
+  if (byId) return { module: byId[1], layer: 'workflows' };
+  const info = infoOfRef(target, project);
+  if (!info || info.project !== project || info.level !== 1 || info.shortName !== 'engine' || info.extension !== '.ts') return null;
+  const module = info.folder.split('/')[0];
+  const engine = module ? workflowEngineFile(project, module) : null;
+  return engine && fileRef(engine) === fileRef(info) ? { module, layer: 'workflows' } : null;
+}
+
+/** The layer whose emitted unit the target names in this module, when it names one. */
+export function emitterTargetLayer(project: number, moduleName: string, target: string): M12Layer | null {
+  const found = target ? emitterTarget(project, target) : null;
+  return found && found.module === moduleName ? found.layer : null;
+}
+
 /** The modules a request touches: the scope's module, the target's module, or every module. */
 export function requestModules(project: number, request: M12Request, entries: readonly M12StorEntry[]): { modules: string[]; refusal: string } {
   const all = discoverModules(project, entries);
   if (request.target) {
+    const emitted = emitterTarget(project, request.target);
+    if (emitted) return all.includes(emitted.module) ? { modules: [emitted.module], refusal: '' } : { modules: [], refusal: `Target ${request.target} is not in a module with defs.` };
     const target = defOfRef(request.target, project);
-    if (!target || target.project !== project) return { modules: [], refusal: `Target ${request.target} is not an l1 def of project ${project}.` };
+    if (!target || target.project !== project) return { modules: [], refusal: `Target ${request.target} is not an l1 def of project ${project}. Accepted: ${EMITTER_TARGET_FORMS}.` };
     const moduleName = target.folder.split('/')[0];
     if (!all.includes(moduleName)) return { modules: [], refusal: `Target ${request.target} is not in a module with defs.` };
     return { modules: [moduleName], refusal: '' };

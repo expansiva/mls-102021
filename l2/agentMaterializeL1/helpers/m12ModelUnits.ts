@@ -12,7 +12,7 @@ import { importSpecifiers } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gat
 import { fileRef, infoOfRef } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { blockingDependencies, layerUnits, unitInputHash, writeAndProve, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
-import { orderWithinLayer, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { emitterTargetLayer, orderWithinLayer, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { canRepair, parseM12WorkerArgs, recordM12ArgsRefusal, repairOrGiveUp, workerStep, type M12WorkerArgs } from '/_102021_/l2/agentMaterializeL1/helpers/m12Worker.js';
 
 /** The tool every model unit answers with: the whole file, and the rules it declares not applicable. */
@@ -136,7 +136,7 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
       const lines: string[] = [];
       const workers: mls.msg.AgentIntent[] = [];
       const layerOf = orderWithinLayer(layerUnits(selected, spec.layer));
-      if (spec.prepare && layerOf.length) lines.push(...await spec.prepare(ctx, layerOf));
+      if (spec.prepare && (layerOf.length || emitterTargetLayer(run.project, run.module, run.target) === spec.layer)) lines.push(...await spec.prepare(ctx, layerOf));
       for (const unit of layerOf) {
         const base = { layer: spec.layer, unitId: unit.unitId, defRef: unit.defRef, attempt: 0 };
         const stop = spec.preflight ? await spec.preflight(ctx, unit) : null;
