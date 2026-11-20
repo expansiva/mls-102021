@@ -971,7 +971,9 @@ export const M12_USECASE_TOOL_DESCRIPTION = 'Return the whole usecase TypeScript
 export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code: string, notApplicable: readonly M12RuleNotApplicable[]): Promise<string[]> {
   const data = await loadUsecaseContext(ctx, unit);
   const ruleIds = rulesToEnforce(unit.definition);
-  const moduleRuleIds = allRuleIds(await readOptional(rulesFile(ctx.run.project, ctx.run.module)));
+  const rulesText = await readOptional(rulesFile(ctx.run.project, ctx.run.module));
+  // Without the rules file the module is not known: nothing outside the unit's list is refused.
+  const moduleRuleIds = rulesText ? allRuleIds(rulesText) : undefined;
   const waived = readNotApplicable(notApplicable, ruleIds, moduleRuleIds);
   const declared = new Set(waived.items.map(item => item.ruleId));
   const entities = await entityNames(ctx);

@@ -497,13 +497,9 @@ test('the get context of a role with locate.users does not ask for the role tag'
 });
 
 test('createExecutionSummary of agents: a reason waives the rules that do not govern this write', async () => {
-  const mlsBase = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
-  const read = async (ref: string): Promise<string | null> => {
-    const match = /^_(\d+)_\/(.+)$/u.exec(ref);
-    if (!match) return null;
-    const file = path.join(mlsBase, `mls-${match[1]}`, match[2]);
-    return existsSync(file) ? readFileSync(file, 'utf8') : null;
-  };
+  // Recorded files of mls-102047 at 77f24a11 (20/11/2026) that this unit reads: a test never reads the live bench.
+  const recorded = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures/agentsCreateExecutionSummary.recorded.json'), 'utf8')) as Record<string, string>;
+  const read = async (ref: string): Promise<string | null> => recorded[ref] ?? null;
   const declared = parseDefinitionExport(await read('_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts') ?? '');
   assert.ok(declared, 'the agents def parses');
   const planned = await usecasePlan(declared, read);
@@ -517,7 +513,9 @@ test('createExecutionSummary of agents: a reason waives the rules that do not go
     output: { project: 102047, level: 1, folder: 'agents/layer_2_application/usecases', shortName: 'createExecutionSummary', extension: '.ts' },
   } as unknown as M12Unit;
   const previous = globalThis.mls;
-  (globalThis as { mls: unknown }).mls = { actualProject: 102047, stor: { files: {}, getKeyToFile: keyOf } };
+  const rulesText = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures/agentsRules.recorded.txt'), 'utf8');
+  const rulesFile = { project: 102047, level: 4, folder: 'agents', shortName: 'rules', extension: '.defs.ts', getContent: async () => rulesText };
+  (globalThis as { mls: unknown }).mls = { actualProject: 102047, stor: { files: { [keyOf(rulesFile)]: rulesFile }, getKeyToFile: keyOf } };
   const ctx = { run: { project: 102047, module: 'agents' }, units: [usecase], read };
   try {
     const loaded = await loadUsecaseContext(ctx as never, usecase);

@@ -1,0 +1,357 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/seeds.ts" enhancement="_blank"/>
+import type { TableSeedRows } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
+
+export const seedPlan = {
+  "phase": "plan",
+  "scenarios": [
+    {
+      "scenarioId": "adjustAgentTools",
+      "tableId": "agentTool",
+      "source": "journey:adjustAgentTools",
+      "constraints": [
+        "ref:toolId:Tool",
+        "uniqueKeys:agentId+toolId"
+      ],
+      "refs": [
+        {
+          "field": "toolId",
+          "relationshipId": "agentToolTool",
+          "entityId": "Tool"
+        }
+      ],
+      "states": [],
+      "entityId": "AgentTool"
+    },
+    {
+      "scenarioId": "reviewAndActivateDraft",
+      "tableId": "agentTool",
+      "source": "journey:reviewAndActivateDraft",
+      "constraints": [
+        "ref:toolId:Tool",
+        "uniqueKeys:agentId+toolId"
+      ],
+      "refs": [
+        {
+          "field": "toolId",
+          "relationshipId": "agentToolTool",
+          "entityId": "Tool"
+        }
+      ],
+      "states": [],
+      "entityId": "AgentTool"
+    },
+    {
+      "scenarioId": "followAgentActivity",
+      "tableId": "executionSummary",
+      "source": "journey:followAgentActivity",
+      "constraints": [
+        "ref:personId:OrganizationUser",
+        "uniqueKeys:executionRef"
+      ],
+      "refs": [
+        {
+          "field": "personId",
+          "relationshipId": "executionRequester",
+          "entityId": "OrganizationUser"
+        }
+      ],
+      "states": [],
+      "entityId": "ExecutionSummary"
+    },
+    {
+      "scenarioId": "restrictPersonTools",
+      "tableId": "personToolRestriction",
+      "source": "journey:restrictPersonTools",
+      "constraints": [
+        "ref:personId:OrganizationUser",
+        "ref:toolId:Tool",
+        "uniqueKeys:personId+toolId"
+      ],
+      "refs": [
+        {
+          "field": "personId",
+          "relationshipId": "restrictionPerson",
+          "entityId": "OrganizationUser"
+        },
+        {
+          "field": "toolId",
+          "relationshipId": "restrictionTool",
+          "entityId": "Tool"
+        }
+      ],
+      "states": [],
+      "entityId": "PersonToolRestriction"
+    },
+    {
+      "scenarioId": "model_tool",
+      "tableId": "tool",
+      "source": "model:Tool",
+      "constraints": [
+        "state:available",
+        "state:removed",
+        "uniqueKeys:toolKey"
+      ],
+      "refs": [],
+      "states": [
+        "available",
+        "removed"
+      ],
+      "entityId": "Tool",
+      "stateField": "status"
+    }
+  ]
+} as const;
+
+export const seedRows0 = {"seedFor":"agentTool","purpose":"test","rows":[{"agentId":"12ad2938-9b5f-5ac0-9cbe-e516d30929e3","toolId":"1934eb5b-7635-58e0-b631-c7eb16083a8a","enabled":true,"choiceSource":"admin","details":{"version":1},"id":"88c28fd2-4e0c-5f37-b7b7-2f38845a4302"},{"agentId":"c18c6f68-dca0-500c-91fc-2b06218cc37f","toolId":"b1bbc1fd-4546-593a-876a-7f616871ae31","enabled":true,"choiceSource":"admin","details":{"version":1},"id":"e70094c8-8fcd-5308-88ee-1ca5f54f8b5f"}]} satisfies TableSeedRows;
+export const seedRows1 = {"seedFor":"executionSummary","purpose":"test","rows":[{"agentId":"54b44caa-da54-504e-ac9a-7608783bb144","executionRef":"agents.executionSummary.followAgentActivity.executionRef","startedAt":"2026-01-01T00:00:00.000Z","details":{"durationMs":1,"tookOver":true,"version":1},"personId":"fe957e9e-a86e-5227-9b5e-88305a71151a","id":"7bf8ae35-4b4b-5de1-b141-0ed8fed5416e"}]} satisfies TableSeedRows;
+export const seedRows2 = {"seedFor":"personToolRestriction","purpose":"test","rows":[{"personId":"5a83c173-9846-5c35-8a32-3cec9f5fa816","toolId":"86e90928-9805-5c89-944c-7b4c343cfaf6","details":{"version":1},"id":"7fbf30c2-e551-5f63-a866-04f244de4fec"}]} satisfies TableSeedRows;
+export const seedRows3 = {"seedFor":"tool","purpose":"test","rows":[{"toolKey":"agents.tool.model_tool.toolKey","origin":"appModule","moduleName":"agents.tool.model_tool.moduleName","subject":"agents.tool.model_tool.subject","name":"agents.tool.model_tool.name","status":"available","details":{"moduleTitle":"agents.tool.model_tool.details.moduleTitle","subjectTitle":"agents.tool.model_tool.details.subjectTitle","description":"agents.tool.model_tool.details.description","addedAt":"2026-01-01T00:00:00.000Z","version":1},"id":"9d746659-e04b-5678-b11f-5bdd82e4de26"}]} satisfies TableSeedRows;
+export const seedRows4 = {"seedFor":"mdmEntityIndex","purpose":"test","rows":[{"mdmId":"e81ca8f3-c160-5bd5-9dac-734f54d02e4c","subtype":"Person","name":"Company admin","status":"Active","docType":null,"docId":null,"countryCode":"US","tags":["agents.Person","agents","actor","companyAdmin","agents.OrganizationUser"],"searchVector":"company admin companyadmin agents","mergedInto":null,"dynamoPk":"e81ca8f3-c160-5bd5-9dac-734f54d02e4c","createdAt":"2026-07-01T00:00:00.000Z","updatedAt":"2026-07-01T00:00:00.000Z"},{"mdmId":"10053333-859f-5fc1-9d69-886ef473698c","subtype":"Person","name":"Organization member","status":"Active","docType":null,"docId":null,"countryCode":"US","tags":["agents.Person","agents","actor","organizationMember","agents.OrganizationUser"],"searchVector":"organization member organizationmember agents","mergedInto":null,"dynamoPk":"10053333-859f-5fc1-9d69-886ef473698c","createdAt":"2026-07-01T00:00:00.000Z","updatedAt":"2026-07-01T00:00:00.000Z"}]} satisfies TableSeedRows;
+export const seedRows5 = {"seedFor":"mdmDocumentCache","purpose":"test","rows":[{"mdmId":"e81ca8f3-c160-5bd5-9dac-734f54d02e4c","version":1,"details":{"subtype":"Person","name":"Company admin","status":"Active","docType":"SSN","docId":null,"countryCode":"US","tags":["agents.Person","agents","actor","companyAdmin","agents.OrganizationUser"],"mergedInto":null,"createdAt":"2026-07-01T00:00:00.000Z","updatedAt":"2026-07-01T00:00:00.000Z","moduleTypes":[],"aliases":[],"addresses":[],"contacts":[],"relationshipRefs":{},"notes":null,"mdmId":"e81ca8f3-c160-5bd5-9dac-734f54d02e4c","actorId":"companyAdmin"}},{"mdmId":"10053333-859f-5fc1-9d69-886ef473698c","version":1,"details":{"subtype":"Person","name":"Organization member","status":"Active","docType":"SSN","docId":null,"countryCode":"US","tags":["agents.Person","agents","actor","organizationMember","agents.OrganizationUser"],"mergedInto":null,"createdAt":"2026-07-01T00:00:00.000Z","updatedAt":"2026-07-01T00:00:00.000Z","moduleTypes":[],"aliases":[],"addresses":[],"contacts":[],"relationshipRefs":{},"notes":null,"mdmId":"10053333-859f-5fc1-9d69-886ef473698c","actorId":"organizationMember"}}]} satisfies TableSeedRows;
+
+export const certificationFixture = {
+  "schemaVersion": "2026-09-27-m1-certification-fixture-v1",
+  "phase": "plan",
+  "targets": [
+    "memory",
+    "development"
+  ],
+  "datasets": [
+    {
+      "supportId": "data:AgentTool",
+      "entityId": "AgentTool",
+      "tableId": "agentTool",
+      "dependsOn": [
+        "Tool"
+      ],
+      "sourceRefs": [
+        "grant:adminManageTools",
+        "journey:adjustAgentTools/browseToolTree",
+        "journey:adjustAgentTools/findAgentForTools",
+        "journey:adjustAgentTools/toggleTools",
+        "journey:changeAgentBehavior/findAgentForBehavior",
+        "journey:changeAgentBehavior/readBehavior",
+        "journey:changeAgentBehavior/requestBehaviorChange",
+        "journey:changeAgentBehavior/undoBehaviorChange",
+        "journey:changeMyConduct/changeConduct",
+        "journey:changeMyConduct/findMyAgent",
+        "journey:changeMyConduct/readMyConduct",
+        "journey:configureAgent/findAgentForConfig",
+        "journey:configureAgent/readConfiguration",
+        "journey:configureAgent/saveConfiguration",
+        "journey:createVirtualEmployee/describeAgent",
+        "journey:createVirtualEmployee/followDraftSituation",
+        "journey:createVirtualEmployee/openAgentList",
+        "journey:followAgentActivity/browseAgents",
+        "journey:followAgentActivity/readActivity",
+        "journey:followAgentActivity/readOverview",
+        "journey:restrictPersonTools/choosePerson",
+        "journey:restrictPersonTools/markRestrictions",
+        "journey:restrictPersonTools/reviewRestrictions",
+        "journey:reviewAndActivateDraft/activateDraft",
+        "journey:reviewAndActivateDraft/adjustDraftTools",
+        "journey:reviewAndActivateDraft/discardDraft",
+        "journey:reviewAndActivateDraft/openReadyDraft",
+        "journey:reviewAndActivateDraft/reviewDraft",
+        "journey:reviewAndActivateDraft/simulateDraft",
+        "journey:simulateAgentByRole/findAgentToSimulate",
+        "journey:simulateAgentByRole/simulateWhatItCan",
+        "journey:simulateAgentByRole/simulateWhatItUnderstands",
+        "journey:simulateAsMyself/findAgentForMe",
+        "journey:simulateAsMyself/seeWhatItCanForMe",
+        "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+        "process:toolCatalogRefresh",
+        "process:virtualEmployeeCreation",
+        "relationship:Agent/agentToolAgent",
+        "relationship:AgentTool/agentToolAgent",
+        "relationship:AgentTool/agentToolTool",
+        "relationship:Tool/agentToolTool",
+        "relationship:Tool/restrictionTool"
+      ]
+    },
+    {
+      "supportId": "data:ExecutionSummary",
+      "entityId": "ExecutionSummary",
+      "tableId": "executionSummary",
+      "dependsOn": [],
+      "sourceRefs": [
+        "grant:adminReadActivity",
+        "grant:memberReadActivity",
+        "journey:adjustAgentTools/browseToolTree",
+        "journey:adjustAgentTools/findAgentForTools",
+        "journey:adjustAgentTools/toggleTools",
+        "journey:changeAgentBehavior/findAgentForBehavior",
+        "journey:changeAgentBehavior/readBehavior",
+        "journey:changeAgentBehavior/requestBehaviorChange",
+        "journey:changeAgentBehavior/undoBehaviorChange",
+        "journey:changeMyConduct/changeConduct",
+        "journey:changeMyConduct/findMyAgent",
+        "journey:changeMyConduct/readMyConduct",
+        "journey:configureAgent/findAgentForConfig",
+        "journey:configureAgent/readConfiguration",
+        "journey:configureAgent/saveConfiguration",
+        "journey:createVirtualEmployee/describeAgent",
+        "journey:createVirtualEmployee/followDraftSituation",
+        "journey:createVirtualEmployee/openAgentList",
+        "journey:followAgentActivity/browseAgents",
+        "journey:followAgentActivity/readActivity",
+        "journey:followAgentActivity/readOverview",
+        "journey:restrictPersonTools/choosePerson",
+        "journey:restrictPersonTools/markRestrictions",
+        "journey:restrictPersonTools/reviewRestrictions",
+        "journey:reviewAndActivateDraft/activateDraft",
+        "journey:reviewAndActivateDraft/adjustDraftTools",
+        "journey:reviewAndActivateDraft/discardDraft",
+        "journey:reviewAndActivateDraft/openReadyDraft",
+        "journey:reviewAndActivateDraft/reviewDraft",
+        "journey:reviewAndActivateDraft/simulateDraft",
+        "journey:simulateAgentByRole/findAgentToSimulate",
+        "journey:simulateAgentByRole/simulateWhatItCan",
+        "journey:simulateAgentByRole/simulateWhatItUnderstands",
+        "journey:simulateAsMyself/findAgentForMe",
+        "journey:simulateAsMyself/seeWhatItCanForMe",
+        "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+        "process:executionRecording",
+        "relationship:Agent/agentToolAgent",
+        "relationship:Agent/executionAgent",
+        "relationship:ExecutionSummary/executionAgent",
+        "relationship:ExecutionSummary/executionRequester",
+        "relationship:OrganizationUser/executionRequester",
+        "relationship:PersonToolRestriction/restrictionPerson",
+        "relationship:Tool/agentToolTool",
+        "relationship:Tool/restrictionTool"
+      ]
+    },
+    {
+      "supportId": "data:PersonToolRestriction",
+      "entityId": "PersonToolRestriction",
+      "tableId": "personToolRestriction",
+      "dependsOn": [
+        "Tool"
+      ],
+      "sourceRefs": [
+        "grant:adminManageTools",
+        "journey:adjustAgentTools/browseToolTree",
+        "journey:adjustAgentTools/findAgentForTools",
+        "journey:adjustAgentTools/toggleTools",
+        "journey:changeAgentBehavior/findAgentForBehavior",
+        "journey:changeAgentBehavior/readBehavior",
+        "journey:changeAgentBehavior/requestBehaviorChange",
+        "journey:changeAgentBehavior/undoBehaviorChange",
+        "journey:changeMyConduct/changeConduct",
+        "journey:changeMyConduct/findMyAgent",
+        "journey:changeMyConduct/readMyConduct",
+        "journey:configureAgent/findAgentForConfig",
+        "journey:configureAgent/readConfiguration",
+        "journey:configureAgent/saveConfiguration",
+        "journey:createVirtualEmployee/describeAgent",
+        "journey:createVirtualEmployee/followDraftSituation",
+        "journey:createVirtualEmployee/openAgentList",
+        "journey:followAgentActivity/browseAgents",
+        "journey:followAgentActivity/readActivity",
+        "journey:followAgentActivity/readOverview",
+        "journey:restrictPersonTools/choosePerson",
+        "journey:restrictPersonTools/markRestrictions",
+        "journey:restrictPersonTools/reviewRestrictions",
+        "journey:reviewAndActivateDraft/activateDraft",
+        "journey:reviewAndActivateDraft/adjustDraftTools",
+        "journey:reviewAndActivateDraft/discardDraft",
+        "journey:reviewAndActivateDraft/openReadyDraft",
+        "journey:reviewAndActivateDraft/reviewDraft",
+        "journey:reviewAndActivateDraft/simulateDraft",
+        "journey:simulateAgentByRole/findAgentToSimulate",
+        "journey:simulateAgentByRole/simulateWhatItCan",
+        "journey:simulateAgentByRole/simulateWhatItUnderstands",
+        "journey:simulateAsMyself/findAgentForMe",
+        "journey:simulateAsMyself/seeWhatItCanForMe",
+        "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+        "relationship:Agent/agentToolAgent",
+        "relationship:Agent/executionAgent",
+        "relationship:ExecutionSummary/executionRequester",
+        "relationship:OrganizationUser/restrictionPerson",
+        "relationship:PersonToolRestriction/restrictionPerson",
+        "relationship:PersonToolRestriction/restrictionTool",
+        "relationship:Tool/agentToolTool",
+        "relationship:Tool/restrictionTool"
+      ]
+    },
+    {
+      "supportId": "data:Tool",
+      "entityId": "Tool",
+      "tableId": "tool",
+      "dependsOn": [],
+      "sourceRefs": [
+        "grant:adminManageTools",
+        "grant:memberReadToolCatalog",
+        "journey:adjustAgentTools/browseToolTree",
+        "journey:adjustAgentTools/findAgentForTools",
+        "journey:adjustAgentTools/toggleTools",
+        "journey:changeAgentBehavior/findAgentForBehavior",
+        "journey:changeAgentBehavior/readBehavior",
+        "journey:changeAgentBehavior/requestBehaviorChange",
+        "journey:changeAgentBehavior/undoBehaviorChange",
+        "journey:changeMyConduct/changeConduct",
+        "journey:changeMyConduct/findMyAgent",
+        "journey:changeMyConduct/readMyConduct",
+        "journey:configureAgent/findAgentForConfig",
+        "journey:configureAgent/readConfiguration",
+        "journey:configureAgent/saveConfiguration",
+        "journey:createVirtualEmployee/describeAgent",
+        "journey:createVirtualEmployee/followDraftSituation",
+        "journey:createVirtualEmployee/openAgentList",
+        "journey:followAgentActivity/browseAgents",
+        "journey:followAgentActivity/readActivity",
+        "journey:followAgentActivity/readOverview",
+        "journey:restrictPersonTools/choosePerson",
+        "journey:restrictPersonTools/markRestrictions",
+        "journey:restrictPersonTools/reviewRestrictions",
+        "journey:reviewAndActivateDraft/activateDraft",
+        "journey:reviewAndActivateDraft/adjustDraftTools",
+        "journey:reviewAndActivateDraft/discardDraft",
+        "journey:reviewAndActivateDraft/openReadyDraft",
+        "journey:reviewAndActivateDraft/reviewDraft",
+        "journey:reviewAndActivateDraft/simulateDraft",
+        "journey:simulateAgentByRole/findAgentToSimulate",
+        "journey:simulateAgentByRole/simulateWhatItCan",
+        "journey:simulateAgentByRole/simulateWhatItUnderstands",
+        "journey:simulateAsMyself/findAgentForMe",
+        "journey:simulateAsMyself/seeWhatItCanForMe",
+        "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+        "process:toolCatalogRefresh",
+        "relationship:Agent/agentToolAgent",
+        "relationship:AgentTool/agentToolTool",
+        "relationship:PersonToolRestriction/restrictionTool",
+        "relationship:Tool/agentToolTool",
+        "relationship:Tool/restrictionTool"
+      ]
+    }
+  ],
+  "runtime": [
+    {
+      "supportId": "identity:companyAdmin",
+      "kind": "identity",
+      "entityId": "OrganizationUser",
+      "actorRefs": [
+        "companyAdmin"
+      ],
+      "gap": "RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for companyAdmin bound to OrganizationUser",
+      "owner": "runtime"
+    },
+    {
+      "supportId": "identity:organizationMember",
+      "kind": "identity",
+      "entityId": "OrganizationUser",
+      "actorRefs": [
+        "organizationMember"
+      ],
+      "gap": "RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for organizationMember bound to OrganizationUser",
+      "owner": "runtime"
+    }
+  ],
+  "gaps": []
+} as const;
+
+export function applicableSeeds(mode: string): TableSeedRows[] {
+  if (mode !== 'development' && mode !== 'presentation') return [];
+  return [seedRows0, seedRows1, seedRows2, seedRows3, seedRows4, seedRows5];
+}

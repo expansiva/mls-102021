@@ -205,7 +205,8 @@ test('a scenario row does not put a field that is not a column at the root', asy
   assert.equal(legacy.row.version, 1, 'without the table columns the l4 key went to the root');
 });
 
-const AGENTS = '/Volumes/WagnerSSD1/collab/mls-base/mls-102047';
+// Recorded copies of the agents module of mls-102047 (seeds.ts and the l4 ontology) at 900b92a0, 20/11/2026: a test never reads the live bench.
+const FIXTURES = path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures');
 const SEED_TOKEN = /^[a-z][\w]*\.[\w]+\.[\w]+\.[\w.]+$/;
 
 function stringValues(value: unknown, out: string[]): void {
@@ -220,7 +221,7 @@ function patternCount(columns: readonly SeedColumn[]): number {
 }
 
 test('agents scenario seed text is the field title plus the scenario position', async () => {
-  const plan = readFileSync(path.join(AGENTS, 'l1/agents/layer_1_external/adapters/persistence/seeds.ts'), 'utf8');
+  const plan = readFileSync(path.join(FIXTURES, 'agentsSeeds.recorded.txt'), 'utf8');
   const start = plan.indexOf('export const seedPlan = ');
   const end = plan.indexOf('} as const;', start);
   assert.ok(start >= 0 && end > start);
@@ -228,7 +229,7 @@ test('agents scenario seed text is the field title plus the scenario position', 
   const byTable = new Map<string, Record<string, unknown>[]>();
   let patterns = 0;
   for (const scenario of scenarios) {
-    const ontology = readFileSync(path.join(AGENTS, `l4/agents/ontology/${scenario.entityId}.defs.ts`), 'utf8');
+    const ontology = readFileSync(path.join(FIXTURES, `agents${scenario.entityId}.defs.recorded.txt`), 'utf8');
     const draft = referenceSeedUnit({
       scenarioId: scenario.scenarioId,
       tableId: scenario.tableId,
