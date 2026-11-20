@@ -517,8 +517,8 @@ void test('a transition without ruleRefs is valid: the L4 cites rules only when 
 });
 
 void test('a connection catalog typed `export const cm: ConnectionCatalog = {…}` is read and needs no rules', () => {
-  const source = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
-  const text = 'import type { ConnectionCatalog } from "/_102034_/l1/server/layer_1_external/connections/catalogs/types.js";\n'
+  const source = '/_102034_/l2/shared/contracts/connections/cm.ts';
+  const text = 'import type { ConnectionCatalog } from "/_102034_/l2/shared/contracts/connections/types.js";\n'
     + 'export const cm: ConnectionCatalog = {\n  "operations": [{ "operationId": "readAgent", "direction": "call" }]\n};\n';
   const catalog = parseD1Source(text, 'defs');
   assert.ok(catalog);
@@ -530,7 +530,7 @@ void test('a connection catalog typed `export const cm: ConnectionCatalog = {…
 });
 
 void test('d1_197: an external entity names its connection by connectionId only; a source with no connectionId is an error', () => {
-  const source = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
+  const source = '/_102034_/l2/shared/contracts/connections/cm.ts';
   const catalog = { operations: [{ operationId: 'readAgent', direction: 'call' }] };
   const body = { entityId: 'RemoteAgent', kind: 'external', source, record: { fields: { name: { type: 'string' } } } };
   const old = buildD1Domain(requestFrom({ RemoteAgent: body }, { rules: {} }, { [source]: catalog }));
@@ -541,9 +541,9 @@ void test('d1_197: an external entity names its connection by connectionId only;
 });
 
 void test('d1_197: catalogInfo reads the connection catalog only at the path of the single helper', () => {
-  const real = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
-  assert.deepEqual(catalogInfo(real), { project: 102034, level: 1, folder: 'server/layer_1_external/connections/catalogs', shortName: 'cm', extension: '.ts' });
-  assert.equal(catalogInfo('/_102034_/l1/server/layer_1_external/connections/catalogs/Cm.ts'), null);
+  const real = '/_102034_/l2/shared/contracts/connections/cm.ts';
+  assert.deepEqual(catalogInfo(real), { project: 102034, level: 2, folder: 'shared/contracts/connections', shortName: 'cm', extension: '.ts' });
+  assert.equal(catalogInfo('/_102034_/l2/shared/contracts/connections/Cm.ts'), null);
   assert.equal(catalogInfo('/_102034_/l1/other/catalogs/cm.ts'), null);
   assert.equal(catalogInfo('/_102034_/l4/ontology/mdm.defs.ts')?.extension, '.defs.ts');
 });
@@ -572,7 +572,7 @@ void test('an object of a platform type keeps of; a name that is not of the plat
 });
 
 void test('an external entity has no local table and a connection catalog needs no rules', () => {
-  const source = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
+  const source = '/_102034_/l2/shared/contracts/connections/cm.ts';
   const body = {
     entityId: 'RemoteAgent',
     kind: 'external',

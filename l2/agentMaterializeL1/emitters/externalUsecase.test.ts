@@ -11,7 +11,7 @@ import { usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseInt
 import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../..');
-const CM_SOURCE = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
+const CM_SOURCE = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/connections/cm.ts'), 'utf8');
 const ENTITY_DEF = '_102099_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts';
 const OUTBOUND_DEF = '_102099_/l1/agents/layer_1_external/adapters/integration/outbound.defs.ts';
 
@@ -46,7 +46,7 @@ function files(connections: Array<Record<string, unknown>>): Record<string, stri
       dependencies: [],
       data: { connections },
     } as unknown as Omit<M1Definition, 'schemaVersion' | 'moduleName' | 'status'>)),
-    '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts': CM_SOURCE,
+    '/_102034_/l2/shared/contracts/connections/cm.ts': CM_SOURCE,
   };
 }
 
@@ -86,7 +86,7 @@ void test('a usecase on an external entity takes its signature from the call: tr
 
   const emitted = await emitUsecase(update.definition, '_102099_/l1/agents/layer_2_application/usecases/updateAgentDraft.ts', read(all));
   assert.ok('source' in emitted, JSON.stringify(emitted));
-  assert.match(emitted.source, /import type \{ CmUpdateAgentInput, CmUpdateAgentOutput \} from '\/_102034_\/l1\/server\/layer_1_external\/connections\/catalogs\/cm\.js';/u);
+  assert.match(emitted.source, /import type \{ CmUpdateAgentInput, CmUpdateAgentOutput \} from '\/_102034_\/l2\/shared\/contracts\/connections\/cm\.js';/u);
   assert.match(emitted.source, /UpdateAgentDraftInput extends CmUpdateAgentInput \{\n  expectVersion: number;/u);
   // d1_203: no index signature, so a field the catalog does not declare is a compile error in a call and in a read.
   assert.match(emitted.source, /UpdateAgentDraftOutput extends CmUpdateAgentOutput \{\}/u);

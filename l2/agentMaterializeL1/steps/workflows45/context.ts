@@ -5,7 +5,7 @@
 // the occurrence entity and its port, the module engine, the runtime engine signatures and the record-id rule.
 // And the gate of its answer.
 
-import { connectionCatalogSource, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
+import { connectionCatalogSource, isCatalogImport, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
@@ -705,7 +705,7 @@ export function workflowGate(code: string, input: { siblingImports?: readonly st
   const ownL1 = `/_${input.project}_/l1/${input.moduleName}/`;
   for (const specifier of importSpecifiers(code)) {
     if (!specifier.startsWith('/') || !specifier.endsWith('.js')) { problems.push(`Import "${specifier}" must start with / and end with .js.`); continue; }
-    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1) && !(input.siblingImports ?? []).includes(specifier)) problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/) and this module (${ownL1}).`);
+    if (!specifier.startsWith('/_102034_/l1/') && !isCatalogImport(specifier) && !specifier.startsWith(ownL1) && !(input.siblingImports ?? []).includes(specifier)) problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/) and this module (${ownL1}).`);
   }
   if (usesNodeBuiltin(code)) problems.push('No node: import.');
   if (/\bfetch\s*\(/u.test(code)) problems.push('No fetch().');
@@ -827,7 +827,7 @@ function functionTextProblems(code: string, project: number, moduleName: string,
   const ownL1 = `/_${project}_/l1/${moduleName}/`;
   for (const specifier of importSpecifiers(code)) {
     if (!specifier.startsWith('/') || !specifier.endsWith('.js')) { problems.push(`Import "${specifier}" must start with / and end with .js.`); continue; }
-    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1) && !siblingImports.includes(specifier)) problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/) and this module (${ownL1}).`);
+    if (!specifier.startsWith('/_102034_/l1/') && !isCatalogImport(specifier) && !specifier.startsWith(ownL1) && !siblingImports.includes(specifier)) problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/) and this module (${ownL1}).`);
   }
   if (usesNodeBuiltin(code)) problems.push('No node: import.');
   if (/\bfetch\s*\(/u.test(code)) problems.push('No fetch().');

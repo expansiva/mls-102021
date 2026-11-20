@@ -23,10 +23,10 @@ const OWN_L4 = readFileSync(path.join(FIXTURES, 'repoInsideModule.integration.re
 const SIBLING_L4 = readFileSync(path.join(FIXTURES, 'integrationModule.integration.recorded.txt'), 'utf8');
 // A declaration written by hand from the L4 (the phase answer the d1_208 s2 gate accepts).
 const OWN_DECLARATION = readFileSync(path.join(HERE, '../steps/external15/fixtures/repoHostDeclaration.recorded.txt'), 'utf8');
-const CM_SOURCE = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
+const CM_SOURCE = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/connections/cm.ts'), 'utf8');
 const SIBLING_DECLARATION = [
   '/// <mls fileReference="_102099_/l1/integrations/layer_1_external/connections/zipLookup.ts" enhancement="_blank"/>',
-  "import type { ExternalSystemDeclaration } from '/_102034_/l1/server/layer_1_external/connections/external/types.js';",
+  "import type { ExternalSystemDeclaration } from '/_102034_/l2/shared/contracts/connections/externalSystem.js';",
   'export interface ZipFindAddressInput { zipCode: string }',
   'export interface ZipFindAddressOutput { street: string; city: string }',
   'export interface ZipAddressFoundInput { zipCode: string; street: string }',
@@ -52,7 +52,7 @@ const norm = (ref: string) => ref.replace(/^\//u, '');
 
 function filesOf(extra: Record<string, string> = {}): (ref: string) => Promise<string | null> {
   const files: Record<string, string> = {
-    '_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts': CM_SOURCE,
+    '_102034_/l2/shared/contracts/connections/cm.ts': CM_SOURCE,
     [`_${PROJECT}_/l4/organization/registry.defs.ts`]: REGISTRY,
     [`_${PROJECT}_/l4/${OWN_MODULE}/integration.defs.ts`]: OWN_L4,
     [`_${PROJECT}_/l4/${SIBLING_MODULE}/integration.defs.ts`]: SIBLING_L4,
@@ -75,7 +75,7 @@ const outputOf = (moduleName: string) => `_${PROJECT}_/l1/${moduleName}/layer_1_
 void test('d1_208 s3: the catalog source of a connection is the platform file, then the declaration of this module, then a sibling declaration', async () => {
   const read = filesOf({ [`_${PROJECT}_/l1/${SIBLING_MODULE}/layer_1_external/connections/zipLookup.ts`]: SIBLING_DECLARATION });
   const platform = await connectionCatalogSource(read, PROJECT, OWN_MODULE, 'cm');
-  assert.deepEqual([platform.origin, platform.importPath, platform.problem], ['platform', '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.js', undefined]);
+  assert.deepEqual([platform.origin, platform.importPath, platform.problem], ['platform', '/_102034_/l2/shared/contracts/connections/cm.js', undefined]);
   assert.equal(platform.source, CM_SOURCE);
   const own = await connectionCatalogSource(read, PROJECT, OWN_MODULE, 'repoHost');
   assert.deepEqual([own.origin, own.importPath, own.problem], ['own', `/_${PROJECT}_/l1/${OWN_MODULE}/layer_1_external/connections/repoHost.js`, undefined]);
@@ -117,7 +117,7 @@ void test('d1_208 s3: the gateway of a call to a system of this module imports i
   assert.match(outbound.source, /export interface RepoHostGateway/u);
   assert.match(outbound.source, /listChanges\(input: RepoHostListChangesInput, ctx: RequestContext/u);
   assert.match(outbound.source, /callConnection\("repoHost", "listChanges"/u);
-  assert.equal(outbound.source.includes('/_102034_/l1/server/layer_1_external/connections/catalogs/repoHost'), false, 'not a platform catalog');
+  assert.equal(outbound.source.includes('/_102034_/l2/shared/contracts/connections/repoHost'), false, 'not a platform catalog');
 });
 
 void test('d1_208 s3: the same call to the system a sibling declares takes the types of the sibling declaration', async () => {

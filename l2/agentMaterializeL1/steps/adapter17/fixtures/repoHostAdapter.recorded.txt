@@ -1,6 +1,6 @@
 /// <mls fileReference="_102099_/l1/codeReview/layer_1_external/connections/repoHostAdapter.ts" enhancement="_blank"/>
 
-import type { ExternalSystemAdapter } from '/_102034_/l1/server/layer_1_external/connections/external/types.js';
+import type { ExternalSystemAdapter } from '/_102034_/l2/shared/contracts/connections/externalSystem.js';
 import type { RepoHostChange, RepoHostListChangesInput, RepoHostListChangesOutput } from '/_102099_/l1/codeReview/layer_1_external/connections/repoHost.js';
 
 const adapter: ExternalSystemAdapter = {

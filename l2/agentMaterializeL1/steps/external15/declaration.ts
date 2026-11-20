@@ -5,7 +5,7 @@
 // description) and the gate checks the model copied it; the model analyses the rest (hosts, kinds, types, methods, what each call
 // uses, how a serve is verified). The gate is the validator of the runtime, the coverage of the L4 and the compile.
 
-import { validateExternalSystemDeclaration } from '/_102034_/l1/server/layer_1_external/connections/external/types.js';
+import { validateExternalSystemDeclaration } from '/_102034_/l2/shared/contracts/connections/externalSystem.js';
 
 /** What the def `externalConnection` carries: a copy of the L4 system. */
 export interface ExternalFacts {

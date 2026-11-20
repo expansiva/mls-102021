@@ -16,8 +16,8 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
 import { requestGate } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 
-const CM = readFileSync(fileURLToPath(new URL('../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts', import.meta.url)), 'utf8');
-const CATALOG_REF = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
+const CM = readFileSync(fileURLToPath(new URL('../../../../mls-102034/l2/shared/contracts/connections/cm.ts', import.meta.url)), 'utf8');
+const CATALOG_REF = '/_102034_/l2/shared/contracts/connections/cm.ts';
 
 function ontology(values: string[]): string {
   const entity = { entityId: 'Sim', kind: 'external', connectionId: 'cm', record: { fields: {

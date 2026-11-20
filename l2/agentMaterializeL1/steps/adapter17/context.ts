@@ -13,7 +13,7 @@ import { DECLARATION_TYPES_IMPORT, connectionLinesOf, externalFacts } from '/_10
 
 export const M12_ADAPTER_TOOL = 'writeExternalAdapter' as const;
 export const M12_ADAPTER_TOOL_DESCRIPTION = 'Return the whole adapter TypeScript file of the system';
-const CATALOG_TYPES_REF = '_102034_/l1/server/layer_1_external/connections/catalogs/types.ts';
+const CATALOG_TYPES_REF = '_102034_/l2/shared/contracts/connections/types.ts';
 
 function section(title: string, body: string): string {
   return `## ${title}\n\n${body.trim()}\n`;

@@ -17,7 +17,7 @@ const PROJECT = 102099;
 const MODULE = 'codeReview';
 // Copy of the l4_p4_117 s5 rehearsal (mls-102035@7c91b5e), case 1: the module declares the system it uses.
 const L4 = readFileSync(path.join(HERE, '../../../helpers/connections/fixtures/repoInsideModule.integration.recorded.txt'), 'utf8');
-const TYPES = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/external/types.ts'), 'utf8');
+const TYPES = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/connections/externalSystem.ts'), 'utf8');
 const ANSWER = readFileSync(path.join(HERE, 'fixtures/repoHostDeclaration.recorded.txt'), 'utf8');
 
 const system = declaredSystemsOf(parseD1Source(L4, 'defs'))[0];

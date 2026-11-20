@@ -494,11 +494,11 @@ test('d1_195: the prompt of a process carries the gateway section of the calls w
       outputRef: '',
     } as unknown as M12Unit;
   };
-  const catalogSource = readFileSync(fileURLToPath(new URL('../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts', import.meta.url)), 'utf8');
+  const catalogSource = readFileSync(fileURLToPath(new URL('../../../../../mls-102034/l2/shared/contracts/connections/cm.ts', import.meta.url)), 'utf8');
   const withCall = (consumer: string) => {
     const built = focusedUnit(tasks, functions, []);
     const read = built.ctx.read;
-    built.ctx.read = async (ref: string) => ref === '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts' ? catalogSource : read(ref);
+    built.ctx.read = async (ref: string) => ref === '/_102034_/l2/shared/contracts/connections/cm.ts' ? catalogSource : read(ref);
     built.ctx.units.push(outbound(consumer));
     return built;
   };
@@ -539,7 +539,7 @@ test('d1_204: a call that a usecase consumes is run by calling the usecase; the 
     declared: { data },
     outputRef,
   }) as unknown as M12Unit;
-  const catalogSource = readFileSync(fileURLToPath(new URL('../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts', import.meta.url)), 'utf8');
+  const catalogSource = readFileSync(fileURLToPath(new URL('../../../../../mls-102034/l2/shared/contracts/connections/cm.ts', import.meta.url)), 'utf8');
   const integration = `export const x = ${JSON.stringify({ connections: [
     { connectionId: 'cm', operationId: 'listAgents', direction: 'call', usedBy: [`${PROCESS}.cotar`] },
     { connectionId: 'cm', operationId: 'readAgent', direction: 'call', usedBy: [`${PROCESS}.cotar`] },
@@ -547,7 +547,7 @@ test('d1_204: a call that a usecase consumes is run by calling the usecase; the 
   const build = () => {
     const built = focusedUnit(tasks, functions, []);
     const read = built.ctx.read;
-    built.ctx.read = async (ref: string) => ref === '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts'
+    built.ctx.read = async (ref: string) => ref === '/_102034_/l2/shared/contracts/connections/cm.ts'
       ? catalogSource
       : ref.endsWith('/l4/' + MODULE + '/integration.defs.ts') ? integration : read(ref);
     // `listAgents` is consumed by the usecase `listThing`; `readAgent` by no usecase (the process is the consumer).

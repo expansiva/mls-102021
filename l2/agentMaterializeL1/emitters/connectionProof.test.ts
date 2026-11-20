@@ -15,8 +15,8 @@ import { createFakeCallConnection } from '/_102034_/testing/connections/connecti
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../..');
 const TSC = path.join(ROOT, 'node_modules', '.bin', 'tsc');
-const CM_DEFS = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
-const CM_SOURCE = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
+const CM_DEFS = '/_102034_/l2/shared/contracts/connections/cm.ts';
+const CM_SOURCE = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/connections/cm.ts'), 'utf8');
 const OUTBOUND_DEF = '_102099_/l1/agents/layer_1_external/adapters/integration/outbound.defs.ts';
 const SCOPE_DEF = '_102099_/l1/agents/layer_2_application/access/accessScope.defs.ts';
 const AUTHORITY_DEF = '_102099_/l1/agents/layer_2_application/access/authorityMap.defs.ts';
@@ -74,7 +74,7 @@ function serviceText(): string {
 }
 
 const REQUESTS_TS = [
-  "import type { CmAgentDraftReadyInput, CmAgentDraftReadyOutput, CmDescribeInput, CmDescribeOutput, CmRecordInput, CmRecordOutput } from '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.js';",
+  "import type { CmAgentDraftReadyInput, CmAgentDraftReadyOutput, CmDescribeInput, CmDescribeOutput, CmRecordInput, CmRecordOutput } from '/_102034_/l2/shared/contracts/connections/cm.js';",
   '',
   'export const requests = {',
   '  recordExecution: async (_input: CmRecordInput, _ctx: unknown): Promise<CmRecordOutput> => ({ status: \'recorded\' }),',

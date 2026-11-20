@@ -19,6 +19,12 @@ import {
   type SiblingSystems,
 } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 
+/** True for the import of the types of one platform connection catalog: the single path of `catalogImportPath` (d1_223: it is no longer under the platform `l1/`). */
+export function isCatalogImport(specifier: string): boolean {
+  const connectionId = /\/([^/]+)\.js$/u.exec(specifier)?.[1] ?? '';
+  return connectionId !== '' && catalogImportPath(connectionId) === specifier;
+}
+
 export type CatalogRead = (ref: string) => Promise<string | null>;
 
 export interface ConnectionCatalogSource {

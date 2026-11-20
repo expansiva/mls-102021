@@ -3,6 +3,8 @@
 // Deterministic gates on what a model returns, before anything is written. Each problem is one line the
 // repair prompt can act on.
 
+import { isCatalogImport } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
+
 export interface M12CodeGateInput {
   /** Declarations of sibling systems this module's connections name: the only files of a sibling an import may name (d1_208). */
   siblingImports?: readonly string[];
@@ -557,7 +559,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
       problems.push(`Import "${specifier}" must start with / and end with .js.`);
       continue;
     }
-    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownModule) && !(input.siblingImports ?? []).includes(specifier)) {
+    if (!specifier.startsWith('/_102034_/l1/') && !isCatalogImport(specifier) && !specifier.startsWith(ownModule) && !(input.siblingImports ?? []).includes(specifier)) {
       problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/) and this module (${ownModule}).`);
     }
   }

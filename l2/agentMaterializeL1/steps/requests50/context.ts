@@ -4,7 +4,7 @@
 // rules, access), the request-service def, the recipe attempt, the generated usecases it may call, the rule
 // texts and the platform signatures.
 
-import { connectionCatalogSource, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
+import { connectionCatalogSource, isCatalogImport, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { systemIdentity } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { requestsObjectBodies } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
@@ -1015,7 +1015,7 @@ export function requestGate(code: string, input: {
   const ownContracts = `/_${input.project}_/l2/${input.moduleName}/web/contracts/`;
   for (const specifier of importSpecifiers(code)) {
     if (!specifier.startsWith('/') || !specifier.endsWith('.js')) { problems.push(`Import "${specifier}" must start with / and end with .js.`); continue; }
-    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1) && !specifier.startsWith(ownContracts) && !(input.siblingImports ?? []).includes(specifier)) {
+    if (!specifier.startsWith('/_102034_/l1/') && !isCatalogImport(specifier) && !specifier.startsWith(ownL1) && !specifier.startsWith(ownContracts) && !(input.siblingImports ?? []).includes(specifier)) {
       problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/), this module (${ownL1}) and its contracts (${ownContracts}).`);
     }
   }

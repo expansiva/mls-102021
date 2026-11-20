@@ -4,7 +4,7 @@
 // `call` operation of the declaration, which builds the request and sends it only through `ctx.send`. The gate is the validator of the
 // runtime, the exits the file never uses, and the compile. It names no service.
 
-import { validateExternalSystemAdapter, type ExternalSystemDeclaration } from '/_102034_/l1/server/layer_1_external/connections/external/types.js';
+import { validateExternalSystemAdapter, type ExternalSystemDeclaration } from '/_102034_/l2/shared/contracts/connections/externalSystem.js';
 import { DECLARATION_TYPES_IMPORT } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { declarationLiteral, defaultObjectStart } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
 

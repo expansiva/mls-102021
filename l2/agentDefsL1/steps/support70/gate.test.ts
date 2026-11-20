@@ -793,7 +793,7 @@ function connectionRequest(operations: D1EffectOperation[]): D1SupportRequest {
 void test('a catalog call becomes a connections row', async () => {
   const catalog = await catalogOperationsOf(readFileSync(path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
-    '../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts',
+    '../../../../../mls-102034/l2/shared/contracts/connections/cm.ts',
   ), 'utf8'));
   assert.ok(catalog);
   const request = connectionRequest([connectionOp({
@@ -825,7 +825,7 @@ void test('a catalog call becomes a connections row', async () => {
 void test('a call outside the catalog, a missing catalog and an unresolved consumer are diagnosed', async () => {
   const catalog = await catalogOperationsOf(readFileSync(path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
-    '../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts',
+    '../../../../../mls-102034/l2/shared/contracts/connections/cm.ts',
   ), 'utf8'));
   assert.ok(catalog);
   const request = connectionRequest([
@@ -864,7 +864,7 @@ function repoAdapter(moduleName: string): D1SupportRequest['adapters'][number] {
 void test('one connection adds one gateway row and the registry depends on outbound', async () => {
   const catalog = await catalogOperationsOf(readFileSync(path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
-    '../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts',
+    '../../../../../mls-102034/l2/shared/contracts/connections/cm.ts',
   ), 'utf8'));
   assert.ok(catalog);
   const request = connectionRequest([
@@ -1526,7 +1526,7 @@ void test('d1_208: the catalog of a call resolves on the platform, in this modul
   const info = (display: string, projectId = project) => fileInfoFromDisplay(projectId, display)!;
   const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../helpers/connections/fixtures');
   const recorded = (name: string) => readFileSync(path.join(fixtures, `${name}.integration.recorded.txt`), 'utf8');
-  seed(host, info('l1/server/layer_1_external/connections/catalogs/cm.ts', 102034), readFileSync(path.join(root, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8'));
+  seed(host, info('l2/shared/contracts/connections/cm.ts', 102034), readFileSync(path.join(root, 'mls-102034/l2/shared/contracts/connections/cm.ts'), 'utf8'));
   seed(host, info('l4/organization/registry.defs.ts'), 'export const solutionRegistry = {"modules":[{"moduleName":"codeReview"},{"moduleName":"customers"},{"moduleName":"integrations"}]} as const;');
   seed(host, info('l4/integrations/integration.defs.ts'), recorded('integrationModule'));
   const own = parseSource(recorded('repoInsideModule'), 'defs');

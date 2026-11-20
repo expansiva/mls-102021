@@ -5,7 +5,7 @@ import type {
   PlatformReleaseCatalogChangedOutput,
   PlatformModuleCatalog,
   PlatformCatalogAction,
-} from '/_102034_/l1/server/layer_1_external/connections/catalogs/platform.js';
+} from '/_102034_/l2/shared/contracts/connections/platform.js';
 import { applyReleaseCatalog } from '/_102047_/l1/agents/layer_2_application/workflows/toolCatalogRefresh.js';
 import type { ReleaseCatalogAction } from '/_102047_/l1/agents/layer_2_application/workflows/toolCatalogRefresh.js';
 

@@ -19,7 +19,7 @@ import { loadVerifiedSources } from '/_102021_/l2/agentDefsL1/steps/usecases50/c
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GITHUB = readFileSync(path.join(HERE, '../../../agentMaterializeL1/steps/usecases40/fixtures/githubDeclaration.recorded.txt'), 'utf8');
-const CM = readFileSync(path.join(HERE, '../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
+const CM = readFileSync(path.join(HERE, '../../../../../mls-102034/l2/shared/contracts/connections/cm.ts'), 'utf8');
 const PROJECT = 102047;
 const MODULE = 'controleEstoque';
 const DECLARATION = `/_${PROJECT}_/l1/repoHost/layer_1_external/connections/github.ts`;
@@ -68,7 +68,7 @@ function caseHost(connectionId: string, declared: 'sibling' | 'siblingNotGenerat
   if (declared === 'sibling' || declared === 'siblingNotGenerated') put(host, PROJECT, 'l4/repoHost/integration.defs.ts', integration(connectionId));
   if (declared === 'sibling') put(host, PROJECT, 'l1/repoHost/layer_1_external/connections/github.ts', GITHUB);
   if (declared === 'ownGenerated') put(host, PROJECT, `l1/${MODULE}/layer_1_external/connections/github.ts`, GITHUB);
-  if (declared === 'platform') put(host, 102034, 'l1/server/layer_1_external/connections/catalogs/cm.ts', CM);
+  if (declared === 'platform') put(host, 102034, 'l2/shared/contracts/connections/cm.ts', CM);
   return host;
 }
 

@@ -11,10 +11,10 @@ import { entityCatalogSource } from '/_102021_/l2/agentDefsL1/steps/input20/cont
 import { externalConnectionIds, resolveEntityCatalogs } from '/_102021_/l2/agentDefsL1/steps/input20/entityCatalog.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// The bytes of the `github.ts` the `repoHost` module generated (102047), recorded.
+// The `github.ts` the `repoHost` module generated (102047), recorded; the import of the types is the one of the l2 of the runtime (d1_223).
 const GITHUB = readFileSync(path.join(HERE, '../../../agentMaterializeL1/steps/usecases40/fixtures/githubDeclaration.recorded.txt'), 'utf8');
 const PROJECT = 102047;
-const PLATFORM = '/_102034_/l1/server/layer_1_external/connections/catalogs';
+const PLATFORM = '/_102034_/l2/shared/contracts/connections';
 const DECLARATION = '/_102047_/l1/repoHost/layer_1_external/connections/github.ts';
 
 const entities = { ContentFile: { kind: 'external', connectionId: 'github' }, Publication: { kind: 'entity' } };

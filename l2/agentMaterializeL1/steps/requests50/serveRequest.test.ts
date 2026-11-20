@@ -10,8 +10,8 @@ import { maskCode, requestsObjectBodies } from '/_102021_/l2/agentMaterializeL1/
 import { loadRequestContext, normalizeRequestsTyping, requestGate, serveUsecaseProblems, workflowRouteProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
-const CATALOG = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
-const CATALOG_REF = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
+const CATALOG = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/connections/cm.ts'), 'utf8');
+const CATALOG_REF = '/_102034_/l2/shared/contracts/connections/cm.ts';
 const PROJECT = 102099;
 const MODULE = 'agents';
 
@@ -52,7 +52,7 @@ test('a serve request context quotes the connection catalog and the repeat rule,
   assert.doesNotMatch(loaded.human, /## Contract /);
   assert.equal(loaded.contractsInterface.includes('CmRecordInput'), true);
   assert.equal(loaded.contractsInterface.includes('CmRecordOutput'), true);
-  assert.equal(loaded.contractSpecifier, '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.js');
+  assert.equal(loaded.contractSpecifier, '/_102034_/l2/shared/contracts/connections/cm.js');
 });
 
 test('the serve gate accepts a catalog-typed requests and refuses fetch and callConnection', async () => {
@@ -209,8 +209,8 @@ void test('d1_202: the scanner masks comments and strings and finds the requests
   assert.equal(maskCode('a "xyz"').length, 'a "xyz"'.length);
 });
 
-const PLATFORM_CATALOG_REF = '/_102034_/l1/server/layer_1_external/connections/catalogs/platform.ts';
-const PLATFORM_CATALOG = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/catalogs/platform.ts'), 'utf8');
+const PLATFORM_CATALOG_REF = '/_102034_/l2/shared/contracts/connections/platform.ts';
+const PLATFORM_CATALOG = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/connections/platform.ts'), 'utf8');
 
 void test('d1_206: the serve a process starts on carries the workflow service of the process, and the gate wants its import', async () => {
   const previous = globalThis.mls;

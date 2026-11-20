@@ -192,7 +192,7 @@ test('an ontology that is not the JSON record still goes to the prompt as its so
 test('d1_199/d1_200: the usecase section of a request shows its input type resolved (extended catalog type, alias unions), in the prompt and in the repair', async () => {
   const previous = globalThis.mls;
   const contractInfo: M12FileInfo = { project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: PAGE, extension: '.defs.ts' };
-  const catalogDir = '/_102034_/l1/server/layer_1_external/connections/catalogs';
+  const catalogDir = '/_102034_/l2/shared/contracts/connections';
   const get = unit('usecase', 'getAgentDraft', { usecaseId: 'getAgentDraft', entityId: 'AgentDraft' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/getAgentDraft.ts`);
   const plain = unit('usecase', 'listAbertas', { usecaseId: 'listAbertas', entityId: 'Tarefa' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/listAbertas.ts`);
   const foreign = unit('usecase', 'getOther', { usecaseId: 'getOther', entityId: 'Other' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/getOther.ts`);

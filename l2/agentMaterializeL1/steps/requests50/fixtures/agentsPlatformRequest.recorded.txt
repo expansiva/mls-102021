@@ -4,7 +4,7 @@ import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/con
 import type {
   PlatformReleaseCatalogChangedInput,
   PlatformReleaseCatalogChangedOutput,
-} from '/_102034_/l1/server/layer_1_external/connections/catalogs/platform.js';
+} from '/_102034_/l2/shared/contracts/connections/platform.js';
 import { updateTool } from '/_102047_/l1/agents/layer_2_application/usecases/updateTool.js';
 import type { UpdateToolInput } from '/_102047_/l1/agents/layer_2_application/usecases/updateTool.js';
 

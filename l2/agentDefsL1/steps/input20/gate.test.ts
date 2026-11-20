@@ -650,8 +650,8 @@ void test('a port and a table of an entity outside the closure leave the plan wi
   assert.equal(snapshot.consumersReleased, true);
 });
 
-const catalogText = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
-const CATALOG_PATH = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
+const catalogText = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../mls-102034/l2/shared/contracts/connections/cm.ts'), 'utf8');
+const CATALOG_PATH = '/_102034_/l2/shared/contracts/connections/cm.ts';
 
 function withServe(operationId: string, effect: string | undefined, entity: string | undefined): D1InputArtifacts {
   const artifacts = clone(loadHead());

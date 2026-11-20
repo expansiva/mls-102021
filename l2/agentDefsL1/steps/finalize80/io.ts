@@ -209,7 +209,7 @@ async function moduleRuleIds(project: number, moduleName: string): Promise<strin
 }
 
 async function readLogical(project: number, path: string): Promise<string | null> {
-  // A source of another project is a qualified path (`/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts`), not a logical one.
+  // A source of another project is a qualified path (`/_102034_/l2/shared/contracts/connections/cm.ts`), not a logical one.
   const info = /^\/?_\d+_\//u.test(path) ? catalogInfo(path) : fileInfoFromDisplay(project, path);
   if (!info) return null;
   return readText(info);

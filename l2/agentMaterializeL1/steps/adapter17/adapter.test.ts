@@ -13,15 +13,15 @@ import { adapterKeys } from '/_102021_/l2/agentMaterializeL1/steps/adapter17/ada
 import { adapterAnswerProblems, loadAdapterContext } from '/_102021_/l2/agentMaterializeL1/steps/adapter17/context.js';
 import { declarationLiteral } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
 import { createFakeAdapterContext, createFakeExternalSender } from '/_102034_/testing/connections/externalFixtures.js';
-import type { ExternalAdapterContext, ExternalSystemDeclaration } from '/_102034_/l1/server/layer_1_external/connections/external/types.js';
+import type { ExternalAdapterContext, ExternalSystemDeclaration } from '/_102034_/l2/shared/contracts/connections/externalSystem.js';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const ROOT = path.resolve(HERE, '../../../../..');
 const PROJECT = 102099;
 const MODULE = 'codeReview';
 const L4 = readFileSync(path.join(HERE, '../../../helpers/connections/fixtures/repoInsideModule.integration.recorded.txt'), 'utf8');
-const TYPES = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/external/types.ts'), 'utf8');
-const RESULTS = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/catalogs/types.ts'), 'utf8');
+const TYPES = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/connections/externalSystem.ts'), 'utf8');
+const RESULTS = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/connections/types.ts'), 'utf8');
 const DECLARATION = readFileSync(path.join(HERE, '../external15/fixtures/repoHostDeclaration.recorded.txt'), 'utf8');
 const ADAPTER = readFileSync(path.join(HERE, 'fixtures/repoHostAdapter.recorded.txt'), 'utf8');
 
@@ -42,7 +42,7 @@ const files: Record<string, string> = {
   [`_${PROJECT}_/l4/${MODULE}/integration.defs.ts`]: L4,
   [`_${PROJECT}_/l1/${MODULE}/layer_1_external/connections/${system.id}.ts`]: DECLARATION,
   [DECLARATION_TYPES_REF]: TYPES,
-  '_102034_/l1/server/layer_1_external/connections/catalogs/types.ts': RESULTS,
+  '_102034_/l2/shared/contracts/connections/types.ts': RESULTS,
 };
 const ctx = { run: { project: PROJECT, module: MODULE }, units: [unit()], read: async (ref: string) => files[norm(ref)] ?? null } as never;
 

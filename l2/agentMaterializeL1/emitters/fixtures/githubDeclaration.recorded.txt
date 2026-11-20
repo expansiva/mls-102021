@@ -1,5 +1,5 @@
 /// <mls fileReference="_102047_/l1/repoHost/layer_1_external/connections/github.ts" enhancement="_blank"/>
-import type { ExternalSystemDeclaration } from '/_102034_/l1/server/layer_1_external/connections/external/types.js';
+import type { ExternalSystemDeclaration } from '/_102034_/l2/shared/contracts/connections/externalSystem.js';
 
 export type ListContentsInput = {
   /** Path of the folder inside the repository. Empty for the root. */
