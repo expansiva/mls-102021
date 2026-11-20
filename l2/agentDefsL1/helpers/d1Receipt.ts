@@ -49,6 +49,8 @@ export interface D1FileProgress {
   action: 'write' | 'remove';
   previousHash: string;
   desiredHash: string;
+  /** d1_249: the hash this unit last wrote (or found equal) at this path. Carried over when a later run is refused, so the receipt is not lost with it. */
+  written?: string;
   status: 'pending' | 'done' | 'conflict';
   outputTs: string[];
 }
@@ -273,7 +275,7 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
     return { ...empty, reported: existing.reported, finalized: true };
   }
 
-  const progress = blankProgress(input, runId, snapshotHash, draftHash, planned, reported);
+  const progress = blankProgress(input, runId, snapshotHash, draftHash, planned, reported, earlier);
   if (sourceKey) progress.sourceKey = sourceKey;
   await saveProgress(input, progress);
   const written: string[] = [];
@@ -468,6 +470,7 @@ function blankProgress(
   draftHash: string,
   planned: readonly PlannedFile[],
   reported: string[],
+  earlier?: D1UnitProgress | null,
 ): D1UnitProgress {
   return {
     schemaVersion: D1_PROGRESS_SCHEMA,
@@ -482,14 +485,19 @@ function blankProgress(
     finalized: false,
     invalidated: false,
     reported,
-    files: planned.map(part => ({
-      defPath: part.logical,
-      action: part.action,
-      previousHash: part.previousHash,
-      desiredHash: part.desiredHash,
-      status: 'pending' as const,
-      outputTs: part.outputTs,
-    })),
+    files: planned.map(part => {
+      const known = earlier?.files.find(file => logicalDefPath(file.defPath) === part.logical && file.action === 'write');
+      const written = known?.written ?? (known?.status === 'done' ? known.desiredHash : '');
+      return {
+        defPath: part.logical,
+        action: part.action,
+        previousHash: part.previousHash,
+        desiredHash: part.desiredHash,
+        ...(written ? { written } : {}),
+        status: 'pending' as const,
+        outputTs: part.outputTs,
+      };
+    }),
     issues: [],
   };
 }
@@ -519,7 +527,9 @@ function reportedOf(planned: readonly PlannedFile[]): string[] {
 
 function markDone(progress: D1UnitProgress, logical: string): void {
   const row = progress.files.find(file => file.defPath === logical);
-  if (row) row.status = 'done';
+  if (!row) return;
+  row.status = 'done';
+  if (row.action === 'write' && row.desiredHash) row.written = row.desiredHash;
 }
 
 function markConflict(progress: D1UnitProgress, logical: string): void {
@@ -630,10 +640,13 @@ export async function readWriterReceipts(project: number, moduleName: string): P
   const traces = [...WRITER_STEPS.map(step => ({ step: step as string, unitId: step as string })), D1_EXTERNAL_TRACE];
   for (const { step, unitId } of traces) {
     const progress = await readProgress(project, moduleName, step, unitId);
-    if (!progress || !progress.finalized || progress.invalidated) continue;
+    if (!progress) continue;
+    const whole = progress.finalized && !progress.invalidated;
     for (const file of progress.files) {
-      if (file.action !== 'write' || file.status !== 'done' || !file.desiredHash) continue;
-      out.push({ defPath: logicalDefPath(file.defPath), desiredHash: file.desiredHash });
+      if (file.action !== 'write') continue;
+      // A row's `written` is a fact about the bytes this unit put at the path: it stays when the unit is later refused. A done row of a finished unit is the same fact.
+      const hash = file.written || (whole && file.status === 'done' ? file.desiredHash : '');
+      if (hash) out.push({ defPath: logicalDefPath(file.defPath), desiredHash: hash });
     }
   }
   return out;

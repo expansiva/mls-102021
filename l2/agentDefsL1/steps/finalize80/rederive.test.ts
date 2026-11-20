@@ -72,12 +72,13 @@ async function withOlderPort(): Promise<{ host: TestHost; resolver: D1TestResolv
   await writeText(info, older);
   const traceKey = Object.keys(host.files).find(key => key.includes('traces/persistence40persistence40'))!;
   const traceFile = host.files[traceKey];
-  const trace = JSON.parse(traceFile.content) as { files: Array<{ defPath: string; desiredHash: string }> };
+  const trace = JSON.parse(traceFile.content) as { files: Array<{ defPath: string; desiredHash: string; written?: string }> };
   const hash = await sourceIdentityHash(older);
   let patched = 0;
   for (const file of trace.files) {
     if (!portPath.endsWith(file.defPath.replace(/^_\d+_\//u, '').replace(/^l1\//u, ''))) continue;
     file.desiredHash = hash;
+    if (file.written) file.written = hash; // d1_249: the receipt is what the unit wrote
     patched += 1;
   }
   assert.equal(patched, 1);
@@ -406,3 +407,65 @@ async function runStep(
       .join('\n'),
   };
 }
+
+// d1_249: a refused run replaced the progress of the unit, and with it the receipts of the defs the D1 had written: the `/rederive` of the recipe then
+// met "exists without an inventoried path and hash" in every controller and request (agents, 138). Three cases over the harness.
+
+async function afterRefusedRun(legacy: boolean): Promise<{ host: TestHost; resolver: D1TestResolver; trace: () => { finalized: boolean; files: Array<{ status: string; written?: string }> } }> {
+  const host = await readyHost(FIXTURE, MODULE);
+  const resolver = recordedResolver(FIXTURE, MODULE);
+  await runToFinalize(host, MODULE, resolver);
+  const traceKey = Object.keys(host.files).find(key => key.includes('traces/controllers60controllers60'))!;
+  const read = () => JSON.parse(host.files[traceKey].content) as { finalized: boolean; sourceKey?: string; files: Array<{ status: string; written?: string }> };
+  const save = async (value: unknown): Promise<void> => {
+    const file = host.files[traceKey];
+    await writeText({ project: file.project, level: file.level, folder: file.folder, shortName: file.shortName, extension: file.extension }, JSON.stringify(value, null, 2));
+  };
+  // The unit was written before `sourceKey` existed: the fix of d1_248 does not apply and the run is refused.
+  const first = read();
+  delete first.sourceKey;
+  await save(first);
+  const contract = host.files[Object.keys(host.files).find(key => key.includes('web/contracts/inicio.defs'))!];
+  contract.content = contract.content.replace('Retorna somente os indicadores', 'Retorna MUDOU-O-TEXTO os indicadores');
+  await assert.rejects(() => runToFinalize(host, MODULE, resolver, true), /controllers60 refused: .*(without a receipt|Receipt hash)/u);
+  if (legacy) {
+    // What the refused run left before `written` existed: rows without a receipt.
+    const left = read();
+    for (const row of left.files) delete row.written;
+    await save(left);
+  }
+  return { host, resolver, trace: read };
+}
+
+void test('d1_249: a run refused in controllers60 keeps the receipts: the /rederive after it redoes the request and the controller and ends complete', async () => {
+  const { host, resolver, trace } = await afterRefusedRun(false);
+  assert.equal(trace().finalized, false);
+  assert.equal(trace().files.every(row => !!row.written), true, 'every row still knows what the D1 wrote');
+  await command('controllers60');
+  const done = await runToFinalize(host, MODULE, resolver, true);
+  assert.equal(done.report?.outcome, 'complete');
+  assert.equal(stored(host, `l1/${MODULE}/layer_2_application/requests/inicio.defs.ts`).content.includes('MUDOU-O-TEXTO'), true);
+  assert.match(done.finalTrace, /rederive: 1 def\(s\) changed\.\n@@agentMaterializeL1 \{"target":"_102047_\/l1\/comandaRestaurante\/layer_2_application\/requests\/inicio\.defs\.ts"\}/u, done.finalTrace);
+});
+
+void test('d1_249: progress written before the receipts were kept (nothing vouches for the defs): the /rederive vouches for the kinds it redoes', async () => {
+  const { host, resolver } = await afterRefusedRun(true);
+  await command('controllers60');
+  const done = await runToFinalize(host, MODULE, resolver, true);
+  assert.equal(done.report?.outcome, 'complete');
+  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
+  assert.equal(stored(host, `l1/${MODULE}/layer_2_application/requests/inicio.defs.ts`).content.includes('MUDOU-O-TEXTO'), true);
+  assert.match(done.finalTrace, /rederive: 1 def\(s\) changed\.\n@@agentMaterializeL1 \{"target":"_102047_\/l1\/comandaRestaurante\/layer_2_application\/requests\/inicio\.defs\.ts"\}/u, done.finalTrace);
+});
+
+void test('d1_249: a def edited by hand after the D1 wrote it is not vouched for: the /rederive refuses it and leaves the edit', async () => {
+  const host = await readyHost(FIXTURE, MODULE);
+  const resolver = recordedResolver(FIXTURE, MODULE);
+  await runToFinalize(host, MODULE, resolver);
+  const request = stored(host, `l1/${MODULE}/layer_2_application/requests/inicio.defs.ts`);
+  request.content = request.content.replace('Retorna somente os indicadores', 'EDITADO-A-MAO');
+  assert.equal(request.content.includes('EDITADO-A-MAO'), true);
+  await command('controllers60');
+  await assert.rejects(() => runToFinalize(host, MODULE, resolver, true), /inicio.* exists without an inventoried path and hash|EXISTS_WITHOUT_RECEIPT|without a receipt/u);
+  assert.equal(stored(host, `l1/${MODULE}/layer_2_application/requests/inicio.defs.ts`).content.includes('EDITADO-A-MAO'), true);
+});

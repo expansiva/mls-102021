@@ -85,7 +85,7 @@ export async function assembleD1Input(
   const marker = await readRederive(project, moduleName);
   const sealed = seal(buildD1InputSnapshot(
     { project, moduleName },
-    { ...artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope, present, writerReceipts), ...(marker ? { rederiveTypes: rederiveTypesFrom(marker.from) } : {}) },
+    { ...artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope, present, [...writerReceipts, ...rederiveVouched(marker, previous, present, writerReceipts)]), ...(marker ? { rederiveTypes: rederiveTypesFrom(marker.from) } : {}) },
     previous,
     answers,
   ));
@@ -210,6 +210,28 @@ export function fileInfoFromDisplay(project: number, display: string): D1FileInf
     shortName,
     extension,
   };
+}
+
+/**
+ * d1_249: a def of a kind the `/rederive` redoes that no writer receipt vouches for (the progress of its step was replaced by a refused run, or is
+ * older than the receipts) is vouched for by the command: the marker holds its hash as it was when the command ran, and it is still that. A def whose
+ * receipt exists and differs from the disk was edited after the D1 wrote it: it gets no voucher and stays refused.
+ */
+function rederiveVouched(
+  marker: Awaited<ReturnType<typeof readRederive>>,
+  previous: D1InputSnapshot | null,
+  present: ReadonlyArray<D1PresentDef>,
+  receipts: ReadonlyArray<{ defPath: string; desiredHash: string }>,
+): Array<{ defPath: string; desiredHash: string }> {
+  if (!marker || !previous) return [];
+  const types = new Set(rederiveTypesFrom(marker.from));
+  const out: Array<{ defPath: string; desiredHash: string }> = [];
+  for (const file of previous.files) {
+    if (!types.has(file.artifactType) || receipts.some(item => item.defPath === file.defPath)) continue;
+    const before = marker.before[file.defPath];
+    if (before && present.find(item => item.path === file.defPath)?.sha256 === before) out.push({ defPath: file.defPath, desiredHash: before });
+  }
+  return out;
 }
 
 async function readPresent(
