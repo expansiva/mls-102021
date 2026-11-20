@@ -51,6 +51,9 @@ void test('controleEstoque produto signatures come from the ontology, not the pa
   assert.ok(list.input.some(field => field.name === 'details.identification.name'));
   assert.deepEqual(list.input.slice(-2).map(field => field.name), ['page', 'pageSize']);
   assert.deepEqual(list.output.map(field => field.name), ['items', 'hasMore']);
+  const users = domainSignature({ ...entity, capabilities: ['locate.users'] }, 'list');
+  assert.deepEqual(users.input.map(field => field.name), ['details.identification.name', 'pageSize', 'cursor']);
+  assert.deepEqual(users.output.map(field => field.name), ['items', 'nextCursor']);
   const create = domainSignature(entity, 'create');
   assert.equal(create.input.some(field => field.name === 'id' || field.name === 'version'), false);
   assert.ok(create.input.some(field => field.name === 'details.identification.name'));

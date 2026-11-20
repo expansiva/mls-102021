@@ -25,6 +25,7 @@ export const D1_MDM_CALLS = [
   'findByDocument',
   'findByContact',
   'listByType',
+  'listUsers',
   'relatedOfMany',
   'create',
   'attachRole',

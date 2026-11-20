@@ -140,6 +140,7 @@ const READ_CAPABILITIES = [
   'read.byId',
   'locate.byDocument',
   'locate.byName',
+  'locate.users',
   'locate.byTag',
   'locate.byContact',
   'listLinks',
@@ -245,11 +246,14 @@ export function mdmCapabilityCalls(selected: readonly string[]): Array<{ method:
     ['locate.byDocument', 'findByDocument'],
     ['locate.byContact', 'findByContact'],
     ['locate.byName', 'listByType'],
+    ['locate.users', 'listUsers'],
     ['locate.byTag', 'listByType'],
     ['listLinks', 'relatedOfMany'],
   ];
   for (const [capability, method] of reads) {
-    if (chosen.has(capability)) calls.push({ method, capabilities: [capability] });
+    if (!chosen.has(capability)) continue;
+    if (capability === 'locate.byName' && chosen.has('locate.users')) continue;
+    calls.push({ method, capabilities: [capability] });
   }
   if (chosen.has('inactivate')) {
     calls.push(
@@ -349,8 +353,13 @@ export function bindMdm(input: MdmBindInput): MdmBindResult {
     }
   }
 
+  const listsUsers = input.capabilities.includes('locate.users') || selected.has('locate.users');
   for (const name of READ_CAPABILITIES) {
     if (!selected.has(name)) continue;
+    if (name === 'locate.byName' && listsUsers) {
+      skipped.add(name);
+      continue;
+    }
     if (!fields && name !== 'locate.byTag') {
       refuseUnread(gaps, name, reason);
       continue;
@@ -461,7 +470,7 @@ function isUnusedRead(
 }
 
 function isPrunableRead(call: D1MdmPlannedCall): boolean {
-  if (PACKED_POINT_METHODS.has(call.method) || call.method === 'listByType' || call.method === 'relatedOfMany') return true;
+  if (PACKED_POINT_METHODS.has(call.method) || call.method === 'listByType' || call.method === 'listUsers' || call.method === 'relatedOfMany') return true;
   return call.capabilities.some(name =>
     name.startsWith('read.') || name.startsWith('locate.') || name === 'listLinks' || name === 'listByType');
 }
@@ -492,7 +501,7 @@ function outputConsumes(
 
 function placedPaths(call: D1MdmPlannedCall, operation: string): string[] {
   if (call.method === 'relatedOfMany') return [...call.result];
-  if (call.method === 'listByType') {
+  if (call.method === 'listByType' || call.method === 'listUsers') {
     const places = new Set<string>(call.result);
     if (operation === 'list') {
       places.add('items');
@@ -825,6 +834,25 @@ function readCall(
       result: ['items', 'page', 'pageSize', 'total'],
     };
   }
+  if (capability === 'locate.users') {
+    if (!fields) return null;
+    const args: D1MdmArgument[] = [
+      contractArg('name', 'selector', 'details.identification.name'),
+    ];
+    if (fields.some(field => field.path === 'pageSize')) args.push(contractArg('pageSize', 'parameter', 'pageSize'));
+    if (fields.some(field => field.path === 'cursor')) args.push(contractArg('cursor', 'parameter', 'cursor'));
+    return {
+      id: 'listUsers',
+      method: 'listUsers',
+      target: 'identity',
+      shape: 'collection',
+      capabilities: [capability],
+      alternative: false,
+      when: presentWhen(fields, ['details.identification.name']),
+      arguments: args,
+      result: ['items', 'nextCursor'],
+    };
+  }
   if (capability === 'locate.byTag') {
     return {
       id: 'listByTag',
@@ -1007,7 +1035,7 @@ function readFeedable(name: string, fields: readonly MdmInputField[]): boolean {
       && fields.some(field => field.path === 'details.identification.docId');
   }
   if (name === 'locate.byContact') return contactPair(fields) !== null;
-  if (name === 'locate.byName') return fields.some(field => field.path === 'details.identification.name');
+  if (name === 'locate.byName' || name === 'locate.users') return fields.some(field => field.path === 'details.identification.name');
   if (name === 'locate.byTag') return true;
   return false;
 }

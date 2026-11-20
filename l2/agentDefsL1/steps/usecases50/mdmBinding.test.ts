@@ -717,8 +717,83 @@ void test('get and list candidates come from the read table, not a list prefix',
   assert.equal(capabilityApplies('listLinks', 'get'), true);
   assert.equal(capabilityApplies('read.byId', 'list'), true);
   assert.equal(capabilityApplies('locate.byName', 'get'), true);
+  assert.equal(capabilityApplies('locate.users', 'list'), true);
   assert.equal(capabilityApplies('listOther', 'get'), false);
   assert.equal(capabilityApplies('read.other', 'list'), false);
+});
+
+void test('a role with locate.users lists platform logins and does not list by the role tag', () => {
+  const entity = {
+    entityId: 'OrganizationUser',
+    storageTarget: 'mdm' as const,
+    defPath: 'l1/agents/layer_3_domain/entities/organizationUser.defs.ts',
+    namespace: 'agents',
+    fields: [
+      { name: 'id', type: 'uuid', derived: true },
+      { name: 'version', type: 'integer', derived: true },
+      { name: 'details.identification.name', type: 'string', derived: false },
+    ],
+    transitions: [],
+    rules: [],
+    enumerations: [],
+    capabilities: ['locate.users', 'read.byId', 'locate.byName', 'listLinks'],
+    platformFields: ['details.identification.name'],
+  };
+  const signature = domainSignature(entity, 'list');
+  assert.deepEqual(signature.input.map(field => field.name), ['details.identification.name', 'pageSize', 'cursor']);
+  assert.deepEqual(signature.output.map(field => field.name), ['items', 'nextCursor']);
+  const read = mdmInputFields(signature.input, []);
+  const mdm = mdmForOperation({
+    entityId: entity.entityId,
+    namespace: entity.namespace,
+    capabilities: entity.capabilities,
+    platformFields: entity.platformFields,
+    inputFields: read.fields,
+    outputFields: signature.output.map(field => ({ path: field.name })),
+    operation: 'list',
+  });
+  const users = mdm.calls.find(call => call.capabilities.includes('locate.users'));
+  assert.equal(users?.method, 'listUsers');
+  assert.equal(users?.target, 'identity');
+  assert.equal(users?.arguments.find(arg => arg.name === 'name')?.path, 'details.identification.name');
+  assert.equal(users?.arguments.some(arg => arg.name === 'roleTag' || arg.name === 'role' || arg.name === 'status'), false);
+  assert.deepEqual(users?.result, ['items', 'nextCursor']);
+  assert.equal(mdm.calls.some(call => call.method === 'listByType'), false);
+  assert.equal(mdm.gaps.some(gap => gap.capability === 'locate.users'), false);
+
+  const unbound = bindMdm({
+    entityId: entity.entityId,
+    namespace: entity.namespace,
+    capabilities: entity.capabilities,
+    selected: ['locate.users', 'no.branch'],
+    platformFields: entity.platformFields,
+    inputFields: read.fields,
+    outputFields: signature.output.map(field => ({ path: field.name })),
+    operation: 'list',
+  });
+  const gap = unbound.gaps.find(item => item.capability === 'no.branch');
+  assert.equal(gap?.code, 'MDM_UNBOUND');
+  assert.equal(gap?.evidence.includes('no.branch'), true);
+  assert.equal(unbound.calls.some(call => call.method === 'listUsers'), true);
+});
+
+void test('a role with locate.users is read by id and the get def does not check the role tag', () => {
+  const mdm = mdmForOperation({
+    entityId: 'OrganizationUser',
+    namespace: 'agents',
+    capabilities: ['locate.users', 'read.byId', 'locate.byName', 'listLinks'],
+    platformFields: ['details.identification.name'],
+    inputFields: [{ path: 'id', optional: false, writePrecondition: false }],
+    outputFields: [{ path: 'id' }, { path: 'version' }, { path: 'details' }],
+    operation: 'get',
+  });
+  const read = mdm.calls.find(call => call.capabilities.includes('read.byId'));
+  assert.equal(read?.method, 'get');
+  assert.equal(read?.target, 'entity');
+  assert.equal(read?.arguments.find(arg => arg.name === 'mdmId')?.path, 'id');
+  assert.equal(read?.arguments.some(arg => arg.name === 'roleTag' || arg.name === 'role' || arg.name === 'type'), false);
+  assert.equal(JSON.stringify(read).includes('agents.OrganizationUser'), false);
+  assert.equal(mdm.gaps.some(gap => gap.capability === 'read.byId'), false);
 });
 
 function one(usecaseId: string): D1UsecaseRequest {

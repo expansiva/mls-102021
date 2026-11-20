@@ -329,6 +329,22 @@ export function domainSignature(
     case 'list': {
       // `version` is a concurrency token, not a list filter. Other derived fields stay so the gate can refuse them.
       const filters = record.filter(field => field.name !== 'version' || !fields.get(field.name)?.derived);
+      // A role that lists platform logins uses the identity cursor, not the collection page.
+      if ((entity.capabilities || []).includes('locate.users')) {
+        const name = filters.find(field => field.name === 'details.identification.name')
+          ?? asField('details.identification.name', 'string', false);
+        return {
+          input: [
+            name,
+            { name: 'pageSize', type: 'number' },
+            { name: 'cursor', type: 'string' },
+          ],
+          output: [
+            { name: 'items', type: entity.entityId },
+            { name: 'nextCursor', type: 'string' },
+          ],
+        };
+      }
       return {
         input: [
           ...filters,
@@ -883,6 +899,7 @@ export interface MdmContractRead {
 /**
  * Input fields of this operation, taken from the domain signature.
  * `page` and `pageSize` are application paging, not MDM arguments.
+ * A `locate.users` list keeps `pageSize` and `cursor`: they are `listUsers` arguments.
  * An empty list means the ontology declares nothing for this operation.
  */
 export function mdmInputFields(
@@ -892,8 +909,9 @@ export function mdmInputFields(
 ): MdmContractRead {
   const marked = new Set(preconditions);
   const optional = new Set(declared.filter(field => field.optional).map(field => field.name));
+  const identityList = input.some(field => field.name === 'cursor');
   const fields = input
-    .filter(field => field.name !== 'page' && field.name !== 'pageSize')
+    .filter(field => field.name !== 'page' && (identityList || field.name !== 'pageSize'))
     .map(field => ({
       path: field.name,
       optional: optional.has(field.name) || ancestorOptional(optional, field.name),
