@@ -577,7 +577,7 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
     const platformRuleIds = (Array.isArray(unit.definition.data.rulePlan) ? unit.definition.data.rulePlan : [])
       .map(row => (row && typeof row === 'object' ? String((row as { ruleId?: unknown }).ruleId ?? '') : ''))
       .filter(ruleId => ruleId.startsWith('rule-'));
-    parts.push(section('The platform MDM (source: how the engine stores and returns this entity today)', mdmContextSection(ctx.run.module, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), [...new Set(platformRuleIds)], await ctx.read(MDM_MODULE_REF), entitySubtype(ontology))));
+    parts.push(section('The platform MDM (source: how the engine stores and returns this entity today)', mdmContextSection(ctx.run.module, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), [...new Set(platformRuleIds)], await ctx.read(MDM_MODULE_REF), entitySubtype(ontology), mdmBoundCalls(unit.definition.data))));
   }
   const links = await moduleMdmLinksSection(ctx);
   if (links) parts.push(section('Links of the platform MDM (source: the compact keys each link is stored under)', links));
@@ -660,6 +660,42 @@ export const MDM_MODULE_REF = '_102034_/l1/mdm/module.ts';
 
 const PLATFORM_API_RULE = 'A value or a rule the platform API gives is used through it, never rebuilt from other fields or reimplemented.';
 const PLATFORM_RECORD_RULE = 'A platform record is built in its exported shape; server-owned fields come from the server.';
+
+/** One MDM call the usecase def binds (`data.mdm.calls`: `target` + `method`). */
+export interface MdmBoundCall {
+  target: string;
+  method: string;
+  /** One of several ways to reach the same result: the code need not call it. */
+  alternative: boolean;
+}
+
+const MDM_TARGET_CLASS: Record<string, string> = {
+  entity: 'MdmEntity',
+  prospect: 'MdmProspect',
+  collection: 'MdmCollection',
+  attachment: 'MdmAttachment',
+  identity: 'MdmIdentity',
+};
+
+/** Calls the def binds. Empty when `data.mdm.calls` is absent. */
+export function mdmBoundCalls(data: { mdm?: unknown }): MdmBoundCall[] {
+  const mdm = data.mdm;
+  if (!mdm || typeof mdm !== 'object' || Array.isArray(mdm)) return [];
+  const calls = (mdm as { calls?: unknown }).calls;
+  if (!Array.isArray(calls)) return [];
+  const out: MdmBoundCall[] = [];
+  for (const item of calls) {
+    if (!item || typeof item !== 'object') continue;
+    const target = String((item as { target?: unknown }).target ?? '');
+    const method = String((item as { method?: unknown }).method ?? '');
+    if (!/^[A-Za-z][A-Za-z0-9]*$/u.test(target) || !/^[A-Za-z][A-Za-z0-9]*$/u.test(method)) continue;
+    const alternative = (item as { alternative?: unknown }).alternative === true;
+    const same = out.find(call => call.target === target && call.method === method);
+    if (same) same.alternative = same.alternative && alternative;
+    else out.push({ target, method, alternative });
+  }
+  return out;
+}
 
 /** A usecase of an entity kept in the platform MDM: its def has `mdm` (§10), depends on the MDM ontology or calls `ctx.mdm`. */
 export function usesMdm(unit: M12Unit): boolean {
@@ -900,16 +936,88 @@ export function mdmPlatformApiSection(ontologySource: string | null, facadeSourc
   return lines.join('\n');
 }
 
+/** The method line of `target.method` in the facade, body omitted. Empty when the facade has no such method. */
+function facadeMethodSignature(facadeSource: string | null, target: string, method: string): string {
+  const className = MDM_TARGET_CLASS[target];
+  if (!facadeSource || !className || !/^[A-Za-z][A-Za-z0-9]*$/u.test(method)) return '';
+  const lines = facadeSource.split('\n');
+  const start = lines.findIndex(line => new RegExp(`^export class ${className}\\b`, 'u').test(line));
+  if (start < 0) return '';
+  const methodStart = new RegExp(`^\\s+(?:public |private |protected )?(?:async )?${method}\\s*(?:<[^>\\n]*>)?\\s*\\(`, 'u');
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^export /u.test(lines[index])) break;
+    if (!methodStart.test(lines[index])) continue;
+    return signatureUntilBody(lines, index).text.trim().replace(/\s+/gu, ' ');
+  }
+  return '';
+}
+
+/** Facade text reduced to the bound methods and the interfaces those signatures name. */
+function boundFacadeExcerpt(facadeSource: string | null, calls: readonly MdmBoundCall[]): string | null {
+  if (!facadeSource || calls.length === 0) return null;
+  const chunks: string[] = [];
+  const typeNames = new Set<string>();
+  for (const call of calls) {
+    const signature = facadeMethodSignature(facadeSource, call.target, call.method);
+    const className = MDM_TARGET_CLASS[call.target];
+    if (!signature || !className) continue;
+    chunks.push(`export class ${className} {\n  ${signature} {\n    return undefined as never;\n  }\n}`);
+    for (const name of signature.matchAll(/\b[A-Z][A-Za-z0-9]*\b/gu)) typeNames.add(name[0]);
+  }
+  if (chunks.length === 0) return null;
+  const types = exportedTypeBlocks(facadeSource).split('\n\n').filter(block => {
+    const name = /^export (?:interface|type) ([A-Za-z0-9]+)/u.exec(block)?.[1];
+    return !!name && typeNames.has(name);
+  });
+  return [...types, ...chunks].join('\n\n');
+}
+
+/** One bound call, with the shape the facade gives that method. */
+function boundCallText(moduleName: string, call: MdmBoundCall, facadeSource: string | null): string {
+  const signature = facadeMethodSignature(facadeSource, call.target, call.method);
+  const key = `${call.target}.${call.method}`;
+  const known: Record<string, string> = {
+    'entity.get': '- `ctx.mdm.entity.get({ mdmId })` returns the read result the facade exports: read `result.mdmId`, `result.version` and `result.details.<field>` (flat).',
+    'entity.findByDocument': '- `ctx.mdm.entity.findByDocument` returns the read result the facade exports: read `result.mdmId`, `result.version` and `result.details.<field>` (flat). It returns null when there is none.',
+    'entity.create': '- `ctx.mdm.entity.create` takes flat details.',
+    'entity.attachRole': '- `ctx.mdm.entity.attachRole(mdmId, \'' + moduleName + '.<Entity>\', branch?)` makes the record one of this module\'s and may write the module branch.',
+    'entity.update': '- `ctx.mdm.entity.update({ mdmId, expectedVersion, patch })`: `patch` is flat (and `' + moduleName + '` for the module branch); `expectedVersion` is the version that was read, unchanged.',
+    'collection.listByType': '- `ctx.mdm.collection.listByType({ type: \'' + moduleName + '.<Entity>\', name?, status?, page, pageSize })` returns `{ items, page, pageSize, total }`. `name` is already a case-insensitive "contains" search. Each item is an index row with flat `details` and NO `version`: when the output needs the version, `get` the record. `hasMore` is `page * pageSize < total`.',
+    'identity.listUsers': '- `ctx.mdm.identity.listUsers({ name?, pageSize?, cursor? })` returns `{ items, nextCursor }`. The input is `name`, `pageSize` and `cursor`. Each item has `mdmId`, `version`, `name`, `status` and `tags`.',
+  };
+  const line = known[key] ?? `- \`ctx.mdm.${call.target}.${call.method}(\``;
+  return signature ? `${line}\n  Facade: \`${signature}\`.` : line;
+}
+
 /**
  * How the platform MDM stores and returns an entity today, for a usecase of an MDM entity. The ontology of the
  * module groups the fields (`details.identification.name`); the engine is FLAT (`details.name`), which the MDM
  * ontology states in knownDivergences.grouped-document. Without this the model guessed the groups and every read
  * of a patient failed (agendaClinica, 07/10). Verified against mdmFacade.ts and the in-memory engine.
+ * With `boundCalls`, only those calls are taught (the signature comes from the facade). Without it, the text
+ * stays the one every MDM entity had before a def named its calls.
  */
-export function mdmContextSection(moduleName: string, ontologySource: string | null, facadeSource: string | null, platformRuleIds: readonly string[] = [], moduleSource: string | null = null, subtype = ''): string {
+export function mdmContextSection(moduleName: string, ontologySource: string | null, facadeSource: string | null, platformRuleIds: readonly string[] = [], moduleSource: string | null = null, subtype = '', boundCalls?: readonly MdmBoundCall[]): string {
   const shape = ontologyShape(ontologyTree(ontologySource), subtype);
   const groupText = shape.groups.length ? shape.groups.map(group => '`' + group + '`').join(', ') : 'the groups the MDM ontology names';
   const fieldText = shape.fields.length ? shape.fields.map(field => '`details.' + field + '`').join(', ') : '`details.<field>`';
+  const callLines = boundCalls
+    ? boundCalls.map(call => boundCallText(moduleName, call, facadeSource))
+    : [
+      '- `ctx.mdm.entity.get({ mdmId })`, `create`, `update`, `attachRole` and `findByDocument` return',
+      '  the read result the facade exports: read `result.mdmId`, `result.version` and',
+      '  `result.details.<field>` (flat). `findByDocument` returns null when there is none.',
+      '- `ctx.mdm.entity.create` takes flat details; then',
+      '  `ctx.mdm.entity.attachRole(mdmId, \'' + moduleName + '.<Entity>\', branch?)` makes the record one of this module\'s',
+      '  (it is what `listByType` finds) and may write the module branch.',
+      '- `ctx.mdm.entity.update({ mdmId, expectedVersion, patch })`: `patch` is flat (and `' + moduleName + '` for the module',
+      '  branch); `expectedVersion` is the version that was read, unchanged.',
+      '- `ctx.mdm.collection.listByType({ type: \'' + moduleName + '.<Entity>\', name?, status?, page, pageSize })` returns',
+      '  `{ items, page, pageSize, total }`. `name` is already a case-insensitive "contains" search. Each item is an index',
+      '  row with flat `details` and NO `version`:',
+      '  when the output needs the version, `get` the record. `hasMore` is `page * pageSize < total`.',
+    ];
+  const facadeForDump = boundCalls ? boundFacadeExcerpt(facadeSource, boundCalls) : facadeSource;
   const lines = [
     'This entity is kept in the platform MDM, not in a table of the module. Read and write it through `ctx.mdm` as below.',
     '',
@@ -918,18 +1026,7 @@ export function mdmContextSection(moduleName: string, ontologySource: string | n
     '  platform; the engine stores and returns the document FLAT today (MDM ontology, knownDivergences.grouped-document):',
     '  - a field of a platform group is `details.<field>` (from the ontology: ' + fieldText + ');',
     '  - a group the ontology keeps as its own object stays an object; this module\'s own branch is `details.' + moduleName + '` (an object, may be absent).',
-    '- `ctx.mdm.entity.get({ mdmId })`, `create`, `update`, `attachRole` and `findByDocument` return',
-    '  the read result the facade exports: read `result.mdmId`, `result.version` and',
-    '  `result.details.<field>` (flat). `findByDocument` returns null when there is none.',
-    '- `ctx.mdm.entity.create` takes flat details; then',
-    '  `ctx.mdm.entity.attachRole(mdmId, \'' + moduleName + '.<Entity>\', branch?)` makes the record one of this module\'s',
-    '  (it is what `listByType` finds) and may write the module branch.',
-    '- `ctx.mdm.entity.update({ mdmId, expectedVersion, patch })`: `patch` is flat (and `' + moduleName + '` for the module',
-    '  branch); `expectedVersion` is the version that was read, unchanged.',
-    '- `ctx.mdm.collection.listByType({ type: \'' + moduleName + '.<Entity>\', name?, status?, page, pageSize })` returns',
-    '  `{ items, page, pageSize, total }`. `name` is already a case-insensitive "contains" search. Each item is an index',
-    '  row with flat `details` and NO `version`:',
-    '  when the output needs the version, `get` the record. `hasMore` is `page * pageSize < total`.',
+    ...callLines,
     '- Build the output in the grouped shape this usecase declares (the entity of the module), placing each flat field',
     '  into its group. Never expect the groups in what the engine returns. A field the engine does not have is absent,',
     '  not an error: do not require an optional field; a',
@@ -939,7 +1036,7 @@ export function mdmContextSection(moduleName: string, ontologySource: string | n
     '  field out of the output, and never throw because a field is `null`. An optional field left empty is normal;',
     '  treating a null optional field as invalid broke every read that had one.',
   ];
-  lines.push(mdmPlatformApiSection(ontologySource, facadeSource, moduleSource));
+  lines.push(mdmPlatformApiSection(ontologySource, facadeForDump, moduleSource));
   const parts = [lines.join('\n')];
   const platformRules = platformRuleIds.map(ruleId => {
     const escaped = ruleId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
@@ -958,8 +1055,8 @@ export function mdmContextSection(moduleName: string, ontologySource: string | n
     const divergence = /"grouped-document":\s*"([^"]*)"/u.exec(ontologySource)?.[1];
     parts.push(['MDM ontology (`' + MDM_ONTOLOGY_REF + '`), header:', fence('ts', header.slice(0, 4000)), divergence ? `knownDivergences.grouped-document: ${divergence}` : ''].join('\n\n'));
   }
-  if (facadeSource) {
-    const types = exportedTypeBlocks(facadeSource);
+  if (facadeForDump) {
+    const types = exportedTypeBlocks(facadeForDump);
     if (types) parts.push(['`ctx.mdm` types (`' + MDM_FACADE_REF + '`):', fence('ts', types)].join('\n\n'));
   }
   return parts.join('\n\n');
@@ -982,7 +1079,7 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const transition = await transitionOf(ctx, unit);
   return [
     ...waived.problems,
-    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId), childRecords: childRecordsOf(ctx, unit), usecaseInputs: await usecaseInputsOf(ctx) }),
+    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId), childRecords: childRecordsOf(ctx, unit), usecaseInputs: await usecaseInputsOf(ctx), mdmCalls: mdmBoundCalls(unit.definition.data) }),
   ];
 }
 

@@ -1,0 +1,125 @@
+// Recorded from mls-102047 commit 399835c1, l1/agents/layer_2_application/usecases/listOrganizationUser.ts. The live tree is not read.
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/listOrganizationUser.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { OrganizationUser } from '/_102047_/l1/agents/layer_3_domain/entities/organizationUser.js';
+
+export interface ListOrganizationUserInput {
+  id?: string;
+  details?: {
+    identification?: {
+      name?: string;
+      status?: string;
+      tags?: string[];
+    };
+    base?: Record<string, unknown>;
+    person?: Record<string, unknown>;
+    general?: Record<string, unknown>;
+    agents?: {
+      loginEmail?: string;
+    };
+  };
+  page: number;
+  pageSize: number;
+}
+
+export interface ListOrganizationUserOutput {
+  items: OrganizationUser[];
+  hasMore: boolean;
+}
+
+type UserStatus = 'Active' | 'Inactive' | 'Merged' | 'Blocked';
+const USER_STATUSES: UserStatus[] = ['Active', 'Inactive', 'Merged', 'Blocked'];
+const ROLE_TAG = 'agents.OrganizationUser';
+
+function isUserStatus(value: unknown): value is UserStatus {
+  return typeof value === 'string' && (USER_STATUSES as string[]).includes(value);
+}
+
+function normalizeText(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function buildUser(id: string, version: number, details: Record<string, unknown>): OrganizationUser {
+  const rowStatus = details.status;
+  if (!isUserStatus(rowStatus)) {
+    throw new AppError('INVALID_STATE', 'Organization user ' + id + ' has no valid status.', 500);
+  }
+  const tags = Array.isArray(details.tags) ? details.tags.map((tag) => String(tag)) : [];
+  const user: OrganizationUser = {
+    id,
+    version,
+    details: {
+      identification: {
+        name: String(details.name ?? ''),
+        status: rowStatus,
+        tags,
+      },
+    },
+  };
+  const agents = details.agents as Record<string, unknown> | null | undefined;
+  if (agents != null && agents.loginEmail != null) {
+    user.details.agents = { loginEmail: String(agents.loginEmail) };
+  }
+  return user;
+}
+
+export async function listOrganizationUser(input: ListOrganizationUserInput, ctx: RequestContext): Promise<ListOrganizationUserOutput> {
+  const rawPage = Number(input.page);
+  const rawSize = Number(input.pageSize);
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1;
+  const pageSize = Number.isFinite(rawSize) && rawSize >= 1 ? Math.min(Math.floor(rawSize), 200) : 20;
+
+  const name = input.details?.identification?.name;
+  const status = input.details?.identification?.status;
+  const hasName = name !== undefined && name !== '';
+  const hasStatus = status !== undefined && status !== '';
+  if (hasStatus && !isUserStatus(status)) {
+    throw new AppError('INVALID_STATUS', 'The status filter is not a valid person status.', 400);
+  }
+
+  const id = input.id;
+  if (id !== undefined && id !== '') {
+    const record = await ctx.mdm.entity.get({ mdmId: String(id) });
+    const details = record.details as Record<string, unknown>;
+    const tags = Array.isArray(details.tags) ? details.tags.map((tag) => String(tag)) : [];
+    if (!tags.includes(ROLE_TAG)) {
+      return { items: [], hasMore: false };
+    }
+    if (hasStatus && details.status !== status) {
+      return { items: [], hasMore: false };
+    }
+    if (hasName && !normalizeText(String(details.name ?? '')).includes(normalizeText(String(name)))) {
+      return { items: [], hasMore: false };
+    }
+    const user = buildUser(String(record.mdmId), Number(record.version), details);
+    return { items: [user], hasMore: false };
+  }
+
+  const listed = await ctx.mdm.collection.listByType({
+    type: ROLE_TAG,
+    name: hasName ? name : undefined,
+    status: hasStatus && isUserStatus(status) ? status : undefined,
+    page,
+    pageSize,
+  });
+
+  const mdmIds = listed.items.map((row) => String(row.mdmId));
+  const records = mdmIds.length > 0 ? await ctx.mdm.collection.getMany({ mdmIds }) : [];
+  const versionById = new Map<string, number>();
+  for (const record of records) {
+    versionById.set(String(record.mdmId), Number(record.version));
+  }
+
+  const items: OrganizationUser[] = [];
+  for (const row of listed.items) {
+    const rowId = String(row.mdmId);
+    const version = versionById.get(rowId);
+    if (version === undefined) {
+      throw new AppError('NOT_FOUND', 'Organization user ' + rowId + ' was listed but could not be read.', 404);
+    }
+    items.push(buildUser(rowId, version, row.details as Record<string, unknown>));
+  }
+
+  return { items, hasMore: page * pageSize < Number(listed.total) };
+}

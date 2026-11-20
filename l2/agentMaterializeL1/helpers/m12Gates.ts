@@ -39,6 +39,8 @@ export interface M12CodeGateInput {
   childRecords?: readonly M12ChildRecord[];
   /** The input fields of the usecases of the module, by function name (d1_224): a call may not fill a required one with an empty literal. */
   usecaseInputs?: ReadonlyMap<string, readonly M12InputField[]>;
+  /** MDM calls the usecase def binds (`data.mdm.calls`): the file calls each `ctx.mdm.<target>.<method>(` (d1_242). */
+  mdmCalls?: readonly { target: string; method: string; alternative?: boolean }[];
 }
 
 /** The text with every comment blanked and every line break kept, so an offset still names its line. */
@@ -708,6 +710,29 @@ export function derivedReadProblems(code: string, derivedPaths: readonly string[
   return problems;
 }
 
+const MDM_CALL_TARGETS = new Set(['entity', 'collection', 'identity']);
+
+/**
+ * d1_242: each MDM method the def binds is called as `ctx.mdm.<target>.<method>(`.
+ * A different call (`listByType` where the def binds `identity.listUsers`) does not count.
+ */
+export function mdmBoundCallProblems(code: string, calls: readonly { target: string; method: string; alternative?: boolean }[]): string[] {
+  const clean = blankComments(code);
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const call of calls) {
+    if (call.alternative || !MDM_CALL_TARGETS.has(call.target)) continue;
+    if (!/^[A-Za-z][A-Za-z0-9]*$/u.test(call.method)) continue;
+    const key = `${call.target}.${call.method}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!clean.includes(`ctx.mdm.${key}(`)) {
+      problems.push(`MDM_CALL_MISSING: the definition binds \`ctx.mdm.${key}(\`. Call that method. Another MDM call does not stand in for it.`);
+    }
+  }
+  return problems;
+}
+
 /** Problems of a model-written usecase file. Empty = the gate passes. */
 export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   const problems: string[] = [];
@@ -749,6 +774,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...emptyCastProblems(code));
   problems.push(...recordCastProblems(code));
   problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
+  problems.push(...mdmBoundCallProblems(code, input.mdmCalls ?? []));
   // The rules of a write on an external entity are met by the external system: the call answers (or refuses) with them.
   for (const ruleId of input.externalEntity ? [] : input.ruleIds) {
     if (!code.includes(`'${ruleId}'`) && !code.includes(`"${ruleId}"`)) problems.push(`Rule ${ruleId} is not enforced: no AppError carries ruleId '${ruleId}'.`);

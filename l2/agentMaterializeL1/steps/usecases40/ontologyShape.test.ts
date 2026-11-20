@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { entitySubtype, mdmContextSection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { entitySubtype, mdmBoundCalls, mdmContextSection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 const MDM_ONTOLOGY = readFileSync(path.join(ROOT, 'mls-102034', 'l4', 'ontology', 'mdm.defs.ts'), 'utf8');
@@ -32,6 +32,21 @@ test('a usecase of a Person entity is told where the subtype fields live in the 
   assert.ok(line.includes('`details.birthDate`'), 'every field of subtypes.Person');
   assert.ok(line.includes('`details.updatedAt`') && line.includes('`details.notes`'), 'the group fields are not cut at 8');
   assert.ok(!line.includes('`details.legalName`'), 'no field of another subtype');
+});
+
+test('the MDM context teaches only the call the def binds (d1_242 s1)', () => {
+  const facade = readFileSync(path.join(ROOT, 'mls-102034', 'l1', 'mdm', 'layer_3_usecases', 'mdmFacade.ts'), 'utf8');
+  const listUsers = mdmBoundCalls({ mdm: { calls: [{ id: 'listUsers', target: 'identity', method: 'listUsers' }] } });
+  const users = mdmContextSection('agents', MDM_ONTOLOGY, facade, [], null, 'Person', listUsers);
+  assert.ok(users.includes('`ctx.mdm.identity.listUsers({ name?, pageSize?, cursor? })`'), users.slice(0, 1800));
+  assert.ok(users.includes('nextCursor') && users.includes('`mdmId`') && users.includes('`tags`'), 'the cursor page and the item fields');
+  assert.ok(users.includes('listUsers(input?: MdmListUsersInput)'), 'the signature comes from the facade');
+  assert.ok(users.includes('FLAT today') && users.includes('`details.privacyConsent`'), 'the flat form stays');
+  assert.ok(!users.includes('listByType') && !users.includes('hasMore'), 'an identity list does not teach the collection page');
+  const listByType = mdmBoundCalls({ mdm: { calls: [{ target: 'collection', method: 'listByType' }] } });
+  const members = mdmContextSection('onboarding', MDM_ONTOLOGY, facade, [], null, 'Person', listByType);
+  assert.ok(members.includes('`ctx.mdm.collection.listByType(') && members.includes('hasMore'), 'a bound listByType stays');
+  assert.ok(!members.includes('ctx.mdm.identity.listUsers'), 'a collection list does not teach identity');
 });
 
 test('an entity without subtype keeps the group fields and gets no subtype field', () => {
