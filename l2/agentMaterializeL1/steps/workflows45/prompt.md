@@ -127,6 +127,7 @@ whether it opens the occurrence or advances its step, who acts now, what it tell
   conflict, 403 for an actor who may not act now, 400 for a missing or invalid value, 404 for a record not found.
 - No silent fallback: no empty `catch`, no invented default. An error names its cause.
 - No `as unknown as`, no `as any`: build each value with its type. The file must compile under `strict`.
+- An exported field that carries the value of an entity field uses that field's type (`<Entity>['<field>']`, named in the task), never `string`.
 
 ## Answer
 

@@ -29,7 +29,7 @@ import { routeUpsertsOf, upsertSection, type RouteUpsert } from '/_102021_/l2/ag
 import { serveRowOf, serveSourceOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/serveSource.js';
 import { REGISTRATION_REF, onboardingModuleId, registrationAccessSection } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { consumeMessageTypeName } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
-import { ns5ArrivalEffects } from '/_102035_/l2/solution/arrivalEffects.js';
+import { ns5ArrivalEffects, ns5ArrivalWriteEffects } from '/_102035_/l2/solution/arrivalEffects.js';
 import { integrationLogicalPath, integrationOf } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import { enumMapProblems, enumMapSection, externalEnumPairs, unpairedProblems, type ExternalEnumPair } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
@@ -479,6 +479,17 @@ function entityOfServe(row: Record<string, unknown>): { entityId: string; effect
   return { entityId: first?.entityId || '', effect: first?.effects[0] || '' };
 }
 
+/** Entities a serve line writes, as the one reader of the NS5 lists them. `list` and `read` are not writes. */
+function writtenEntityIds(row: Record<string, unknown> | null): string[] {
+  if (!row) return [];
+  const ids: string[] = [];
+  for (const entry of ns5ArrivalEffects(row, 'serve')) {
+    if (!entry.entityId || !ns5ArrivalWriteEffects(entry).length) continue;
+    if (!ids.includes(entry.entityId)) ids.push(entry.entityId);
+  }
+  return ids;
+}
+
 function identityField(entity: M12Unit | undefined): string {
   if (!entity) return '';
   const system = systemIdentity(entity.definition);
@@ -578,6 +589,14 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
         item.source.description ? `- description: ${item.source.description}` : '',
       ].filter(Boolean).join('\n')),
     ].join('\n\n')));
+  }
+  // d1_243: the description of each field of an entity the route writes, as the L4 ontology writes it.
+  const written = [...new Set(marks.flatMap(mark => writtenEntityIds(serveRowOf(l4Source, mark.connectionId, mark.operationId))))];
+  for (const entityId of written) {
+    const ref = `_${project}_/l4/${moduleName}/ontology/${entityId}.defs.ts`;
+    const text = await ctx.read(ref);
+    const ontology = text ? (ontologyForPrompt(text) ?? fence('ts', text.slice(0, 20000))) : null;
+    if (ontology) parts.push(section(`l4 ontology ${ref} (source)`, ontology));
   }
   const serveUses = marks.map(mark => ({
     route: String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`),

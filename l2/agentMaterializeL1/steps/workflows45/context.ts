@@ -21,6 +21,7 @@ import { usecaseInputsOf, type M12InputField } from '/_102021_/l2/agentMateriali
 import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import { stepCallProblems, stepCallsOf, withUsecases, type StepCall } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/stepCalls.js';
 import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/engineImports.js';
+import { enumFieldValues } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
 import { connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { arrivalUpsertProblems, connectionRowsOf, emptyCastProblems, emptyRequiredProblems, recordCastProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
@@ -230,6 +231,14 @@ export function llmStepSection(processId: string, steps: readonly WorkflowStepEm
     '`ModuleWakeEvent` fields used here: `eventId`, `taskId`, `stepKey`, `pass`, `kind` (`wake` | `llm-step-finished`), `commandId`, `state`.',
   ];
   return wakeSignature ? `${lines.join('\n')}\n\n${fence('ts', wakeSignature)}` : lines.join('\n');
+}
+
+/**
+ * Enum fields of an entity the process writes, as the type an exported field must use.
+ * A string field is not listed: the compiler already accepts it.
+ */
+export function entityEnumTypes(entityId: string, ontologySource: string | null): string[] {
+  return [...enumFieldValues(ontologySource).keys()].map(name => `${entityId}.${name}: \`${entityId}['${name}']\``);
 }
 
 /**
@@ -569,6 +578,7 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   }
 
   const sent = new Set<string>();
+  const enumLines: string[] = [];
   for (const dep of dependencyUnits(ctx, unit)) {
     const generated = await readOptional(dep.output);
     if (!generated) continue;
@@ -599,9 +609,13 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
       const ontology = await ctx.read(ontologyRef(item.definition, item.outputRef));
       if (ontology) {
         const cited = !core.has(entityId);
+        if (!cited) enumLines.push(...entityEnumTypes(entityId, ontology).map(line => `- ${line}`));
         parts.push(section(`l4 ontology of ${item.definition.artifactId} (source: states, transitions, derived fields)`, fence('ts', cited ? citedOntology(ontology) : ontology.slice(0, 20000))));
       }
     }
+  }
+  if (enumLines.length) {
+    parts.push(section('Entity enum fields this process writes', enumLines.join('\n')));
   }
   const rulesSource = await readOptional(rulesFile(project, moduleName));
   const rules = ruleTexts(rulesSource, allRuleIds(rulesSource));

@@ -298,6 +298,32 @@ void test('d1_207: the prompt of a serve route shows the l4 line of the route as
   assert.equal(empty.human.includes('What the module does with the message'), false);
 });
 
+const TOOL_ONTOLOGY = readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '../seedRows25/fixtures/agentsTool.defs.recorded.txt'), 'utf8');
+
+void test('d1_243 s2: the prompt of a serve route shows the l4 description of each field of the entity the route writes', async () => {
+  const platform = unit('requestService', 'platform', {
+    pageId: 'platform',
+    requests: [{ route: `${MODULE}.platform.releaseCatalogChanged`, serves: 'platform.releaseCatalogChanged', uses: [] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/platform.ts`);
+  const ontologyRef = `_${PROJECT}_/l4/${MODULE}/ontology/Tool.defs.ts`;
+  const norm = (ref: string) => ref.replace(/^\//u, '');
+  const read = async (ref: string) => {
+    const key = norm(ref);
+    if (key === norm(PLATFORM_CATALOG_REF)) return PLATFORM_CATALOG;
+    if (key === norm(L4_REF)) return L4_RECORDED;
+    if (key === norm(ontologyRef)) return TOOL_ONTOLOGY;
+    return null;
+  };
+  const loaded = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [platform], read } as never, platform);
+  assert.match(loaded.human, /## l4 ontology _102099_\/l4\/agents\/ontology\/Tool\.defs\.ts \(source\)/u);
+  assert.match(loaded.human, /Stable code of the action in the release, used to match the tool when the catalog is rebuilt/u);
+  // A line that writes nothing has no ontology section.
+  const listed = L4_RECORDED.replace('"entityRefs": [\n        "Tool"\n      ],\n      "effect": "update"', '"entityRefs": [\n        "Tool"\n      ],\n      "effect": "list"');
+  assert.notEqual(listed, L4_RECORDED);
+  const readOnly = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [platform], read: async (ref: string) => norm(ref) === norm(L4_REF) ? listed : read(ref) } as never, platform);
+  assert.equal(readOnly.human.includes('ontology/Tool.defs.ts'), false);
+});
+
 void test('d1_207: the recorded route that applies the l4 rule (filters the assistant actions, describes by the title) passes the gate of the route', async () => {
   const P47 = 102047;
   const dir = path.dirname(new URL(import.meta.url).pathname);
