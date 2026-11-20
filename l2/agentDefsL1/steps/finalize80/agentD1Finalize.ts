@@ -1,6 +1,8 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/finalize80/agentD1Finalize.ts" enhancement="_blank"/>
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { finishRederive } from '/_102021_/l2/agentDefsL1/helpers/d1Rederive.js';
+import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import {
   displayPath,
   parseD1StepPrompt,
@@ -87,10 +89,13 @@ export async function beforeD1FinalizePromptStep(
   if (JSON.stringify(approved) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, approved);
   await deleteTracedDispatch(prompt.project, prompt.moduleName, consumption);
   const mutationParent = findOpenParent(context, parentStep);
+  // d1_228: a `/rederive` ends here: the targets of the defs that changed, and the marker is gone.
+  const targets = await finishRederive(prompt.project, prompt.moduleName, (await readD1Input(prompt.project, prompt.moduleName))?.files.map(file => file.defPath) ?? []);
+  const rederived = targets ? `\nrederive: ${targets.length} def(s) changed.${targets.length ? `\n${targets.join('\n')}` : ''}` : '';
   const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, report.calls)];
   return [
     ...anchor,
-    updateStatus(context, mutationParent, step, hookSequential, 'completed', `finalize80 recorded the report for ${prompt.moduleName} in project ${prompt.project}. Defs are complete. Future outputs stay pending. No model was called.`),
+    updateStatus(context, mutationParent, step, hookSequential, 'completed', `finalize80 recorded the report for ${prompt.moduleName} in project ${prompt.project}. Defs are complete. Future outputs stay pending. No model was called.${rederived}`),
   ];
 }
 

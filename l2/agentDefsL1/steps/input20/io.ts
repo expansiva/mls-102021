@@ -9,6 +9,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { readWriterReceipts } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
+import { readRederive, rederiveTypesFrom } from '/_102021_/l2/agentDefsL1/helpers/d1Rederive.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { externalConnectionIds } from '/_102021_/l2/agentDefsL1/steps/input20/entityCatalog.js';
@@ -81,9 +82,10 @@ export async function assembleD1Input(
   const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous, answers));
   const writerReceipts = await readWriterReceipts(project, moduleName);
   const present = await readPresent(project, draft.files.map(file => file.defPath), writerReceipts);
+  const marker = await readRederive(project, moduleName);
   const sealed = seal(buildD1InputSnapshot(
     { project, moduleName },
-    artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope, present, writerReceipts),
+    { ...artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope, present, writerReceipts), ...(marker ? { rederiveTypes: rederiveTypesFrom(marker.from) } : {}) },
     previous,
     answers,
   ));

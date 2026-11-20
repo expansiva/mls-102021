@@ -11,6 +11,7 @@ only declared in `docs/flow.json` reports that it is not implemented.
 @@agentDefsL1 <lowerCamel> /run
 @@agentDefsL1 <lowerCamel> /resume
 @@agentDefsL1 <lowerCamel> /declarations
+@@agentDefsL1 <lowerCamel> /rederive <step>
 @@agentDefsL1 <lowerCamel> /help
 ```
 
@@ -20,6 +21,16 @@ run. It needs no checkpoint, no input and no other step, and leaves a writer rec
 that follows takes the files as its own. It then prints, for each system, the command that generates the
 declaration: `@@agentMaterializeL1 {"target":"_<project>_/l1/<module>/layer_1_external/connections/<id>.defs.ts"}`.
 A def somebody edited, or one this writer did not write, is refused and not overwritten.
+
+`/rederive <step>` (d1_228) redoes the defs from a step of the D1 when the generator (or the answer of a platform rule) changed and the L4 and the L2 did not.
+`<step>` is `domain30`, `persistence40`, `usecases50`, `controllers60`, `support70` or `finalize80`: pick the earliest step whose defs change. The source
+key of the D1 is the L4 and the L2, so a second `/run` does nothing; and a def the D1 wrote is overwritten only when input20 plans it as `recompose`.
+The command checks the checkpoint, keeps the hashes of the defs as they are in `l1/<module>/pipeline/agentDefsL1/rederive.json`, clears what `<step>` and the
+later steps approved, and plans the steps again (entry10, input20, resolve25, then all the others). While the marker stands, input20 plans the defs the
+chosen step and the later ones write (and that the D1 wrote and nobody edited) as `recompose`. When finalize80 completes it prints the
+`@@agentMaterializeL1 {"target":…}` of each def that changed or was born, and removes the marker; what came out the same the materializer reuses by its hash.
+Steps that may call a model are said before the run: `resolve25` (only for a route with no recorded answer) and `usecases50` (operation steps only).
+An earlier step that would change a def it wrote refuses it by name (`exists without a receipt`): rerun from that step. It needs a module that was run (`/run` first).
 
 `/help` writes nothing. `/run` records a checkpoint when the module has none
 in this project. `/resume` continues an intact checkpoint and does not rewrite

@@ -94,6 +94,11 @@ export interface D1InputArtifacts {
    * Not copied into the snapshot. Absent means this caller did not load them.
    */
   writerReceipts?: ReadonlyArray<{ defPath: string; desiredHash: string }>;
+  /**
+   * d1_228: the kinds of def a `/rederive` redoes. A def of one of them that the D1 wrote itself (its writer receipt matches the bytes) is planned
+   * `recompose`, so its step may overwrite it. Absent: planned as always. Not copied into the snapshot.
+   */
+  rederiveTypes?: readonly string[];
 }
 
 export interface D1PlannerRun {

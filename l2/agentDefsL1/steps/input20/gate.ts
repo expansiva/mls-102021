@@ -359,7 +359,7 @@ export function buildD1InputSnapshot(
 
   const present = new Map(artifacts.presentDefs.map(item => [item.path, item.sha256]));
   const receipts = indexWriterReceipts(artifacts.writerReceipts);
-  const files = stampHashes(planFiles({
+  const files = stampHashes(rederiveActions(planFiles({
     moduleName,
     requests,
     usecases: generatedUsecases,
@@ -376,7 +376,7 @@ export function buildD1InputSnapshot(
     previous,
     problems,
     receipts,
-  }), present);
+  }), present, receipts, artifacts.rederiveTypes), present);
   noteRemovals(problems, removed, previous, present, receipts);
   if (hasCycle(files)) error(problems, 'DAG_CYCLE', 'input.json', 'Planned files have a dependency cycle.');
 
@@ -732,6 +732,20 @@ function recomposeOrConflict(
   if (hash && !view.inventoried && view.written === hash && view.agrees) return 'create';
   error(problems, 'EXISTING_UNRESOLVED', defPath, `Recompose of ${ownerRef} needs an inventoried path and hash.`, ownerRef);
   return 'conflict';
+}
+
+/**
+ * d1_228: while a `/rederive` runs, a def of the chosen kinds that the D1 wrote and nobody edited (the writer receipt is the hash on disk) is a
+ * `recompose` and not a `create`: only a `recompose` carries the hash of the file, and only a file with its hash is overwritten.
+ */
+function rederiveActions(files: D1PlannedFile[], present: Map<string, string>, receipts: WriterIndex, types: readonly string[] | undefined): D1PlannedFile[] {
+  if (!types?.length) return files;
+  for (const file of files) {
+    if (file.action !== 'create' || !types.includes(file.artifactType)) continue;
+    const hash = present.get(file.defPath) || '';
+    if (hash && !receipts.conflict.has(file.defPath) && receipts.hash.get(file.defPath) === hash) file.action = 'recompose';
+  }
+  return files;
 }
 
 function stampHashes(files: D1PlannedFile[], present: Map<string, string>): D1PlannedFile[] {

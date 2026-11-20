@@ -75,15 +75,15 @@ const AGENT_PREFIXES = [
   /@@\s*agentDefsL1/gi,
 ];
 
-const COMMANDS = ['run', 'resume', 'help', 'declarations'] as const;
+const COMMANDS = ['run', 'resume', 'help', 'declarations', 'rederive'] as const;
 export type D1Command = typeof COMMANDS[number];
 
 export const MSG_PATH = "Path must not contain '..'.";
 export const MSG_CANDIDATE_DOTDOT = "Candidate path must not contain '..'.";
 export const MSG_CANDIDATE = 'Candidate runs are refused. Nothing was changed.';
 export const MSG_REBUILD = 'Rebuild all is refused. Nothing was deleted.';
-export const MSG_ONE_COMMAND = 'Pass one command: /run, /resume, /declarations or /help.';
-export const MSG_USAGE = 'Pass @@agentDefsL1 <lowerCamel> /run, /resume, /declarations or /help.';
+export const MSG_ONE_COMMAND = 'Pass one command: /run, /resume, /declarations, /rederive <step> or /help.';
+export const MSG_USAGE = 'Pass @@agentDefsL1 <lowerCamel> /run, /resume, /declarations, /rederive <step> or /help.';
 export const MSG_MODULE = 'Module name must be lowerCamel (example: stockControl).';
 export const MSG_PROJECT = 'Project identity is missing.';
 export const MSG_PROJECT_MISMATCH = 'Project identity does not match this task.';
@@ -123,6 +123,8 @@ export interface D1ParsedInvocation {
   module: string;
   command: D1Command | '';
   refused: string;
+  /** `/rederive <step>`: the step, as typed. Empty for every other command. */
+  step?: string;
 }
 
 export function isD1StepId(value: string): value is D1StepId {
@@ -323,14 +325,16 @@ export function parseD1Invocation(value: string): D1ParsedInvocation {
   if (words.length === 0) {
     return { module: '', command: '', refused: MSG_USAGE };
   }
-  if (words.length !== 1) {
+  const command = flags[0].slice(1).toLowerCase() as D1Command;
+  // `/rederive` takes the step after the module (d1_228); no other command takes a second word.
+  if (words.length !== 1 && !(command === 'rederive' && words.length === 2)) {
     return { module: words[0], command: '', refused: `Unexpected argument: ${words[1]}.` };
   }
   const moduleName = words[0];
   if (!moduleTokenOk(moduleName)) {
     return { module: moduleName, command: '', refused: MSG_MODULE };
   }
-  const command = flags[0].slice(1).toLowerCase() as D1Command;
+  if (command === 'rederive') return { module: moduleName, command, refused: '', step: words[1] ?? '' };
   return { module: moduleName, command, refused: '' };
 }
 
@@ -338,9 +342,10 @@ export function helpText(moduleName: string, project: number): string {
   const pending = D1_FLOW_STEP_IDS.filter(id => !(D1_IMPLEMENTED_STEP_IDS as readonly string[]).includes(id));
   return [
     `agentDefsL1 ${moduleName} in project ${project}.`,
-    'Commands: /run, /resume, /declarations, /help.',
+    'Commands: /run, /resume, /declarations, /rederive <step>, /help.',
     '/run records the checkpoint and runs the implemented steps. A step that is only declared stops the run.',
     '/resume continues an intact checkpoint and does not rewrite it.',
+    '/rederive <step> redoes the defs of the module from a step (domain30, persistence40, usecases50, controllers60, support70 or finalize80) when the generator changed and the L4 and the L2 did not: the defs that step and the later ones wrote are replaced, and the @@agentMaterializeL1 target of each def that changed is printed at the end.',
     '/declarations writes the defs of the external systems this module declares in its L4, from the L4 alone, before the L2. It needs no checkpoint and no other step. Then run @@agentMaterializeL1 with a target for each system to generate the declaration.',
     '/candidate and /rebuild all are refused. Nothing is deleted.',
     `State file: ${displayPath(pipelineFile(project, moduleName))}.`,
