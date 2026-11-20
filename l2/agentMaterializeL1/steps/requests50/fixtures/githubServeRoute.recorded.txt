@@ -1,0 +1,19 @@
+/// <mls fileReference="_102099_/l1/agents/layer_2_application/requests/github.ts" enhancement="_blank"/>
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RepositoryChangedInput, RepositoryChangedOutput } from '/_102099_/l1/agents/layer_1_external/connections/github.js';
+import { recordRepositoryChange } from '/_102099_/l1/agents/layer_2_application/usecases/recordRepositoryChange.js';
+
+// The body is the one the outside system sends (its names); the usecase takes the vocabulary of the module.
+export const requests: { 'agents.github.repositoryChanged': (input: RepositoryChangedInput, ctx: RequestContext) => Promise<RepositoryChangedOutput> } = {
+  'agents.github.repositoryChanged': async function (input, ctx) {
+    return await ctx.data.moduleData.runInTransaction(async () => {
+      await recordRepositoryChange({
+        repositoryName: input.repository.fullName,
+        branch: input.ref.replace(/^refs\/heads\//u, ''),
+        headSha: input.after,
+        changedPaths: input.commits.flatMap(commit => [...commit.added, ...commit.modified, ...commit.removed]),
+      }, ctx);
+      return { received: true };
+    });
+  },
+};

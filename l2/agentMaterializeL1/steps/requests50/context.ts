@@ -510,13 +510,13 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
   const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
   // The platform file, or the declaration of a system this module (or a sibling) declares and generated (d1_208).
   const byConnection = new Map<string, string>();
-  const catalogRefs = new Map<string, { ref: string; importPath: string }>();
+  const catalogRefs = new Map<string, { ref: string; importPath: string; origin: string }>();
   for (const mark of marks) {
     if (byConnection.has(mark.connectionId)) continue;
     const found = await connectionCatalogSource(ctx.read, project, moduleName, mark.connectionId);
     if (!found.source) throw new Error(`${found.problem?.code ?? 'CONNECTION_CATALOG_MISSING'}: ${found.problem?.detail ?? found.ref}`);
     byConnection.set(mark.connectionId, found.source);
-    catalogRefs.set(mark.connectionId, { ref: found.ref, importPath: found.importPath });
+    catalogRefs.set(mark.connectionId, { ref: found.ref, importPath: found.importPath, origin: found.origin });
   }
   const typed: { route: string; inputType: string; outputType: string; specifier: string }[] = [];
   const catalogSections: string[] = [];
@@ -555,6 +555,10 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     `It exports \`requests\`, typed exactly \`${contractsInterface}\` with \`import type { ${[...new Set(typed.flatMap(item => [item.inputType, item.outputType]))].sort().join(', ')} } from '${catalogSpecifiers[0] ?? ''}'\`: one async function per route, keyed by the route string.`,
     'Each function takes the whole catalog input and returns the catalog output. Do not drop a field of the input. Do not call fetch, callConnection or any HTTP client.',
     '`ctx.requestMeta.connection` describes the call that reached this route: `connectionId`, `operationId`, `context` (the person is `context.actorMdmId`) and an optional `idempotencyKey`. The type is `requestMeta.connection` on `RequestContext` (`/_102034_/l1/server/layer_2_controllers/contracts.js`). The engine already sets `context.actorMdmId`.',
+    ...(marks.some(mark => (catalogRefs.get(mark.connectionId)?.origin ?? 'platform') !== 'platform') ? [
+      // d1_218: the input of the serve of an outside system is the body that system sends; the module's vocabulary starts after this route.
+      `The route${marks.filter(mark => (catalogRefs.get(mark.connectionId)?.origin ?? 'platform') !== 'platform').length > 1 ? 's' : ''} of a system outside the app (declared by a module): the input is the body the outside system sends, with its names and its shape (its declaration types it), handed over as it came. The route translates it into the input of the usecase or of the process it calls, which is in the vocabulary of the module, reading what the L4 says of the line (below).`,
+    ] : []),
   ].join('\n')));
   parts.push(section('Connection catalog', catalogSections.join('\n\n')));
   const l4Ref = `_${project}_/l4/${moduleName}/integration.defs.ts`;

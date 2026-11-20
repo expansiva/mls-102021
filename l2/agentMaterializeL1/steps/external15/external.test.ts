@@ -8,7 +8,7 @@ import test from 'node:test';
 import { declaredSystemsOf, DECLARATION_TYPES_REF } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/source.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { declarationLiteral, externalFacts, fixedPart, serveWithoutSecret, withFixedSettings } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
+import { declarationLiteral, declarationProblems, externalFacts, fixedPart, serveWithoutSecret, withFixedSettings } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
 import { externalAnswerProblems, loadExternalContext } from '/_102021_/l2/agentMaterializeL1/steps/external15/context.js';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
@@ -198,4 +198,29 @@ void test('d1_213: the prompt says every serve has a verify', () => {
   assert.match(prompt, /\*\*For a `serve`\*\*: always a `verify`/u);
   assert.equal(/does not sign has no `verify`/u.test(prompt), false);
   assert.match(prompt, /every `serve` with a `verify`/u);
+});
+
+const GITHUB = readFileSync(path.join(HERE, '../../emitters/fixtures/githubDeclaration.recorded.txt'), 'utf8');
+
+void test('d1_218 s1: the text says the input of a serve is the body the outside system sends, in its names, with only the fields the module reads', () => {
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  assert.match(prompt, /\*\*The `inputType` of a `serve` is the body the outside system sends\*\*, exactly as it sends it, with its names and its shape/u);
+  assert.match(prompt, /not the vocabulary of the module and not a format you would like to receive/u);
+  assert.match(prompt, /Declare only the fields the module reads from it; a field the system may leave out is optional\./u);
+  assert.match(prompt, /For a `call`, they are the fields of what the module sends/u, 'the call keeps the vocabulary of the intent: the adapter translates');
+});
+
+void test('d1_218 s1: the declaration of the first generation, with the body of the service as the input of the serve, passes the gate', async () => {
+  const literal = declarationLiteral(GITHUB);
+  assert.ok('value' in literal);
+  const value = literal.value as { systemId: string; title: string; description: string; settings: Array<{ id: string; secret: boolean; title?: string; description?: string }>; operations: Array<{ operationId: string; direction: string; description: string }> };
+  const facts = {
+    systemId: value.systemId,
+    title: value.title,
+    description: value.description,
+    settings: value.settings.map(item => ({ id: item.id, title: item.title ?? '', description: item.description ?? '', secret: item.secret })),
+    operations: value.operations.map(item => ({ operationId: item.operationId, direction: item.direction, description: item.description })),
+  };
+  const header = GITHUB.split('\n')[0];
+  assert.deepEqual(declarationProblems(GITHUB, facts, header), []);
 });

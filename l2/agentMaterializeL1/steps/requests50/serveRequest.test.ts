@@ -352,3 +352,41 @@ void test('d1_211 s2: the recorded route of a serve of an outside system takes t
   // The notice is checked by the platform hook before the route: no primitive, no secret, no header read here.
   assert.equal(/verifyExternalNotice|\.secret|secret|signature|headers/iu.test(route.replace(/^\/\/.*$/gmu, '')), false);
 });
+
+void test('d1_218 s2: the route of a system outside the app is told the input is the body the system sends and that it translates it; a platform connection is not told so', async () => {
+  const dir = path.dirname(new URL(import.meta.url).pathname);
+  const declaration = readFileSync(path.join(dir, '../../emitters/fixtures/githubDeclaration.recorded.txt'), 'utf8');
+  const route = readFileSync(path.join(dir, 'fixtures/githubServeRoute.recorded.txt'), 'utf8');
+  const l4 = `export const x = ${JSON.stringify({
+    externalSystems: [{ id: 'github', title: 't', description: 'd', settings: [], operations: [] }],
+    connections: [{ connectionId: 'github', operationId: 'repositoryChanged', direction: 'serve', usedBy: ['Records that the repository changed.'], description: 'The repository host tells the module a branch changed.' }],
+  })} as const;`;
+  const service = unit('requestService', 'github', {
+    pageId: 'github',
+    requests: [{ route: `${MODULE}.github.repositoryChanged`, serves: 'github.repositoryChanged', uses: ['recordRepositoryChange'] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/github.ts`);
+  const read = async (ref: string) => {
+    const key = ref.replace(/^\//u, '');
+    if (key === `_${PROJECT}_/l4/${MODULE}/integration.defs.ts`) return l4;
+    if (key === `_${PROJECT}_/l1/${MODULE}/layer_1_external/connections/github.ts`) return declaration;
+    return null;
+  };
+  const loaded = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [service], read } as never, service);
+  assert.match(loaded.human, /the input is the body the outside system sends, with its names and its shape \(its declaration types it\), handed over as it came/u);
+  assert.match(loaded.human, /The route translates it into the input of the usecase or of the process it calls, which is in the vocabulary of the module, reading what the L4 says of the line/u);
+  assert.match(loaded.human, /## What the module does with the message of these routes/u, 'the L4 text of the line is the source (d1_207)');
+  // The recorded route takes the body as the declaration types it and hands the usecase the vocabulary of the module.
+  const gate = { header: route.split('\n')[0], contractsInterface: loaded.contractsInterface, routes: loaded.routes, project: PROJECT, moduleName: MODULE, pageId: 'github', waived: new Set<string>() };
+  assert.equal(loaded.contractsInterface.includes('RepositoryChangedInput'), true);
+  assert.match(route, /input\.repository\.fullName/u);
+  assert.match(route, /repositoryName:/u);
+  assert.deepEqual(requestGate(route, { ...gate, serveUses: loaded.serveUses }), []);
+  // A platform connection (the catalog is written by hand, in the vocabulary the platform fixed): the sentence is not there.
+  const platformService = unit('requestService', 'cm', {
+    pageId: 'cm',
+    requests: [{ route: `${MODULE}.cm.record`, serves: 'cm.record', uses: [] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/cm.ts`);
+  const platformRead = async (ref: string) => (ref.replace(/^\//u, '') === CATALOG_REF.replace(/^\//u, '') ? CATALOG : null);
+  const platform = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [platformService], read: platformRead } as never, platformService);
+  assert.equal(platform.human.includes('the body the outside system sends'), false);
+});
