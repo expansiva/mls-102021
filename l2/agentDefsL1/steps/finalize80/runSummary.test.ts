@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/finalize80/runSummary.test.ts" enhancement="_blank"/>
 
+// d1_248: a def the D1 wrote and nobody edited is rebuilt when the L2 contract it reads changes; a hand edit is still refused.
 // d1_247: a `/run` with nothing to do ends in success and says by step what it wrote and kept; a real refusal keeps `failed` with step and reason.
 
 import assert from 'node:assert/strict';
@@ -107,6 +108,44 @@ void test('a real refusal keeps `failed`, with the step and the reason', async (
   assert.equal(failed.length, 1, ran.trace);
   assert.match(failed[0].traceMsg || '', /usecases50 draft did not parse.*controllers60/u);
   assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}').status, 'complete', 'a refusal writes nothing to the pipeline: it still shows the earlier run');
+});
+
+async function changeContractText(host: TestHost): Promise<{ request: StoredFile }> {
+  const contract = host.files[Object.keys(host.files).find(key => key.includes('web/contracts/inicio.defs'))!];
+  assert.ok(contract);
+  contract.content = contract.content.replace('Retorna somente os indicadores', 'Retorna MUDOU-O-TEXTO os indicadores');
+  const request = host.files[Object.keys(host.files).find(key => key.includes('requests/inicio.defs'))!];
+  assert.ok(request);
+  assert.equal(request.content.includes('MUDOU-O-TEXTO'), false);
+  return { request };
+}
+
+void test('d1_248: the L2 contract changes after a complete run: the request def it feeds is rebuilt and the run succeeds', async () => {
+  const host = await readyHost(FIXTURE, MODULE);
+  const resolver = recordedResolver(FIXTURE, MODULE);
+  await plainRun(host, resolver);
+  const { request } = await changeContractText(host);
+  const second = await plainRun(host, resolver);
+  assert.equal(second.some(item => item.status === 'failed'), false, JSON.stringify(second.filter(item => item.status === 'failed')));
+  assert.equal(request.content.includes('MUDOU-O-TEXTO'), true, 'the def carries the new contract text');
+  assert.match(second.find(item => item.stepId === 'controllers60')!.trace, /^controllers60: wrote 1 \(inicio\)/u);
+  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}').status, 'complete');
+});
+
+void test('d1_248: the same change over a def edited by hand is still refused', async () => {
+  const host = await readyHost(FIXTURE, MODULE);
+  const resolver = recordedResolver(FIXTURE, MODULE);
+  await plainRun(host, resolver);
+  const { request } = await changeContractText(host);
+  request.content = request.content.replace('Retorna somente os indicadores', 'EDITADO-A-MAO');
+  assert.notEqual(request.content.indexOf('EDITADO-A-MAO'), -1);
+  const second = await plainRun(host, resolver);
+  const failed = second.find(item => item.status === 'failed');
+  assert.ok(failed, 'a hand edit is not overwritten');
+  // The inventory of input20 sees the edit first; the commit of controllers60 would refuse it too.
+  assert.ok(['input20', 'controllers60'].includes(failed.stepId), `${failed.stepId}: ${failed.trace}`);
+  assert.ok(failed.trace.includes('inicio'), failed.trace);
+  assert.equal(request.content.includes('EDITADO-A-MAO'), true);
 });
 
 async function readyHost(fixtureId: string, moduleName: string): Promise<TestHost> {

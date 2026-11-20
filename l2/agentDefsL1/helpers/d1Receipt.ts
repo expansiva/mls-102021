@@ -15,7 +15,7 @@ import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/ide
 import { futureOutputPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, removeDefFile, writeJson, writeText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { fileInfoFromDisplay, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { fileInfoFromDisplay, readD1Derivation, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 
 export const D1_PROGRESS_SCHEMA = '2026-09-22-d1-progress-v1' as const;
 
@@ -65,6 +65,8 @@ export interface D1UnitProgress {
   unitId: string;
   runId: string;
   snapshotHash: string;
+  /** d1_248: the key of the L4 and L2 sources the unit was written from. Absent in a progress written before. */
+  sourceKey?: string;
   draftHash: string;
   transaction: false;
   finalized: boolean;
@@ -187,6 +189,18 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
   const runId = input.runId || snapshotHash || draftHash;
   const issues: string[] = [];
   const planned: PlannedFile[] = [];
+  // d1_248: a def the snapshot carries no hash for (the L4 plan marks it done) is the D1's own when its writer receipt is the hash on disk, and the
+  // L4 or L2 sources changed since this unit wrote it (another source key): it is rebuilt from the changed contract. With the same sources the new
+  // bytes come from a changed generator, and that is `/rederive` (d1_228): the def stays refused. A def edited by hand has no matching receipt and
+  // stays refused too.
+  const sourceKey = (await readD1Derivation(input.project, input.moduleName))?.sourceKey ?? '';
+  const writerHash = new Map<string, string | null>();
+  const earlier = await readProgress(input.project, input.moduleName, input.step, input.unitId);
+  if (earlier?.sourceKey && sourceKey && earlier.sourceKey !== sourceKey) {
+    for (const receipt of await readWriterReceipts(input.project, input.moduleName)) {
+      writerHash.set(receipt.defPath, writerHash.has(receipt.defPath) && writerHash.get(receipt.defPath) !== receipt.desiredHash ? null : receipt.desiredHash);
+    }
+  }
   for (const part of input.parts) {
     const action = part.action === 'remove' ? 'remove' : 'write';
     const file = artifactFile(input.project, part.defPath);
@@ -206,7 +220,7 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
       file,
       action,
       source: part.source,
-      receiptHash: part.receiptHash ?? receiptHashOf(live, logical),
+      receiptHash: part.receiptHash ?? (receiptHashOf(live, logical) || writerHash.get(logical) || ''),
       outputTs,
       previousHash: '',
       desiredHash: action === 'remove' ? '' : await sourceIdentityHash(part.source),
@@ -260,6 +274,7 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
   }
 
   const progress = blankProgress(input, runId, snapshotHash, draftHash, planned, reported);
+  if (sourceKey) progress.sourceKey = sourceKey;
   await saveProgress(input, progress);
   const written: string[] = [];
   const removed: string[] = [];

@@ -1,0 +1,205 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/agents.ts" enhancement="_blank"/>
+import type { AgentsContracts } from '/_102047_/l2/agents/web/contracts/agents.defs.js';
+import { AppError, type RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { listAgent } from '/_102047_/l1/agents/layer_2_application/usecases/listAgent.js';
+import { listAgentDraft } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentDraft.js';
+import { getAgentDraft } from '/_102047_/l1/agents/layer_2_application/usecases/getAgentDraft.js';
+import { getOrganizationUser } from '/_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.js';
+import { listAgentTool } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentTool.js';
+import { listTool } from '/_102047_/l1/agents/layer_2_application/usecases/listTool.js';
+import type { ListAgentSimulationInput, ListAgentSimulationOutput } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.js';
+import { startVirtualEmployeeRequest } from '/_102047_/l1/agents/layer_2_application/workflows/virtualEmployeeCreation.js';
+
+type SimulationLevel = 'whatItCan' | 'whatItUnderstands';
+const simulationLevelToCatalog: Record<SimulationLevel, ListAgentSimulationInput['level']> = {
+  whatItCan: 'canDo',
+  whatItUnderstands: 'understands',
+};
+const simulationLevelFromCatalog: Record<ListAgentSimulationOutput['level'], SimulationLevel> = {
+  canDo: 'whatItCan',
+  understands: 'whatItUnderstands',
+};
+// This page has no simulation route; keep the translations available for the
+// connection's two distinct vocabularies without calling the simulation.
+void simulationLevelToCatalog;
+void simulationLevelFromCatalog;
+
+function hasRole(ctx: RequestContext, role: string): boolean {
+  return (ctx.sessionContext.actorScope ?? []).some(
+    scope => scope === role || scope.endsWith(`:${role}`),
+  );
+}
+function pageNumber(value: number): number {
+  return Number.isFinite(value) && value >= 1 ? Math.floor(value) : 1;
+}
+function pageSize(value: number): number {
+  return Number.isFinite(value) && value >= 1 ? Math.min(Math.floor(value), 200) : 20;
+}
+
+type ListedAgent = Awaited<ReturnType<typeof listAgent>>['agents'][number];
+
+function draftCard(agent: ListedAgent): AgentsContracts['agents.agents.listAgentsCollection']['output']['agents']['items'][number] | undefined {
+  if (agent.draftStatus == null) return undefined;
+  // refusalReasonShownWhenRefused: the reason is shown only for a refusal.
+  return {
+    draft: {
+      name: agent.name,
+      situation: agent.draftStatus,
+      draftId: agent.agentId,
+      ...(agent.draftStatus === 'refused' && agent.refusedReason != null
+        ? { refusalReason: agent.refusedReason }
+        : {}),
+    },
+  };
+}
+
+async function knownSuggestedToolNames(agentId: string, ctx: RequestContext): Promise<string[]> {
+  const names: string[] = [];
+  let page = 1;
+  for (;;) {
+    // agentDraftSuggestedToolsOnWhenReady: identify enabled choices made from
+    // a draft suggestion and resolve their readable catalog names. This is
+    // only the locally known subset, not a substitute for the cm's full list.
+    const choices = await listAgentTool({
+      agentId,
+      enabled: true,
+      choiceSource: 'automatic',
+      details: { automaticOrigin: 'draftSuggestion' },
+      page,
+      pageSize: 200,
+    }, ctx);
+    for (const choice of choices.items) {
+      const tools = await listTool({ id: choice.toolId, page: 1, pageSize: 1 }, ctx);
+      const tool = tools.items[0];
+      if (tool == null) {
+        throw new AppError('NOT_FOUND', 'A suggested tool could not be found.', 404, { id: choice.toolId });
+      }
+      names.push(tool.name);
+    }
+    if (!choices.hasMore) break;
+    page += 1;
+  }
+  return names;
+}
+
+async function knownDraftEvents(ctx: RequestContext): Promise<AgentsContracts['agents.agents.listRequestHistory']['output']['requests']['items']> {
+  const result = await listAgentDraft({ includeDrafts: true }, ctx);
+  const events: AgentsContracts['agents.agents.listRequestHistory']['output']['requests']['items'] = [];
+  for (const draft of result.agents) {
+    if (draft.draftStatus == null) continue;
+    // refusalReasonShownWhenRefused: do not expose a reason in other states.
+    // agentDraftSuggestedToolsOnWhenReady: resolve the locally known enabled
+    // draft-suggestion choices only for ready drafts.
+    const suggestedTools = draft.draftStatus === 'ready'
+      ? await knownSuggestedToolNames(draft.agentId, ctx)
+      : undefined;
+    events.push({
+      name: draft.name,
+      situation: draft.draftStatus,
+      draftId: draft.agentId,
+      ...(draft.draftStatus === 'refused' && draft.refusedReason != null
+        ? { refusalReason: draft.refusedReason }
+        : {}),
+      ...(suggestedTools != null ? { suggestedTools } : {}),
+    });
+  }
+  return events;
+}
+
+/** The required identifiers conflict with the explicit no-IDs response rule. */
+async function emptyCollectionOrUnavailable(
+  ctx: RequestContext,
+  page: number,
+  size: number,
+): Promise<AgentsContracts['agents.agents.listAgentsCollection']['output']['agents']> {
+  const admin = hasRole(ctx, 'companyAdmin');
+  const result = await listAgent({ includeDrafts: admin }, ctx);
+  // refusalReasonShownWhenRefused: project the refusal reason only on refused
+  // draft cards; members have no draft entries.
+  const visible = result.agents.filter(agent => admin || agent.draftStatus == null).map(agent => {
+    const draft = draftCard(agent);
+    return draft != null ? draft : { agent: { name: agent.name, isOn: agent.enabled, agentId: agent.agentId } };
+  });
+  // noTechnicalIdsOnScreen: a nonempty contract entry requires a technical
+  // agentId or draftId, which the route explicitly says it never returns.
+  if (visible.length !== 0) {
+    throw new Error('Cannot return the agents collection: its required technical IDs conflict with noTechnicalIdsOnScreen.');
+  }
+  return { items: [], page, pageSize: size, hasMore: false };
+}
+
+export const requests: { [K in keyof AgentsContracts]: (input: AgentsContracts[K]['input'], ctx: RequestContext) => Promise<AgentsContracts[K]['output']> } = {
+  'agents.agents.loadAgentsPage': async function (input, ctx) {
+    const size = pageSize(input.pageSize);
+    if (hasRole(ctx, 'companyAdmin')) {
+      // refusalReasonShownWhenRefused and agentDraftSuggestedToolsOnWhenReady:
+      // project the known refusal reasons and enabled suggestion names. The cm
+      // list still lacks the complete history, prompt, requester and time.
+      await knownDraftEvents(ctx);
+      // noTechnicalIdsOnScreen also conflicts with the required draftId.
+      throw new Error('Cannot load the draft inbox and history: the available cm usecases do not provide the required draft data.');
+    }
+    const agents = await emptyCollectionOrUnavailable(ctx, 1, size);
+    return {
+      inbox: [],
+      agents,
+      requests: { items: [], page: 1, pageSize: size, hasMore: false },
+    };
+  },
+  'agents.agents.listAgentsCollection': async function (input, ctx) {
+    // refusalReasonShownWhenRefused is applied when projecting draft cards.
+    const agents = await emptyCollectionOrUnavailable(ctx, pageNumber(input.page), pageSize(input.pageSize));
+    return { agents };
+  },
+  'agents.agents.listRequestHistory': async function (_input, ctx) {
+    if (!hasRole(ctx, 'companyAdmin')) {
+      throw new AppError('FORBIDDEN', 'Only the company administrator may view request history.', 403);
+    }
+    // refusalReasonShownWhenRefused and agentDraftSuggestedToolsOnWhenReady:
+    // project the known refusal reasons and enabled suggestion names.
+    await knownDraftEvents(ctx);
+    // The cm list omits activated/discarded states and request timestamps;
+    // it cannot produce a complete, newest-first history. Required draftId
+    // also conflicts with noTechnicalIdsOnScreen.
+    throw new Error('Cannot list request history: the available cm usecases do not provide complete draft states or request timestamps.');
+  },
+  'agents.agents.sendNewAgentRequest': async function (input, ctx) {
+    return ctx.data.moduleData.runInTransaction(async tx => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      if (!hasRole(bound, 'companyAdmin')) {
+        throw new AppError('FORBIDDEN', 'Only the company administrator may request a new agent.', 403);
+      }
+      const actorId = bound.sessionContext.actorId;
+      if (actorId == null) {
+        throw new AppError('FORBIDDEN', 'The requesting administrator is not identified.', 403);
+      }
+      const requester = await getOrganizationUser({ id: actorId }, bound);
+      const requestedAt = bound.clock.nowIso();
+      const created = await startVirtualEmployeeRequest({ prompt: input.prompt }, bound);
+      const draft = await getAgentDraft({ agentId: created.draftId }, bound);
+      return {
+        request: {
+          name: draft.name,
+          situation: created.situation,
+          requestedAt,
+          draftId: created.draftId,
+        },
+        inboxItem: {
+          name: draft.name,
+          situation: created.situation,
+          prompt: input.prompt,
+          requestedAt,
+          requestedBy: requester.details.identification.name,
+          draftId: created.draftId,
+        },
+        collectionEntry: {
+          draft: {
+            name: draft.name,
+            situation: created.situation,
+            draftId: created.draftId,
+          },
+        },
+      };
+    });
+  },
+};

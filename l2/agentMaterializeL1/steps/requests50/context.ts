@@ -13,7 +13,7 @@ import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/conn
 import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { recordFieldFromGrant, recordFieldsFromGrant, scopeJoins } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
-import { arrivalUpsertProblems, emptyCastProblems, emptyRequiredProblems, gatewayBypassProblems, recordCastProblems, requestRepositoryProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { arrivalUpsertProblems, emptyCastProblems, emptyRequiredProblems, gatewayBypassProblems, recordCastProblems, requestRepositoryProblems, importSpecifiers, staticPlainErrorProblems, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, infoOfRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -827,7 +827,7 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
   parts.push(section('Recipe attempt', 'source' in draft
     ? ['The deterministic recipe produced this file. Keep what is right; it is a draft, not the answer.', fence('ts', draft.source.slice(0, 16000))].join('\n\n')
     : `The deterministic recipe could not produce this request service: ${draft.refusal.slice(0, 4000)}`));
-  if (rules.length) parts.push(section('Rules (l4 text)', rules.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
+  if (rules.length) parts.push(section('Rules (l4 text)', [rules.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n'), SCREEN_RULE_NOTE].join('\n\n')));
   // Signatures of every usecase of the module: a route may call one the def does not name.
   const uses = new Set(Array.isArray(unit.definition.data.requests)
     ? unit.definition.data.requests.filter(isRecord).flatMap(row => Array.isArray(row.uses) ? row.uses.map(String) : [])
@@ -1037,6 +1037,9 @@ export function consumeMessageProblems(code: string, names: readonly string[], c
   return problems;
 }
 
+/** d1_248: a rule about what a screen shows is the screen's; it never takes a field out of the payload the contract requires. */
+export const SCREEN_RULE_NOTE = 'A rule about what a screen shows (for example "never show technical ids") never removes a field from the payload: every field the L2 contract requires is returned, and the screen decides what to show. Never answer with `throw new Error(...)` that the request cannot be served.';
+
 /** Problems of a model-written request service. Empty = the gate passes. */
 export function requestGate(code: string, input: {
   /** Declarations of sibling systems this module's connections name (d1_208). */
@@ -1083,6 +1086,7 @@ export function requestGate(code: string, input: {
   }
   problems.push(...emptyCastProblems(code));
   problems.push(...recordCastProblems(code));
+  problems.push(...staticPlainErrorProblems(code));
   problems.push(...requestRepositoryProblems(code, input.ports ?? [], input.usecases ?? []));
   problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
   problems.push(...consumeMessageProblems(code, input.consumeMessages ?? [], (input.serveUses ?? []).length > 0));

@@ -760,6 +760,25 @@ export function listUsersPageSizeProblems(code: string): string[] {
   return problems;
 }
 
+/**
+ * d1_248: a request that throws a plain `Error` with a fixed text (`throw new Error('Cannot return the list: …conflict with a rule')`)
+ * declares itself impossible, and the page gets a 500 (agents, reteste 2). A conflict between the def and the contract is a refusal at
+ * the gate, not code that refuses to run. A plain `Error` whose message carries a value (`\`unsupported status: ${value}\``) is a guard on
+ * data, not a decision made in advance: it passes. So does a fixed text that validates an input (`'releaseId is required'`: the recorded cm and
+ * platform routes). Only a fixed text that says the request cannot be done is refused. A throw the request means to make carries an `AppError` code and a ruleId.
+ */
+export function staticPlainErrorProblems(code: string): string[] {
+  const clean = blankComments(code);
+  const problems: string[] = [];
+  const pattern = /\bnew\s+Error\s*\(\s*(?:'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`([^`$\\]*)`)\s*[,)]/gu;
+  for (const match of clean.matchAll(pattern)) {
+    const text = match[1] ?? match[2] ?? match[3] ?? '';
+    if (!/^\s*(?:cannot|can't|can not|unable to|not possible|impossible)\b/iu.test(text)) continue;
+    problems.push(`PLAIN_ERROR_STATIC: line ${lineOf(clean, match.index ?? 0)} throws \`new Error(${JSON.stringify(text.slice(0, 80))})\`. A request returns what the contract asks, or throws \`AppError\` with a ruleId. A conflict between the definition and the contract is not solved by refusing to run: return every field the contract requires.`);
+  }
+  return problems;
+}
+
 /** Problems of a model-written usecase file. Empty = the gate passes. */
 export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   const problems: string[] = [];
