@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/domain30/agentD1Domain.ts" enhancement="_blank"/>
 
+import { holdPipeline } from '/_102021_/l2/agentDefsL1/helpers/d1Hold.js';
 import { commitTrace, refusedText, type D1StepRun } from '/_102021_/l2/agentDefsL1/helpers/d1RunSummary.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -50,10 +51,14 @@ export async function beforeD1DomainPromptStep(
   }
 
   const assembled = await assembleD1Domain(prompt.project, prompt.moduleName);
-  if ('refusal' in assembled) return refuse(context, parentStep, step, hookSequential, assembled.refusal);
+  if ('refusal' in assembled) {
+    await holdPipeline(pipeline, 'domain30', displayPath(draftFile(prompt.project, prompt.moduleName, 'domain30')), assembled.refusal);
+    return refuse(context, parentStep, step, hookSequential, assembled.refusal);
+  }
   const committed = await commitD1Domain(prompt.project, assembled.build);
   if (!assembled.build.ok || committed.issues.length > 0) {
     const message = refusedText('domain30', committed.issues[0]) || assembled.build.problems.find(problem => problem.severity === 'error')?.message || 'domain30 refused the domain.';
+    await holdPipeline(pipeline, 'domain30', displayPath(draftFile(prompt.project, prompt.moduleName, 'domain30')), message);
     return refuse(context, parentStep, step, hookSequential, message);
   }
 

@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/persistence40/agentD1Persistence.ts" enhancement="_blank"/>
 
+import { holdPipeline } from '/_102021_/l2/agentDefsL1/helpers/d1Hold.js';
 import { commitTrace, refusedText, type D1StepRun } from '/_102021_/l2/agentDefsL1/helpers/d1RunSummary.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -50,12 +51,16 @@ export async function beforeD1PersistencePromptStep(
   }
 
   const assembled = await assembleD1Persistence(prompt.project, prompt.moduleName);
-  if ('refusal' in assembled) return refuse(context, parentStep, step, hookSequential, assembled.refusal);
+  if ('refusal' in assembled) {
+    await holdPipeline(pipeline, 'persistence40', displayPath(draftFile(prompt.project, prompt.moduleName, 'persistence40')), assembled.refusal);
+    return refuse(context, parentStep, step, hookSequential, assembled.refusal);
+  }
   const committed = await commitD1Persistence(prompt.project, assembled.build);
   if (!assembled.build.ok || committed.issues.length > 0) {
     const message = refusedText('persistence40', committed.issues[0])
       || assembled.build.problems.find(problem => problem.severity === 'error')?.message
       || 'persistence40 refused the persistence plan.';
+    await holdPipeline(pipeline, 'persistence40', displayPath(draftFile(prompt.project, prompt.moduleName, 'persistence40')), message);
     return refuse(context, parentStep, step, hookSequential, message);
   }
 

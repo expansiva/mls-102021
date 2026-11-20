@@ -93,12 +93,13 @@ void test('a run with nothing to do ends in success and says by step what it wro
   }
 });
 
-void test('a real refusal keeps `failed`, with the step and the reason', async () => {
+void test('a real refusal keeps `failed` in the task and in the checkpoint, with the step and the reason', async () => {
   const host = await readyHost(FIXTURE, MODULE);
   const resolver = recordedResolver(FIXTURE, MODULE);
   await plainRun(host, resolver);
   const draft = host.files[fileKey(draftFile(PROJECT, MODULE, 'usecases50'))];
   assert.ok(draft);
+  const good = draft.content;
   draft.content = 'not json';
   const agent = createAgent();
   const ctx = contextFor(MODULE);
@@ -107,7 +108,19 @@ void test('a real refusal keeps `failed`, with the step and the reason', async (
   const failed = ran.intents.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.status === 'failed');
   assert.equal(failed.length, 1, ran.trace);
   assert.match(failed[0].traceMsg || '', /usecases50 draft did not parse.*controllers60/u);
-  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}').status, 'complete', 'a refusal writes nothing to the pipeline: it still shows the earlier run');
+  // d1_248: the refusal is in the checkpoint too: never the `complete` of the earlier round.
+  const state = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as D1PipelineState;
+  assert.equal(state.status, 'awaitingStep');
+  assert.equal(state.awaitingStep, 'controllers60');
+  assert.equal(state.steps.controllers60?.status, 'failed');
+  assert.match(state.steps.controllers60?.error || '', /usecases50 draft did not parse/u);
+  // The next `/run`, with the cause gone, finishes and the checkpoint is `complete` again.
+  draft.content = good;
+  const again = await plainRun(host, resolver);
+  assert.equal(again.some(item => item.status === 'failed'), false, JSON.stringify(again.filter(item => item.status === 'failed')));
+  const after = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as D1PipelineState;
+  assert.equal(after.status, 'complete');
+  assert.equal(after.awaitingStep, undefined);
 });
 
 async function changeContractText(host: TestHost): Promise<{ request: StoredFile }> {
@@ -129,6 +142,8 @@ void test('d1_248: the L2 contract changes after a complete run: the request def
   assert.equal(second.some(item => item.status === 'failed'), false, JSON.stringify(second.filter(item => item.status === 'failed')));
   assert.equal(request.content.includes('MUDOU-O-TEXTO'), true, 'the def carries the new contract text');
   assert.match(second.find(item => item.stepId === 'controllers60')!.trace, /^controllers60: wrote 1 \(inicio\)/u);
+  const end = second.find(item => item.stepId === 'finalize80' && item.status === 'completed')!.trace;
+  assert.match(end, /\ncontrollers60: wrote 1 \(inicio\), kept 4 /u, end);
   assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}').status, 'complete');
 });
 

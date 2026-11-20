@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/controllers60/agentD1Controllers.ts" enhancement="_blank"/>
 
+import { holdPipeline } from '/_102021_/l2/agentDefsL1/helpers/d1Hold.js';
 import { commitTrace, refusedText, type D1StepRun } from '/_102021_/l2/agentDefsL1/helpers/d1RunSummary.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -50,12 +51,16 @@ export async function beforeD1ControllersPromptStep(
   }
 
   const assembled = await assembleD1Controllers(prompt.project, prompt.moduleName);
-  if ('refusal' in assembled) return refuse(context, parentStep, step, hookSequential, assembled.refusal);
+  if ('refusal' in assembled) {
+    await holdPipeline(pipeline, 'controllers60', displayPath(draftFile(prompt.project, prompt.moduleName, 'controllers60')), assembled.refusal);
+    return refuse(context, parentStep, step, hookSequential, assembled.refusal);
+  }
   const committed = await commitD1Controllers(prompt.project, assembled.build);
   if (!assembled.build.ok || committed.issues.length > 0) {
     const message = refusedText('controllers60', committed.issues[0])
       || assembled.build.problems.find(problem => problem.severity === 'error')?.message
       || 'controllers60 refused the controller plan.';
+    await holdPipeline(pipeline, 'controllers60', displayPath(draftFile(prompt.project, prompt.moduleName, 'controllers60')), message);
     return refuse(context, parentStep, step, hookSequential, message);
   }
 
