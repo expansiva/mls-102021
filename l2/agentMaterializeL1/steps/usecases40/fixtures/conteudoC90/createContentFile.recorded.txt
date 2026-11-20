@@ -1,0 +1,77 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_2_application/usecases/createContentFile.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { GravarArquivoInput, GravarArquivoOutput } from '/_102047_/l1/repoHost/layer_1_external/connections/github.js';
+import type { GithubGateway } from '/_102047_/l1/conteudo/layer_1_external/adapters/integration/outbound.js';
+import type { PublicationRepository } from '/_102047_/l1/conteudo/layer_2_application/ports/publicationRepository.js';
+
+export interface CreateContentFileInput extends GravarArquivoInput {}
+export interface CreateContentFileOutput extends GravarArquivoOutput {}
+
+type PublicationRecord = Parameters<PublicationRepository['create']>[0];
+
+function pickString(first: unknown, second: unknown): string | undefined {
+  if (typeof first === 'string' && first !== '') return first;
+  if (typeof second === 'string' && second !== '') return second;
+  return undefined;
+}
+
+export async function createContentFile(input: CreateContentFileInput, ctx: RequestContext): Promise<CreateContentFileOutput> {
+  const raw: Record<string, unknown> = { ...input };
+
+  const editorId = ctx.sessionContext.person?.mdmId;
+  if (!editorId) {
+    throw new AppError('SESSION_PERSON_MISSING', 'The session has no person: field editorId cannot be filled.', 400, { ruleId: 'publicationRecordedOnSave' });
+  }
+
+  const gateway = resolveRepository<GithubGateway>(ctx, 'GithubGateway');
+
+  // The external system enforces contentFolderAllowed, contentRepositoryIsSourceOfTruth and
+  // contentWriteThroughIntegration through the call: its error keeps its own code, message and status.
+  let result: GravarArquivoOutput;
+  try {
+    result = await gateway.gravarArquivo(input, ctx);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw new AppError(error.code, error.message, error.statusCode, {
+        ruleIds: ['contentFolderAllowed', 'contentRepositoryIsSourceOfTruth', 'contentWriteThroughIntegration'],
+      });
+    }
+    throw error;
+  }
+
+  const answer: Record<string, unknown> = { ...result };
+
+  const filePath = pickString(answer.path, raw.path);
+  if (!filePath) {
+    throw new AppError('PUBLICATION_FIELD_MISSING', 'Field filePath is missing from the input and from the answer of the write.', 400, { ruleId: 'publicationRecordedOnSave' });
+  }
+  const folder = pickString(raw.folder, answer.folder);
+  if (!folder) {
+    throw new AppError('PUBLICATION_FIELD_MISSING', 'Field folder is missing from the input and from the answer of the write.', 400, { ruleId: 'publicationRecordedOnSave' });
+  }
+  const operation = pickString(raw.operation, answer.operation) ?? 'create';
+
+  const details: Record<string, unknown> = {};
+  const title = pickString(raw.title, answer.title);
+  if (title !== undefined) details.title = title;
+  const commitId = pickString(answer.commitId, undefined);
+  if (commitId !== undefined) details.commitId = commitId;
+
+  const record = {
+    id: ctx.idGenerator.newId(),
+    version: 1,
+    editorId,
+    filePath,
+    folder,
+    publishedAt: ctx.clock.nowIso(),
+    operation,
+    details,
+  } as PublicationRecord;
+
+  const publications = resolveRepository<PublicationRepository>(ctx, 'PublicationRepository');
+  await publications.create(record);
+
+  return result;
+}

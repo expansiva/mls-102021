@@ -84,6 +84,16 @@ export function recordCastProblems(code: string): string[] {
       problems.push(`CAST_ON_RECORD (line ${lineOf(clean, call.index ?? 0)}): the record passed to \`${call[0].slice(0, -1).trim()}\` is cast with \`as ${cast[1]}\`. ${advice}`);
     }
   }
+  // d1_229: the whole literal cast to the type (`const record = { … } as Type;`, a `satisfies` before the `as` included), saved by the name it was given.
+  const saved = new Set<string>();
+  for (const call of clean.matchAll(/\.(?:create|update)\s*\(\s*([A-Za-z_$][\w$]*)\s*[,)]/gu)) saved.add(call[1]);
+  for (const declaration of clean.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;\n]+)?=\s*\{/gu)) {
+    if (!saved.has(declaration[1])) continue;
+    const open = (declaration.index ?? 0) + declaration[0].length - 1;
+    const after = clean.slice(blockEnd(clean, open));
+    const cast = /^\s*(?:satisfies\s+[^;\n]+?\s+)?as\s+(?!const\b)([A-Za-z_$][\w$.]*(?:<[^;\n]*>)?(?:\[[^\]\n]*\])?)\s*;/u.exec(after);
+    if (cast) problems.push(`CAST_ON_RECORD (line ${lineOf(clean, declaration.index ?? 0)}): the record \`${declaration[1]}\` is a literal cast with \`as ${cast[1]}\` and then saved. ${advice}`);
+  }
   return problems;
 }
 
