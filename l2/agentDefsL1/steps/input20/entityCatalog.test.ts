@@ -55,14 +55,26 @@ void test('a platform connection is answered by the platform alone: no sibling f
   assert.deepEqual(asked, [`${PLATFORM}/github.ts`]);
 });
 
-void test('a system of this module is a distinct refusal and the ref is not the platform path', async () => {
-  const { read } = host({
-    [`_${PROJECT}_/l4/organization/registry.defs.ts`]: registry(['conteudo']),
-    [`_${PROJECT}_/l4/conteudo/integration.defs.ts`]: integration('github'),
-  });
+const OWN_FILES = {
+  [`_${PROJECT}_/l4/organization/registry.defs.ts`]: registry(['conteudo']),
+  [`_${PROJECT}_/l4/conteudo/integration.defs.ts`]: integration('github'),
+};
+const OWN_DECLARATION = `/_${PROJECT}_/l1/conteudo/layer_1_external/connections/github.ts`;
+
+void test('a system of this module is read from its declaration, like a sibling\'s', async () => {
+  const { read } = host({ ...OWN_FILES, [OWN_DECLARATION.slice(1)]: GITHUB });
   const found = await resolveEntityCatalogs(PROJECT, 'conteudo', Object.values(entities), read);
-  assert.deepEqual(found.problems, { github: { code: 'EXTERNAL_OWN_SYSTEM' } });
-  assert.equal(found.refs.github, '/_102047_/l1/conteudo/layer_1_external/connections/github.ts');
+  assert.deepEqual(found, { refs: { github: OWN_DECLARATION }, problems: {} });
+  assert.deepEqual(catalogInfo(OWN_DECLARATION), { project: PROJECT, level: 1, folder: 'conteudo/layer_1_external/connections', shortName: 'github', extension: '.ts' });
+});
+
+void test('a system of this module whose declaration is not generated is OWN_DECLARATION_NOT_GENERATED, naming both commands', async () => {
+  const { read } = host(OWN_FILES);
+  const found = await resolveEntityCatalogs(PROJECT, 'conteudo', Object.values(entities), read);
+  assert.equal(found.refs.github, OWN_DECLARATION);
+  assert.equal(found.problems.github?.code, 'OWN_DECLARATION_NOT_GENERATED');
+  assert.match(found.problems.github?.detail ?? '', /@@agentDefsL1 conteudo \/declarations/);
+  assert.match(found.problems.github?.detail ?? '', /@@agentMaterializeL1 \{"target":"_102047_\/l1\/conteudo\/layer_1_external\/connections\/github\.defs\.ts"\}/);
 });
 
 void test('a sibling system whose declaration is not generated is SIBLING_DECLARATION_MISSING, naming the module', async () => {

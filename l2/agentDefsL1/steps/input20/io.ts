@@ -348,11 +348,12 @@ async function loadServeCatalogs(project: number, moduleName: string, integratio
     }
   }
   for (const connectionId of entityConnectionIds) {
-    if (platformPresent.get(connectionId) || ownIds.has(connectionId)) continue;
-    const sibling = siblings.find(item => item.systems.some(system => system.id === connectionId));
-    if (!sibling) continue;
-    // A declaration not generated yet is not sealed: the domain step refuses it by name (SIBLING_DECLARATION_MISSING).
-    const ref = `/${declarationRef(project, sibling.moduleName, connectionId)}`;
+    if (platformPresent.get(connectionId)) continue;
+    // The declaration of this module or of a sibling, read like any other source of the run.
+    const owner = ownIds.has(connectionId) ? moduleName : siblings.find(item => item.systems.some(system => system.id === connectionId))?.moduleName;
+    if (!owner) continue;
+    // A declaration not generated yet is not sealed: the domain step refuses it by name (SIBLING_DECLARATION_MISSING, OWN_DECLARATION_NOT_GENERATED).
+    const ref = `/${declarationRef(project, owner, connectionId)}`;
     const info = catalogInfo(ref);
     const body = info ? await readText(info) : null;
     if (!body) continue;

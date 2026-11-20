@@ -704,6 +704,9 @@ function actionFor(
     return 'update';
   }
   if (!hash) return 'create';
+  // d1_222: the def of a system the module declares is written before any plan exists (`/declarations`). Bytes the writer receipt vouches for
+  // are the writer's own: they are recomposed (the receipt hash is the one to replace), not a file nobody owns.
+  if (!view.plan && ownerRef.startsWith('external:') && view.agrees && view.written === hash) return 'recompose';
   if (!view.plan || !view.agrees || view.hash !== hash) {
     error(problems, 'EXISTS_WITHOUT_RECEIPT', defPath, existsMessage(defPath, hash, view), ownerRef);
     return 'conflict';

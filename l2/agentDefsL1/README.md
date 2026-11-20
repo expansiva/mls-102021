@@ -10,8 +10,16 @@ only declared in `docs/flow.json` reports that it is not implemented.
 ```
 @@agentDefsL1 <lowerCamel> /run
 @@agentDefsL1 <lowerCamel> /resume
+@@agentDefsL1 <lowerCamel> /declarations
 @@agentDefsL1 <lowerCamel> /help
 ```
+
+`/declarations` (d1_222) writes only the `externalConnection` defs of the systems the L4 of the module declares
+(`l4/<module>/integration.defs.ts`), with the function of support70, before the L2 and before the rest of the
+run. It needs no checkpoint, no input and no other step, and leaves a writer receipt of its own, so the `/run`
+that follows takes the files as its own. It then prints, for each system, the command that generates the
+declaration: `@@agentMaterializeL1 {"target":"_<project>_/l1/<module>/layer_1_external/connections/<id>.defs.ts"}`.
+A def somebody edited, or one this writer did not write, is refused and not overwritten.
 
 `/help` writes nothing. `/run` records a checkpoint when the module has none
 in this project. `/resume` continues an intact checkpoint and does not rewrite

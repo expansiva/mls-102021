@@ -39,7 +39,7 @@ function integration(id: string): string {
 }
 
 /** The module of the fixture plus an `external` entity on `connectionId`; `declared` says who declares the system. */
-function caseHost(connectionId: string, declared: 'sibling' | 'siblingNotGenerated' | 'own' | 'platform'): TestHost {
+function caseHost(connectionId: string, declared: 'sibling' | 'siblingNotGenerated' | 'own' | 'ownGenerated' | 'platform'): TestHost {
   const host = installStudio(PROJECT);
   seedD1Fixture(host, 'controleEstoque-39a5166', PROJECT);
   const index = fileInfoFromDisplay(PROJECT, `l4/${MODULE}/ontology/index.defs.ts`)!;
@@ -54,7 +54,7 @@ function caseHost(connectionId: string, declared: 'sibling' | 'siblingNotGenerat
     kind: 'external', connectionId, record: { fields: { path: { type: 'string' } } },
   }));
   put(host, PROJECT, 'l4/organization/registry.defs.ts', defs({ modules: [{ moduleName: MODULE }, { moduleName: 'repoHost' }] }));
-  if (declared === 'own') {
+  if (declared === 'own' || declared === 'ownGenerated') {
     // The integration of the module itself declares the system (v4 L4): its own file, with the system added.
     const file = fileInfoFromDisplay(PROJECT, `l4/${MODULE}/integration.defs.ts`)!;
     const original = host.files[fileKey(file)].content;
@@ -67,6 +67,7 @@ function caseHost(connectionId: string, declared: 'sibling' | 'siblingNotGenerat
   }
   if (declared === 'sibling' || declared === 'siblingNotGenerated') put(host, PROJECT, 'l4/repoHost/integration.defs.ts', integration(connectionId));
   if (declared === 'sibling') put(host, PROJECT, 'l1/repoHost/layer_1_external/connections/github.ts', GITHUB);
+  if (declared === 'ownGenerated') put(host, PROJECT, `l1/${MODULE}/layer_1_external/connections/github.ts`, GITHUB);
   if (declared === 'platform') put(host, 102034, 'l1/server/layer_1_external/connections/catalogs/cm.ts', CM);
   return host;
 }
@@ -141,18 +142,32 @@ void test('d1_220: the platform connection (cm) stays as it was: same refusals, 
   assert.deepEqual(out.bundle.findings.filter(item => item.path.includes('catalogs')), []);
 });
 
-void test('d1_220: a system of this module is a distinct refusal that does not ask the user to change the design', async () => {
+void test('d1_222: a system of this module is read from its own declaration like a sibling\'s: sealed, persistence40 ok, no refusal', async () => {
+  caseHost('github', 'ownGenerated');
+  const out = await run();
+  const own = `/_${PROJECT}_/l1/${MODULE}/layer_1_external/connections/github.ts`;
+  assert.equal(out.sources.includes(own), true, 'the own declaration is sealed');
+  if ('refusal' in out.domain) assert.fail(out.domain.refusal);
+  assert.equal(out.domain.build.ok, true, JSON.stringify(out.domain.build.problems));
+  assert.deepEqual(codes(out.domain.build.problems).filter(code => /CATALOG_UNREAD|OWN_DECLARATION|SIBLING_DECLARATION/.test(code)), []);
+  assert.ok(out.persistence && 'build' in out.persistence);
+  assert.equal(out.persistence.build.ok, true, JSON.stringify(out.persistence.build.problems));
+  assert.equal(out.persistence.build.normalizations.some(item => item.code === 'CATALOG_READ_ONLY' && item.path === own), true);
+  assert.ok(out.bundle);
+  assert.deepEqual(out.bundle.findings.filter(item => item.path === own || item.path.includes('catalogs')), []);
+});
+
+void test('d1_222: without the declaration of its own system the refusal is distinct and names the commands, not the design', async () => {
   caseHost('github', 'own');
   const snapshot = await selected();
   await persistD1Input(PROJECT, MODULE, snapshot);
   const domain = await assembleD1Domain(PROJECT, MODULE);
   if ('refusal' in domain) assert.fail(domain.refusal);
-  const refusal = domain.build.problems.find(problem => problem.code === 'EXTERNAL_OWN_SYSTEM');
+  const refusal = domain.build.problems.find(problem => problem.code === 'OWN_DECLARATION_NOT_GENERATED');
   assert.ok(refusal);
   assert.equal(refusal.severity, 'error');
-  assert.match(refusal.message, /ContentFile/);
-  assert.match(refusal.message, /does not yet have the capacity/);
-  assert.doesNotMatch(refusal.message, /Generate module|declare it in a sibling/);
+  assert.match(refusal.message, /@@agentDefsL1 controleEstoque \/declarations/);
+  assert.match(refusal.message, /@@agentMaterializeL1/);
   assert.equal(codes(domain.build.problems).includes('CATALOG_UNREAD'), false);
   assert.equal(domain.build.ok, false);
 });

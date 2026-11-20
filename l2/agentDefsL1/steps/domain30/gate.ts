@@ -19,7 +19,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { entityCatalogSource, isSafeToken, lowerFirst } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { ownSystemRefusal, type EntityCatalogProblem } from '/_102021_/l2/agentDefsL1/steps/input20/entityCatalog.js';
+import { type EntityCatalogProblem } from '/_102021_/l2/agentDefsL1/steps/input20/entityCatalog.js';
 import { externalConnectionId } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import {
   D1_DOMAIN_ACTIONS,
@@ -53,7 +53,7 @@ export interface D1DomainRequest {
   catalogs: Record<string, unknown>;
   /** d1_220: `connectionId` → the source an `external` entity opens (the platform file or a sibling declaration). Absent: the platform path. */
   catalogRefs?: Record<string, string>;
-  /** d1_220: `connectionId` → the distinct refusal (a system of this module, a sibling declaration not generated). */
+  /** d1_220: `connectionId` → the distinct refusal (a declaration of this module or of a sibling not generated). */
   catalogProblems?: Record<string, EntityCatalogProblem>;
 }
 
@@ -274,8 +274,8 @@ function planEntity(
   const catalog = source && Object.prototype.hasOwnProperty.call(request.catalogs, source) ? request.catalogs[source] : undefined;
   const refusal = body && kind === 'external' ? request.catalogProblems?.[externalConnectionId(body)] : undefined;
   if (refusal) {
-    // A system of this module or a sibling declaration not generated: the distinct refusal, never the generic unread catalog.
-    error(problems, refusal.code, entityId, refusal.code === 'EXTERNAL_OWN_SYSTEM' ? ownSystemRefusal(entityId, externalConnectionId(body)) : refusal.detail);
+    // A declaration (of this module or of a sibling) not generated: the distinct refusal, never the generic unread catalog.
+    error(problems, refusal.code, entityId, refusal.detail);
     blocked.add(entityId);
   } else if (source && catalog === undefined) {
     review(problems, 'CATALOG_UNREAD', source, `Catalog ${source} was not opened. Citations keep that owner and their spelling.`);

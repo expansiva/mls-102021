@@ -836,7 +836,7 @@ function registryPipeline(
 }
 
 function definitionFor(
-  request: D1SupportRequest,
+  request: Pick<D1SupportRequest, 'moduleName'>,
   artifactType: D1Definition['artifactType'],
   artifactId: string,
   data: Record<string, unknown>,
@@ -1178,13 +1178,16 @@ export function emitProcesses(
   return { emit };
 }
 
+/** What the `externalConnection` defs read: the L4 of the module and the inventory of files, nothing of the L2 or of the other steps (d1_222). */
+export type D1ExternalRequest = Pick<D1SupportRequest, 'project' | 'moduleName' | 'files' | 'externalSystems'>;
+
 /**
  * One externalConnection def per system the L4 declares (d1_208). It is a copy of what the L4 says, written by code: the id, the title,
  * the description, the settings and the operations with their direction and description. The generated declaration (hosts, kinds,
  * types, methods, verify) is born later, in the materializer, because it is analysis and not derivation.
  */
 export function emitExternalConnections(
-  request: D1SupportRequest,
+  request: D1ExternalRequest,
   problems: D1SupportProblem[],
 ): { emit: D1SupportEmit[] } {
   const emit: D1SupportEmit[] = [];
@@ -1208,7 +1211,7 @@ export function emitExternalConnections(
   return { emit };
 }
 
-function externalPipeline(request: D1SupportRequest, systemId: string, defPath: string): D1PipelineItem {
+function externalPipeline(request: D1ExternalRequest, systemId: string, defPath: string): D1PipelineItem {
   const qualified = qualifyDefPath(request.project, defPath);
   return {
     id: pipelineId(request.project, request.moduleName, 'externalConnection', systemId),
@@ -1241,7 +1244,7 @@ function usecaseOfOperation(request: D1SupportRequest, operation: string): strin
   return match?.usecaseId || '';
 }
 
-function writableAt(request: D1SupportRequest, defPath: string, problems: D1SupportProblem[]): boolean {
+function writableAt(request: Pick<D1SupportRequest, 'files'>, defPath: string, problems: D1SupportProblem[]): boolean {
   const file = request.files.find(item => item.defPath === defPath);
   if (!file) return true;
   if (problems.some(problem => problem.severity === 'error' && problem.code === 'RECEIPT_MISMATCH' && problem.path === file.defPath)) {

@@ -31,6 +31,7 @@ import {
 import { parsePipelineDocument } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { decideEntry } from '/_102021_/l2/agentDefsL1/steps/entry10/gate.js';
+import { writeExternalConnections } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import '/_102021_/l2/agentDefsL1/steps/entry10/agentD1Entry.js';
 import '/_102021_/l2/agentDefsL1/steps/input20/agentD1Input.js';
 import '/_102021_/l2/agentDefsL1/steps/resolve25/agentD1Resolve.js';
@@ -71,6 +72,15 @@ async function beforePromptImplicit(
       moduleName: invocation.module,
       project: String(project),
       command: 'help',
+    });
+  }
+
+  if (invocation.command === 'declarations') {
+    const done = await writeExternalConnections(project, invocation.module);
+    return statusTask(agent, context, declarationsReport(project, invocation.module, done), {
+      moduleName: invocation.module,
+      project: String(project),
+      command: 'declarations',
     });
   }
 
@@ -185,6 +195,16 @@ function addStepIntent(context: mls.msg.ExecutionContext, step: mls.msg.AIPayloa
     parentStepId: 1,
     step,
   };
+}
+
+/** What `/declarations` tells: the systems, the defs written, the refusals, and the command that generates each declaration. */
+function declarationsReport(project: number, moduleName: string, done: { systems: string[]; written: string[]; issues: string[] }): string {
+  if (done.issues.length) return `declarations ${moduleName}: nothing was written for the refused defs. ${done.issues.join(' ')}`;
+  if (!done.systems.length) return `declarations ${moduleName}: the L4 of the module declares no external system. Nothing was written.`;
+  return [
+    `declarations ${moduleName}: ${done.systems.length} system(s), ${done.written.length} def(s) written (the others were already up to date).`,
+    ...done.systems.map(id => `Generate the declaration: @@agentMaterializeL1 {"target":"_${project}_/l1/${moduleName}/layer_1_external/connections/${id}.defs.ts"}`),
+  ].join('\n');
 }
 
 function statusTask(

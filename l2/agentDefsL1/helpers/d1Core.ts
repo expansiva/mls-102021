@@ -75,15 +75,15 @@ const AGENT_PREFIXES = [
   /@@\s*agentDefsL1/gi,
 ];
 
-const COMMANDS = ['run', 'resume', 'help'] as const;
+const COMMANDS = ['run', 'resume', 'help', 'declarations'] as const;
 export type D1Command = typeof COMMANDS[number];
 
 export const MSG_PATH = "Path must not contain '..'.";
 export const MSG_CANDIDATE_DOTDOT = "Candidate path must not contain '..'.";
 export const MSG_CANDIDATE = 'Candidate runs are refused. Nothing was changed.';
 export const MSG_REBUILD = 'Rebuild all is refused. Nothing was deleted.';
-export const MSG_ONE_COMMAND = 'Pass one command: /run, /resume or /help.';
-export const MSG_USAGE = 'Pass @@agentDefsL1 <lowerCamel> /run, /resume or /help.';
+export const MSG_ONE_COMMAND = 'Pass one command: /run, /resume, /declarations or /help.';
+export const MSG_USAGE = 'Pass @@agentDefsL1 <lowerCamel> /run, /resume, /declarations or /help.';
 export const MSG_MODULE = 'Module name must be lowerCamel (example: stockControl).';
 export const MSG_PROJECT = 'Project identity is missing.';
 export const MSG_PROJECT_MISMATCH = 'Project identity does not match this task.';
@@ -338,9 +338,10 @@ export function helpText(moduleName: string, project: number): string {
   const pending = D1_FLOW_STEP_IDS.filter(id => !(D1_IMPLEMENTED_STEP_IDS as readonly string[]).includes(id));
   return [
     `agentDefsL1 ${moduleName} in project ${project}.`,
-    'Commands: /run, /resume, /help.',
+    'Commands: /run, /resume, /declarations, /help.',
     '/run records the checkpoint and runs the implemented steps. A step that is only declared stops the run.',
     '/resume continues an intact checkpoint and does not rewrite it.',
+    '/declarations writes the defs of the external systems this module declares in its L4, from the L4 alone, before the L2. It needs no checkpoint and no other step. Then run @@agentMaterializeL1 with a target for each system to generate the declaration.',
     '/candidate and /rebuild all are refused. Nothing is deleted.',
     `State file: ${displayPath(pipelineFile(project, moduleName))}.`,
     'resolve25 asks a model only for the parts of a contract route the code could not derive, choosing among closed candidates, and calls no model when nothing is open. domain30 writes domain defs. persistence40 writes ports, tables and adapters. usecases50 asks a model for operation steps only and does not write TypeScript. controllers60 writes one controller def per page and does not call a model. support70 writes the access scope, the authority map, the repository registry, the seed plan and the effect plan, and does not call a model. finalize80 checks what was persisted and writes the report. It does not call a model and it does not open a repair cycle.',

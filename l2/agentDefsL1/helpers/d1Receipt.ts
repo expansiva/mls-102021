@@ -22,6 +22,12 @@ export const D1_PROGRESS_SCHEMA = '2026-09-22-d1-progress-v1' as const;
 /** Steps that commit defs. The unit id is the step id. A worker trace is not one of these files. */
 const WRITER_STEPS = ['domain30', 'persistence40', 'usecases50', 'controllers60', 'support70'] as const;
 
+/**
+ * d1_222: the `externalConnection` defs the command `/declarations` writes before the L2 have a trace of their own, under the step
+ * `support70`, so the receipts of the rest of support70 are not replaced. It is a writer like the others.
+ */
+export const D1_EXTERNAL_TRACE = { step: 'support70', unitId: 'external' } as const;
+
 export interface D1WriterReceipt {
   defPath: string;
   desiredHash: string;
@@ -606,8 +612,9 @@ async function writeBlockReceipt(project: number, part: PlannedFile): Promise<vo
 
 export async function readWriterReceipts(project: number, moduleName: string): Promise<D1WriterReceipt[]> {
   const out: D1WriterReceipt[] = [];
-  for (const step of WRITER_STEPS) {
-    const progress = await readProgress(project, moduleName, step, step);
+  const traces = [...WRITER_STEPS.map(step => ({ step: step as string, unitId: step as string })), D1_EXTERNAL_TRACE];
+  for (const { step, unitId } of traces) {
+    const progress = await readProgress(project, moduleName, step, unitId);
     if (!progress || !progress.finalized || progress.invalidated) continue;
     for (const file of progress.files) {
       if (file.action !== 'write' || file.status !== 'done' || !file.desiredHash) continue;

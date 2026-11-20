@@ -2,7 +2,7 @@
 
 // d1_220: where the catalog of an `external` entity is. The entity names its connection by `connectionId` and nothing else; the resolver of
 // the platform (`resolveConnection`, d1_208 / d2_187) says whose system it is: the platform (a catalog file written by hand), a system of
-// a sibling module (its generated declaration), or a system of this module (no declaration yet: a distinct refusal).
+// a sibling module (its generated declaration), or a system of this module (its declaration is generated before the L2 by `/declarations`; without it, a distinct refusal).
 // This file reads nothing itself: each step passes the `read` of its own host.
 
 import { catalogFilePath, externalConnectionId } from '/_102020_/l2/helpers/connections/catalogPath.js';
@@ -23,10 +23,10 @@ import {
 /** What the reader takes: `_<project>_/l…` (a qualified ref), or a logical path of this project (`l4/<module>/…`). */
 export type EntityCatalogRead = (ref: string) => Promise<string | null>;
 
-/** The own-system refusal names the entity, which only the gate knows: it writes the text with `ownSystemRefusal`. */
-export type EntityCatalogProblem =
-  | { code: 'SIBLING_DECLARATION_MISSING'; detail: string }
-  | { code: 'EXTERNAL_OWN_SYSTEM' };
+export interface EntityCatalogProblem {
+  code: 'SIBLING_DECLARATION_MISSING' | 'OWN_DECLARATION_NOT_GENERATED';
+  detail: string;
+}
 
 export interface EntityCatalogs {
   /** `connectionId` → the source every reader opens (the platform file or the declaration a sibling generated). */
@@ -37,9 +37,9 @@ export interface EntityCatalogs {
 
 export const NO_ENTITY_CATALOGS: EntityCatalogs = { refs: {}, problems: {} };
 
-/** The distinct refusal of a system this module declares: its declaration is born after the defs (external15). Same meaning as the refusal of the L2. */
-export function ownSystemRefusal(entityId: string, connectionId: string): string {
-  return `Entity ${entityId} uses system ${connectionId} declared by this module. The generator does not yet have the capacity to read a system of its own module on an external entity.`;
+/** The distinct refusal of a system this module declares whose declaration is not generated: it names the two commands, and asks nothing of the design. */
+export function ownDeclarationMissing(connectionId: string, moduleName: string, project: number): string {
+  return `Connection ${connectionId} is a system this module declares, and its declaration is not generated. Run @@agentDefsL1 ${moduleName} /declarations, then @@agentMaterializeL1 {"target":"_${project}_/l1/${moduleName}/layer_1_external/connections/${connectionId}.defs.ts"}.`;
 }
 
 /** Ids of the connections the `external` entities name. Sorted, once each. */
@@ -88,8 +88,9 @@ export async function resolveEntityCatalogs(
   for (const connectionId of pending) {
     const resolved = resolveConnection(connectionId, scope, false);
     if (resolved.origin === 'own') {
-      refs[connectionId] = `/${declarationRef(project, moduleName, connectionId)}`;
-      problems[connectionId] = { code: 'EXTERNAL_OWN_SYSTEM' };
+      const ref = declarationRef(project, moduleName, connectionId);
+      refs[connectionId] = `/${ref}`;
+      if ((await read(ref)) === null) problems[connectionId] = { code: 'OWN_DECLARATION_NOT_GENERATED', detail: ownDeclarationMissing(connectionId, moduleName, project) };
     } else if (resolved.origin === 'sibling') {
       const ref = declarationRef(project, resolved.moduleName, connectionId);
       refs[connectionId] = `/${ref}`;

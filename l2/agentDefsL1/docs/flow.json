@@ -26,6 +26,7 @@
   "invocation": {
     "run": "@@agentDefsL1 <lowerCamel> /run",
     "resume": "@@agentDefsL1 <lowerCamel> /resume",
+    "declarations": "@@agentDefsL1 <lowerCamel> /declarations",
     "help": "@@agentDefsL1 <lowerCamel> /help",
     "moduleRule": "The module token is required and must be lowerCamel. The name is never inferred from prose.",
     "projectRule": "mls.actualProject is captured once at invocation and stored on the task and on the checkpoint. Later hooks do not re-read the global.",

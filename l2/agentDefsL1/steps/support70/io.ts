@@ -2,7 +2,7 @@
 
 import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { draftFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
-import { commitD1Unit, logicalDefPath, type D1UnitPart } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
+import { D1_EXTERNAL_TRACE, commitD1Unit, logicalDefPath, readWriterReceipts, type D1UnitPart } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { futureOutputPath, qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
@@ -41,11 +41,12 @@ import {
   type D1SeedModel,
   type D1SeedRoleTag,
   type D1SupportBuild,
+  type D1SupportProblem,
   type D1SupportFile,
   type D1SupportHelper,
   type D1SupportRequest,
 } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
-import { buildD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
+import { buildD1Support, emitExternalConnections } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import type { D1ControllerGrant, D1ControllerProblem, D1ControllerRelationship, D1ScopeGrantPlan } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 
 const SUPPORT_TYPES = new Set(['accessScope', 'authorityMap', 'repositoryRegistration', 'persistenceSeeds', 'integrationOutbound', 'workflowProcess', 'externalConnection']);
@@ -154,6 +155,38 @@ export async function commitD1Support(
     parts: [...rendered.parts, ...removalParts(project, build, files)],
   });
   return { written: committed.written, issues: committed.issues };
+}
+
+/**
+ * d1_222: writes only the `externalConnection` defs of the systems the L4 of this module declares, before the L2 and before the rest of the
+ * D1. It is `emitExternalConnections` of support70, not a copy: the def depends on `l4/<module>/integration.defs.ts` and on nothing else, so
+ * a later full round writes the same bytes. The command leaves a writer receipt of its own, which input20 reads like the others.
+ */
+export async function writeExternalConnections(
+  project: number,
+  moduleName: string,
+): Promise<{ systems: string[]; written: string[]; issues: string[] }> {
+  const externalSystems = await ownSystemsOf(project, moduleName);
+  const problems: D1SupportProblem[] = [];
+  const { emit } = emitExternalConnections({ project, moduleName, files: [], externalSystems }, problems);
+  const refused = problems.filter(problem => problem.severity === 'error').map(problem => problem.message);
+  if (refused.length) return { systems: [], written: [], issues: refused };
+  const rendered = renderParts(project, emit, []);
+  if (rendered.issues.length) return { systems: [], written: [], issues: rendered.issues };
+  const receipts = await readWriterReceipts(project, moduleName);
+  // A def this writer or another wrote, and nobody edited, is replaced when the L4 changes; any other file at that path is not touched.
+  const parts = rendered.parts.map(part => ({ ...part, receiptHash: receipts.find(item => item.defPath === logicalDefPath(part.defPath))?.desiredHash ?? '' }));
+  const systems = externalSystems.map(system => system.id).sort();
+  const committed = await commitD1Unit({
+    project,
+    moduleName,
+    step: D1_EXTERNAL_TRACE.step,
+    unitId: D1_EXTERNAL_TRACE.unitId,
+    runId: 'declarations',
+    draftText: `${JSON.stringify({ moduleName, systems }, null, 2)}\n`,
+    parts,
+  });
+  return { systems, written: committed.written, issues: committed.issues };
 }
 
 /** A support def is removed only when this build did not keep it for a live consumer. */
