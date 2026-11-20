@@ -91,6 +91,16 @@ void test('d1_235: the plan the planner wrote, through the prepare, goes from in
   assert.match(compare, /usecase createTool: nova/);
   assert.match(compare, /usecase updateTool: nova/);
   assert.match(compare, /workflowProcess toolCatalogRefresh: (mudou|nova)/);
+  // d1_236: a process changed, so the compare does not bring the old engine back (it would be stale): no engine until the materializer writes it, and a
+  // run of the request layer alone (a `target` of the request service that imports it) does, by code, before the model is asked.
+  const engineIn = () => Object.values(host.files).filter(file => file.status !== 'deleted' && file.folder === `${MODULE}/layer_1_external/adapters/workflow` && file.shortName === 'engine');
+  assert.equal(engineIn().length, 0);
+  const { loadRun } = await import('/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js');
+  const { REQUEST_SPEC } = await import('/_102021_/l2/agentMaterializeL1/steps/requests50/agentM12RequestService.js');
+  const loaded = await loadRun({ project: PROJECT, module: MODULE, scope: '', target: `_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/cm.defs.ts`, force: false });
+  assert.deepEqual(loaded.selected.map(unit => unit.unitId), ['cm']);
+  assert.match((await REQUEST_SPEC.prepare!(loaded.ctx, loaded.selected))[0] ?? '', /^workflowEngine: written/);
+  assert.equal(engineIn().length, 1);
 });
 
 async function readyHost(fixtureId: string, moduleName: string): Promise<TestHost> {

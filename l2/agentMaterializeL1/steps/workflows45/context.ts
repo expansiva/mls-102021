@@ -372,6 +372,17 @@ export async function prepareWorkflows(ctx: M12Context): Promise<string[]> {
 }
 
 /**
+ * d1_236: the module engine for a run that does not select a workflow unit. The request service of a route that starts a process imports the
+ * engine, and a maintenance run (`/compare` leaves it out when a process changed, so that it is regenerated) can ask for the request service
+ * alone (`target`): without the engine the service does not compile. The same function as the workflows layer, so there is one way to write it.
+ * A module with no process has no engine.
+ */
+export async function ensureWorkflowEngine(ctx: M12Context): Promise<string[]> {
+  if (!ctx.units.some(unit => unit.definition.artifactType === 'workflowProcess')) return [];
+  return prepareWorkflows(ctx);
+}
+
+/**
  * Compiles the engine and records the outcome as a unit of the workflows layer (`engine`): a type error is `failed`
  * COMPILE_FAILED and keeps the report `partial`; a compile that did not happen is `done` COMPILE_UNAVAILABLE_L1 and
  * is listed in `notCompiled`. Before d1_196 the outcome went only to the phase trace, and the report said clean.

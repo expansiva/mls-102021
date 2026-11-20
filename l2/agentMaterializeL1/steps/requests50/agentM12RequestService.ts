@@ -4,6 +4,7 @@ import type { IAgentAsync } from '/_102027_/l2/aiAgentBase.js';
 import { M12_REQUEST_SERVICE_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { modelWorkerAgent, type M12ModelLayerSpec } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import { confirmOnlySource } from '/_102021_/l2/agentMaterializeL1/steps/requests50/confirmOnly.js';
+import { ensureWorkflowEngine } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { M12_REQUEST_TOOL, M12_REQUEST_TOOL_DESCRIPTION, loadRequestContext, normalizeRequestsTyping, requestAnswerProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 
 export const REQUEST_SPEC: M12ModelLayerSpec = {
@@ -12,6 +13,8 @@ export const REQUEST_SPEC: M12ModelLayerSpec = {
   folder: 'steps/requests50',
   toolName: M12_REQUEST_TOOL,
   toolDescription: M12_REQUEST_TOOL_DESCRIPTION,
+  // d1_236: the request service of a route that starts a process imports the engine; a run of this layer alone writes it when it is not there.
+  prepare: ctx => ensureWorkflowEngine(ctx),
   context: async (ctx, unit, repair) => (await loadRequestContext(ctx, unit, repair)).human,
   gate: requestAnswerProblems,
   // d1_225: an event line that writes nothing is a route that only confirms the receipt; nothing is left for the model.
