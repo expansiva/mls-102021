@@ -4,6 +4,9 @@
 // (`mls-102047@0aebbe0a`: `ContentFile` lives in an outside system, `Publication` is the record of each save, a table of the module).
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import { installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
@@ -47,10 +50,24 @@ void test('d1_221: the record of each save is written by the usecase that writes
   ]);
 });
 
-void test('d1_221: an entity that is not an event is not recorded with its parent, even when nobody else has a step for it', () => {
+void test('d1_226: the answer of the NS5 decides, with the map of what is written outside the journeys: the real integration of conteudo (5a595492) keeps the record of each save', () => {
   const { index, entities, journeys } = load();
+  const integration = parseD1Source(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../../agentMaterializeL1/steps/requests50/fixtures/conteudoIntegration5a595492.recorded.txt'), 'utf8'), 'defs');
+  assert.deepEqual(childWritersOf(index, entities, journeys, { integration } as never), [
+    { childId: 'Publication', parentId: 'ContentFile', relationshipId: 'publicationContentFile' },
+  ]);
+});
+
+void test('d1_226: an entity another writer owns is not recorded with its parent, whatever its class: a process, an inbound line or a serve route', () => {
+  const { index, entities, journeys } = load();
+  const byProcess = { workflows: { processes: [{ processId: 'p', tasks: [{ taskId: 't', kind: 'mechanical', entityRef: 'Publication', effect: 'create' }] }] } };
+  const byInbound = { integration: { inbound: [{ id: 'in', writes: ['Publication'] }] } };
+  const byServe = { integration: { connections: [{ connectionId: 'c', operationId: 'o', direction: 'serve', effect: 'create', entityRefs: ['Publication'] }] } };
+  for (const outside of [byProcess, byInbound, byServe]) assert.deepEqual(childWritersOf(index, entities, journeys, outside as never), [], JSON.stringify(outside));
+  // The class is not asked: the same entity as a supporting record is the same answer.
   entities.Publication = { ...entities.Publication, class: 'supporting' };
-  assert.deepEqual(childWritersOf(index, entities, journeys), []);
+  assert.deepEqual(childWritersOf(index, entities, journeys).map(item => item.childId), ['Publication']);
+  assert.deepEqual(childWritersOf(index, entities, journeys, byProcess as never), []);
 });
 
 void test('d1_221: a parent nobody writes has no child to record', () => {

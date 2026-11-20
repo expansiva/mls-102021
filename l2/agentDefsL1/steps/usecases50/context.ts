@@ -6,6 +6,7 @@ import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { childWritersOf, type D1ChildWriter } from '/_102021_/l2/agentDefsL1/steps/usecases50/childWriters.js';
+import type { Ns5OutsideJourneysInput } from '/_102035_/l2/solution/entityWriter.js';
 import { parseCatalogSource, resolveEntityCatalogs } from '/_102021_/l2/agentDefsL1/steps/input20/entityCatalog.js';
 import {
   contractPath,
@@ -158,10 +159,12 @@ export async function loadVerifiedSources(
   }
   journeys.sort((left, right) => left.journeyId.localeCompare(right.journeyId));
   const ontologyIndex = await take(project, paths.ontologyIndex, 'defs', snapshot.sources, findings, hashes, files);
+  const workflows = await take(project, paths.workflows, 'defs', snapshot.sources, findings, hashes, files);
   const childWriters = childWritersOf(
     ontologyIndex,
     Object.fromEntries(Object.entries(bodies).filter(([, body]) => body !== null)),
     journeys.map(journey => ({ journeyId: journey.journeyId, steps: journey.steps })),
+    { workflows, integration } as Ns5OutsideJourneysInput,
   );
   const pages = new Set(snapshot.selection.pages.map(page => page.pageId));
   for (const request of snapshot.selection.requests || []) pages.add(request.pageId);

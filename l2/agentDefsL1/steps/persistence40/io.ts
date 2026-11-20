@@ -157,8 +157,8 @@ async function persistenceRequest(
 
 /** The entities the L4 says their parent writes (the rule of the NS5): the port of each one can create. */
 async function recordedWithParentOf(moduleName: string, entities: Record<string, unknown>, project: number): Promise<string[]> {
-  const { index, journeys } = await loadWriterJourneys(moduleName, logical => readLogical(project, logical));
-  return childWritersOf(index, entities, journeys).map(child => child.childId);
+  const { index, journeys, outside } = await loadWriterJourneys(moduleName, logical => readLogical(project, logical));
+  return childWritersOf(index, entities, journeys, outside).map(child => child.childId);
 }
 
 async function readLogical(project: number, logical: string): Promise<string | null> {

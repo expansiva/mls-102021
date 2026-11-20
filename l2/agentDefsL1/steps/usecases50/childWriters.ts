@@ -4,14 +4,12 @@
 // platform), not a copy: this file only hands it the L4 of the module and reads its answer. An entity whose writer resolves as `parent`
 // is recorded inside the usecase that writes the parent (for an `external` parent: after the call to the connection).
 //
-// Only an entity of `class: event` is read that way. The NS5 resolves `parent` for any entity nobody writes by a step of its own, and measured
-// on the 16 modules of the platform that is also an order or a supporting record that a workflow or another
-// step writes, so recording it with its parent would be wrong. An `event` is a record of what the parent step did (who, when, which): it has
-// no other writer, and that is what the L4 says of it.
+// What the NS5 answers is what counts: an entity another writer owns (an inbound line, a serve route, a process) does not resolve `parent`, because the
+// resolver is given the map of what is written outside the journeys (`ns5WrittenOutsideJourneys`, from the L4 workflows and integration).
 
 import { inputPaths, isSafeToken, journeyPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/source.js';
-import { ns5ResolveEntityWriter, ns5WriterPlanOfOntology, ns5WriterViewOfEntity } from '/_102035_/l2/solution/entityWriter.js';
+import { ns5ResolveEntityWriter, ns5WriterPlanOfOntology, ns5WriterViewOfEntity, ns5WrittenOutsideJourneys, type Ns5OutsideJourneysInput } from '/_102035_/l2/solution/entityWriter.js';
 import { ns5OntologyEntityViews, type Ns5OntologyAnyIndex } from '/_102035_/l2/solution/ontologyView.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 
@@ -40,6 +38,7 @@ export function childWritersOf(
   index: unknown,
   entities: Readonly<Record<string, unknown>>,
   journeys: readonly D1WriterJourney[],
+  outsideSources: Ns5OutsideJourneysInput = {},
 ): D1ChildWriter[] {
   if (!isRecord(index)) return [];
   const bodies = Object.values(entities).filter(isRecord) as unknown as Ns5OntologyAnyEntity[];
@@ -50,18 +49,18 @@ export function childWritersOf(
     journeyId: journey.journeyId,
     business: { steps: journey.steps.map(step => ({ stepId: step.stepId, kind: step.kind, entity: step.entity, affects: [...step.affects], effect: step.effect })) },
   }));
+  const outside = ns5WrittenOutsideJourneys(outsideSources);
   const out: D1ChildWriter[] = [];
   for (const view of views) {
-    const resolved = ns5ResolveEntityWriter(ns5WriterViewOfEntity(view), plan, read);
+    const resolved = ns5ResolveEntityWriter(ns5WriterViewOfEntity(view), plan, read, outside);
     if (resolved.kind !== 'parent' || !resolved.via) continue;
-    if ((entities[view.entityId] as { class?: unknown } | undefined)?.class !== 'event') continue;
     out.push({ childId: view.entityId, parentId: resolved.via.entityId, relationshipId: resolved.via.relationshipId });
   }
   return out.sort((left, right) => `${left.childId}\u0000${left.parentId}`.localeCompare(`${right.childId}\u0000${right.parentId}`));
 }
 
 /** The journeys of the module as the resolver reads them: the index lists the ids, each file has the steps. A file that is not there is not a journey. */
-export async function loadWriterJourneys(moduleName: string, read: (logicalPath: string) => Promise<string | null>): Promise<{ index: unknown; journeys: D1WriterJourney[] }> {
+export async function loadWriterJourneys(moduleName: string, read: (logicalPath: string) => Promise<string | null>): Promise<{ index: unknown; journeys: D1WriterJourney[]; outside: Ns5OutsideJourneysInput }> {
   const paths = inputPaths(moduleName);
   const indexText = await read(paths.ontologyIndex);
   const journeyIndexText = await read(paths.journeyIndex);
@@ -84,5 +83,7 @@ export async function loadWriterJourneys(moduleName: string, read: (logicalPath:
     }));
     journeys.push({ journeyId, steps });
   }
-  return { index: indexText ? parseD1Source(indexText, 'defs') : null, journeys };
+  const sourceOf = async (logical: string): Promise<unknown> => { const text = await read(logical); return text ? parseD1Source(text, 'defs') : null; };
+  const outside = { workflows: await sourceOf(paths.workflows), integration: await sourceOf(paths.integration) } as Ns5OutsideJourneysInput;
+  return { index: indexText ? parseD1Source(indexText, 'defs') : null, journeys, outside };
 }
