@@ -556,7 +556,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     `Write the request service of the connection routes of module ${moduleName}, file \`${unit.outputRef}\`. There is no page contract.`,
     `It exports \`requests\`, typed exactly \`${contractsInterface}\` with \`import type { ${[...new Set(typed.flatMap(item => [item.inputType, item.outputType]))].sort().join(', ')} } from '${catalogSpecifiers[0] ?? ''}'\`: one async function per route, keyed by the route string.`,
     'Each function takes the whole catalog input and returns the catalog output. Do not drop a field of the input. Do not call fetch, callConnection or any HTTP client.',
-    '`ctx.requestMeta.connection` describes the call that reached this route: `connectionId`, `operationId`, `context` (the person is `context.actorMdmId`) and an optional `idempotencyKey`. The type is `requestMeta.connection` on `RequestContext` (`/_102034_/l1/server/layer_2_controllers/contracts.js`). The engine already sets `context.actorMdmId`.',
+    '`ctx.requestMeta?.connection` describes the call that reached this route: `connectionId`, `operationId`, `context` (the person is `context.actorMdmId`) and an optional `idempotencyKey`. The type is `requestMeta.connection` on `RequestContext` (`/_102034_/l1/server/layer_2_controllers/contracts.js`). The engine already sets `context.actorMdmId`.',
     ...(marks.some(mark => (catalogRefs.get(mark.connectionId)?.origin ?? 'platform') !== 'platform') ? [
       // d1_218: the input of the serve of an outside system is the body that system sends; the module's vocabulary starts after this route.
       `The route${marks.filter(mark => (catalogRefs.get(mark.connectionId)?.origin ?? 'platform') !== 'platform').length > 1 ? 's' : ''} of a system outside the app (declared by a module): the input is the body the outside system sends, with its names and its shape (its declaration types it), handed over as it came. The route translates it into the input of the usecase or of the process it calls, which is in the vocabulary of the module, reading what the L4 says of the line (below).`,
@@ -637,6 +637,10 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
       'The response shape is only what the output type of this operation declares. Repeating the same identity is never an error.',
       generated ? fence('ts', exportSignatures(generated)) : '',
     ].filter(Boolean).join('\n')));
+  }
+  const requestContext = await ctx.read(PLATFORM_FILES.requestContext);
+  if (requestContext) {
+    parts.push(section(`Platform ${PLATFORM_FILES.requestContext}`, [`Import from \`/${PLATFORM_FILES.requestContext.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(requestContext))].join('\n\n')));
   }
   if (repair) {
     parts.push(section('Repair', [
@@ -813,17 +817,24 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
   const cited = ctx.units.filter(item => item.definition.artifactType === 'usecase' && (uses.has(item.unitId) || dependencies.has(item.defRef)));
   const usecases = ctx.units.filter(item => item.definition.artifactType === 'usecase')
     .sort((left, right) => Number(uses.has(right.unitId)) - Number(uses.has(left.unitId)));
+  // d1_239: the "Usecase …" section already lists every generated usecase. The enum pair uses that same list,
+  // so a route with `uses: []` still sees a pair that belongs to the module.
+  const generatedUsecases: M12Unit[] = [];
   for (const item of usecases) {
     const shown = await usecaseSection(ctx, item, uses.has(item.unitId));
-    if (shown) parts.push(shown);
+    if (!shown) continue;
+    generatedUsecases.push(item);
+    parts.push(shown);
   }
   const recorded = cited.flatMap(item => childRecordsOf(ctx, item).map(record => `- \`${item.unitId}\` records ${record.entityId} with the entity it writes, after the write, with the port \`${record.port}\`.`));
   if (recorded.length) parts.push(section('What the usecases of the routes already record', [
     'The text of the contract describes what a route does through its usecase. These records are written by the usecase: the request service does not write them, does not resolve their port and does not repeat them. It calls the usecase and returns its output.',
     ...recorded,
   ].join('\n')));
-  const enumPairs = await externalEnumPairs(ctx, cited);
-  const unpaired = unpairedProblems(enumPairs);
+  const enumPairs = await externalEnumPairs(ctx, generatedUsecases);
+  const citedIds = new Set(cited.map(item => String(item.definition.data.usecaseId ?? item.definition.artifactId ?? item.unitId)));
+  // A count mismatch of a usecase this route does not cite must not refuse the route.
+  const unpaired = unpairedProblems(enumPairs.filter(pair => citedIds.has(pair.usecaseId)));
   if (unpaired.length) throw new Error(unpaired.join(' | '));
   const externalEnums = enumPairs;
   if (externalEnums.length) parts.push(section('Enum values of an external entity (source: the L4 of the entity and the catalog)', enumMapSection(externalEnums)));
@@ -1039,7 +1050,8 @@ export function requestGate(code: string, input: {
   if (!/export\s+const\s+requests\b[\s\S]{0,400}?=\s*\{/u.test(code)) problems.push('The file must export `const requests = { … }`, one function per contract route.');
   if (input.contractsInterface?.startsWith('{')) {
     const annotation = /export\s+const\s+requests\s*:\s*([\s\S]*?)\s*=\s*\{/u.exec(code);
-    if (annotation?.[1].replace(/\s+/gu, '') !== input.contractsInterface.replace(/\s+/gu, '')) {
+    const flatType = (text: string) => text.replace(/;\s*\}/u, '}').replace(/\s+/gu, '');
+    if (!annotation || flatType(annotation[1]) !== flatType(input.contractsInterface)) {
       problems.push(`\`requests\` must be typed \`${input.contractsInterface}\`: each serve route takes its catalog input and returns its catalog output.`);
     }
   } else if (input.contractsInterface) {

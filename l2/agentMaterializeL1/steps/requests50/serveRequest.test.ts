@@ -401,6 +401,34 @@ void test('d1_218 s2: the route of a system outside the app is told the input is
   assert.equal(platform.human.includes('the body the outside system sends'), false);
 });
 
+void test('d1_239 s3: the serve context of requests/cm carries RequestContext and ctx.requestMeta?.connection, and the recorded cm.ts of 102047 passes the gate', async () => {
+  const P47 = 102047;
+  // Recorded copy of mls-102047 l1/agents/layer_2_application/requests/cm.ts at HEAD (20/11/2026); a test never reads the live bench.
+  const cm = readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures/agentsCmHead.recorded.txt'), 'utf8');
+  const contracts = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_2_controllers/contracts.ts'), 'utf8');
+  const service = unit('requestService', 'cm', {
+    pageId: 'cm',
+    requests: [
+      { route: `${MODULE}.cm.agentDraftReady`, serves: 'cm.agentDraftReady' },
+      { route: `${MODULE}.cm.describe`, serves: 'cm.describe' },
+      { route: `${MODULE}.cm.record`, serves: 'cm.record' },
+    ],
+  }, `_${P47}_/l1/${MODULE}/layer_2_application/requests/cm.ts`);
+  const read = async (ref: string) => {
+    const key = ref.replace(/^\//u, '');
+    if (key === CATALOG_REF.replace(/^\//u, '')) return CATALOG;
+    if (key === '_102034_/l1/server/layer_2_controllers/contracts.ts') return contracts;
+    return null;
+  };
+  const loaded = await loadRequestContext({ run: { project: P47, module: MODULE }, units: [service], read } as never, service);
+  assert.match(loaded.human, /`ctx\.requestMeta\?\.connection` describes the call/u);
+  assert.equal(loaded.human.includes('`ctx.requestMeta.connection`'), false);
+  assert.match(loaded.human, /export interface RequestContext \{/u);
+  assert.match(loaded.human, /connection\?: BffConnectionMeta;/u);
+  const gate = { header: cm.split('\n')[0], contractsInterface: loaded.contractsInterface, routes: loaded.routes, project: P47, moduleName: MODULE, pageId: 'cm', waived: new Set<string>(), catalogSpecifiers: loaded.catalogSpecifiers };
+  assert.deepEqual(requestGate(cm, gate), []);
+});
+
 void test('d1_230: the describe route derived from the L4 line lists both usecases; the cm.ts of today (one call) is refused and a route that calls both passes', async () => {
   const { deriveServeRequests } = await import('/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js');
   const derived = deriveServeRequests({

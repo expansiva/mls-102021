@@ -1,11 +1,13 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/steps/usecases40/context.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { parseDefinitionExport, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import { derivedReadSection, derivedReadValue, entityNames, loadUsecaseContext, usecaseAnswerProblems } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 
 const PROJECT = 102099;
@@ -433,6 +435,112 @@ test('the Task section of a write on an external entity says the external system
     const localTask = taskOf((await loadUsecaseContext(local.ctx as never, local.usecase)).human);
     assert.match(localTask, /Enforce every rule/u);
     assert.equal(localTask.includes('The entity is external'), false);
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});
+
+test('the get context of a role with locate.users does not ask for the role tag', async () => {
+  const previous = globalThis.mls;
+  (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };
+  const ontologyRef = `_${PROJECT}_/l4/${MODULE}/ontology/OrganizationUser.defs.ts`;
+  const files = new Map<string, string>([
+    [ontologyRef, ontology({
+      title: 'Organization user',
+      kind: 'role',
+      subtype: 'Person',
+      roleTag: 'fila.OrganizationUser',
+      capabilities: {
+        'locate.users': 'Lists the organization users who have a platform login.',
+        'read.byId': 'Reads one person by record id.',
+      },
+    })],
+  ]);
+  const usecase = unit('usecase', 'getOrganizationUser', {
+    usecaseId: 'getOrganizationUser',
+    entityId: 'OrganizationUser',
+    operation: 'get',
+    rulesApplied: [],
+    effects: [],
+    functions: [{ functionName: 'getOrganizationUser', input: [{ name: 'id', type: 'string' }], output: [{ name: 'id', type: 'string' }] }],
+    mdm: {
+      namespace: MODULE,
+      role: 'fila.OrganizationUser',
+      atomic: true,
+      calls: [{
+        id: 'get',
+        method: 'get',
+        target: 'entity',
+        capabilities: ['read.byId'],
+        arguments: [{ name: 'mdmId', role: 'selector', path: 'id' }],
+        result: ['mdmId', 'version', 'details'],
+      }],
+    },
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/getOrganizationUser.ts`, [ontologyRef]);
+  const ctx = { run: { project: PROJECT, module: MODULE }, units: [usecase], read: async (ref: string) => files.get(ref) ?? null };
+  try {
+    const human = (await loadUsecaseContext(ctx as never, usecase)).human;
+    const instructions = human
+      .split('\n## ')
+      .filter(part => !part.startsWith('l4 ontology') && !part.includes('l4 ontology of the entity'))
+      .join('\n');
+    assert.match(human, /locate\.users/u);
+    assert.equal(/tags\.includes|ROLE_TAG|role tag|without the (role )?tag/iu.test(instructions), false);
+    assert.match(instructions, /ctx\.mdm\.entity\.get\(\{ mdmId \}\)/u);
+    const definition = human.split('## Definition')[1]?.split('\n## ')[0] ?? '';
+    assert.match(definition, /"method": "get"/u);
+    assert.match(definition, /"capabilities": \[\s*"read\.byId"\s*\]/u);
+    assert.equal(definition.includes('roleTag'), false);
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});
+
+test('createExecutionSummary of agents: a reason waives the rules that do not govern this write', async () => {
+  const mlsBase = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
+  const read = async (ref: string): Promise<string | null> => {
+    const match = /^_(\d+)_\/(.+)$/u.exec(ref);
+    if (!match) return null;
+    const file = path.join(mlsBase, `mls-${match[1]}`, match[2]);
+    return existsSync(file) ? readFileSync(file, 'utf8') : null;
+  };
+  const declared = parseDefinitionExport(await read('_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts') ?? '');
+  assert.ok(declared, 'the agents def parses');
+  const planned = await usecasePlan(declared, read);
+  assert.equal(planned.detail, '');
+  const outputRef = '_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.ts';
+  const usecase = {
+    definition: planned.definition,
+    declared,
+    outputRef,
+    defRef: outputRef.replace(/\.ts$/u, '.defs.ts'),
+    output: { project: 102047, level: 1, folder: 'agents/layer_2_application/usecases', shortName: 'createExecutionSummary', extension: '.ts' },
+  } as unknown as M12Unit;
+  const previous = globalThis.mls;
+  (globalThis as { mls: unknown }).mls = { actualProject: 102047, stor: { files: {}, getKeyToFile: keyOf } };
+  const ctx = { run: { project: 102047, module: 'agents' }, units: [usecase], read };
+  try {
+    const loaded = await loadUsecaseContext(ctx as never, usecase);
+    const body = (await read(outputRef) ?? '')
+      .split('\n')
+      .slice(1)
+      .filter(line => !line.startsWith('// Rules '))
+      .join('\n');
+    const code = `${loaded.header}\n${body}`;
+    const waived = [
+      { ruleId: 'activityNewestFirst', reason: 'This rule governs the activity list, not this create.' },
+      { ruleId: 'executionNeverEdited', reason: 'This rule governs a later edit, not this create.' },
+    ];
+    const released = await usecaseAnswerProblems(ctx as never, usecase, code, waived);
+    assert.equal(released.some(problem => problem.includes('activityNewestFirst')), false, released.join('\n'));
+    assert.equal(released.some(problem => problem.includes('executionNeverEdited')), false, released.join('\n'));
+    const held = await usecaseAnswerProblems(ctx as never, usecase, code, []);
+    assert.ok(held.some(problem => problem.includes("ruleId 'activityNewestFirst'")), held.join('\n'));
+    assert.ok(held.some(problem => problem.includes("ruleId 'executionNeverEdited'")), held.join('\n'));
+    const empty = await usecaseAnswerProblems(ctx as never, usecase, code, [{ ruleId: 'activityNewestFirst', reason: '' }]);
+    assert.ok(empty.some(problem => problem.startsWith('notApplicable activityNewestFirst needs a reason') && problem.includes('got ""')), empty.join('\n'));
+    const foreign = await usecaseAnswerProblems(ctx as never, usecase, code, [{ ruleId: 'notARule', reason: 'long enough reason' }]);
+    assert.ok(foreign.some(problem => problem === 'notApplicable "notARule" is not a rule of this module.'), foreign.join('\n'));
   } finally {
     (globalThis as { mls: unknown }).mls = previous;
   }

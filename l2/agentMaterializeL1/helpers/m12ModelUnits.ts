@@ -29,7 +29,10 @@ export const M12_CODE_SCHEMA: Record<string, unknown> = {
         type: 'object',
         additionalProperties: false,
         required: ['ruleId', 'reason'],
-        properties: { ruleId: { type: 'string' }, reason: { type: 'string' } },
+        properties: {
+          ruleId: { type: 'string' },
+          reason: { type: 'string', description: 'At least 10 characters, why this rule does not govern this operation.' },
+        },
       },
     },
   },
@@ -98,19 +101,26 @@ export async function missingImports(ctx: M12Context, code: string): Promise<str
 }
 
 /**
- * The answer's not-applicable list. A rule of this unit needs a reason to be waived. A rule the unit does not list
- * (the prompt shows every rule of the module, and the model says which do not concern it) is not a waiver of
- * anything: it is dropped from the list, not refused. Refusing it rejected a correct fecharComanda until the
- * repairs ran out (05/10/2026).
+ * The answer's not-applicable list. A rule of this unit needs a reason of at least 10 characters to be waived.
+ * A ruleId the unit does not list but the module has (the prompt shows the other rules of the module, and the model says which
+ * do not concern it) is not a waiver of anything: it is dropped, not refused. Refusing it rejected a correct fecharComanda until
+ * the repairs ran out (05/10/2026). A ruleId no rule of the module has is a problem (d1_239): dropping it hid a waiver the gate
+ * never saw. Without `moduleRuleIds` the module is not known and nothing outside the unit is refused.
  */
-export function readNotApplicable(value: unknown, ruleIds: readonly string[]): { items: M12RuleNotApplicable[]; problems: string[] } {
+export function readNotApplicable(value: unknown, ruleIds: readonly string[], moduleRuleIds?: readonly string[]): { items: M12RuleNotApplicable[]; problems: string[] } {
   const items: M12RuleNotApplicable[] = [];
   const problems: string[] = [];
   for (const raw of Array.isArray(value) ? value : []) {
     const ruleId = typeof raw?.ruleId === 'string' ? raw.ruleId : '';
     const reason = typeof raw?.reason === 'string' ? raw.reason.trim() : '';
-    if (!ruleIds.includes(ruleId)) continue;
-    if (reason.length < 10) { problems.push(`notApplicable ${ruleId} needs a reason.`); continue; }
+    if (!ruleIds.includes(ruleId)) {
+      if (moduleRuleIds && !moduleRuleIds.includes(ruleId)) problems.push(`notApplicable ${JSON.stringify(ruleId)} is not a rule of this module.`);
+      continue;
+    }
+    if (reason.length < 10) {
+      problems.push(`notApplicable ${ruleId} needs a reason of at least 10 characters (why this rule does not govern this operation); got ${JSON.stringify(reason)} (${reason.length} characters).`);
+      continue;
+    }
     items.push({ ruleId, reason });
   }
   return { items, problems };

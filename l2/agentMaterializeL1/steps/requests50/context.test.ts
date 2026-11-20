@@ -254,6 +254,64 @@ test('d1_199/d1_200: the usecase section of a request shows its input type resol
   }
 });
 
+test('d1_239: a route with empty uses still gets the module enum pair, and the input expanded through the catalog barrel', async () => {
+  const previous = globalThis.mls;
+  const contractInfo: M12FileInfo = { project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: PAGE, extension: '.defs.ts' };
+  const catalogDir = '/_102034_/l2/shared/contracts/connections';
+  const barrelRef = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
+  const sim = unit('usecase', 'listAgentSimulation', { usecaseId: 'listAgentSimulation', entityId: 'AgentSimulation' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/listAgentSimulation.ts`);
+  const entity = unit('domainEntity', 'agentSimulation', { entityId: 'AgentSimulation', storageTarget: 'external' }, `_${PROJECT}_/l1/${MODULE}/layer_3_domain/entities/agentSimulation.ts`);
+  const outbound = unit('integrationOutbound', 'outbound', { connections: [{ connectionId: 'cm', operationId: 'simulateAgent', consumer: 'listAgentSimulation', entityRefs: ['AgentSimulation'] }] }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/integration/outbound.ts`);
+  const request = unit('requestService', PAGE, {
+    pageId: PAGE,
+    requests: [{ route: `${MODULE}.${PAGE}.abertas`, uses: [], output: [] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/requests/${PAGE}.ts`);
+  const generated = [
+    `import type { CmSimulateAgentInput, CmSimulateAgentOutput } from '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.js';`,
+    'export interface ListAgentSimulationInput extends CmSimulateAgentInput {}',
+    'export interface ListAgentSimulationOutput extends CmSimulateAgentOutput {}',
+    'export async function listAgentSimulation(input: ListAgentSimulationInput): Promise<ListAgentSimulationOutput> { return input as never; }',
+  ].join('\n');
+  const catalog = [
+    "export type CmSimulationLevel = 'canDo' | 'understands';",
+    'export interface CmSimulateAgentInput {\n  agentId: string;\n  level: CmSimulationLevel;\n  message?: string;\n}',
+    'export interface CmSimulateAgentOutput {\n  level: CmSimulationLevel;\n}',
+    'export const cm = { "operations": [{ "operationId": "simulateAgent", "direction": "call", "inputType": "CmSimulateAgentInput", "outputType": "CmSimulateAgentOutput" }] } as const;',
+  ].join('\n');
+  const barrel = `export type { CmSimulateAgentInput, CmSimulateAgentOutput } from '${catalogDir}/cm.js';\n`;
+  const ontology = `export const sim = ${JSON.stringify({ entityId: 'AgentSimulation', record: { fields: { level: { type: 'enum', values: [{ value: 'whatItCan' }, { value: 'whatItUnderstands' }] } } } })} as const;\n`;
+  (globalThis as { mls: unknown }).mls = {
+    actualProject: PROJECT,
+    stor: { files: { [keyOf(contractInfo)]: file(contractInfo, CONTRACT), [keyOf(sim.output)]: file(sim.output, generated) }, getKeyToFile: keyOf },
+  };
+  const read = async (ref: string) => {
+    const plain = ref.replace(/^\//u, '');
+    if (plain === catalogDir.slice(1) + '/cm.ts') return catalog;
+    if (plain === barrelRef.slice(1)) return barrel;
+    if (plain === `_${PROJECT}_/l4/${MODULE}/ontology/AgentSimulation.defs.ts`) return ontology;
+    return null;
+  };
+  const units = [request, sim, entity, outbound];
+  try {
+    const human = (await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units, read } as never, request)).human;
+    assert.match(human, /message\?: string;/u);
+    assert.match(human, /module values 'whatItCan' \| 'whatItUnderstands' → catalog values 'canDo' \| 'understands'/u);
+    const cited = unit('requestService', PAGE, {
+      pageId: PAGE,
+      requests: [{ route: `${MODULE}.${PAGE}.abertas`, uses: ['listAgentSimulation'], output: [] }],
+    }, request.outputRef);
+    const mismatch = `export const sim = ${JSON.stringify({ entityId: 'AgentSimulation', record: { fields: { level: { type: 'enum', values: ['whatItCan', 'whatItUnderstands', 'other'] } } } })} as const;\n`;
+    const readMismatch = async (ref: string) => ref.replace(/^\//u, '') === `_${PROJECT}_/l4/${MODULE}/ontology/AgentSimulation.defs.ts` ? mismatch : read(ref);
+    await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units, read: readMismatch } as never, request);
+    await assert.rejects(
+      () => loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [cited, sim, entity, outbound], read: readMismatch } as never, cited),
+      /EXTERNAL_ENUM_UNPAIRED/u,
+    );
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});
+
 test('d1_237: the page workflow section resolves the process function input, including one that is not the first export', async () => {
   const previous = globalThis.mls;
   const contractInfo: M12FileInfo = { project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: PAGE, extension: '.defs.ts' };

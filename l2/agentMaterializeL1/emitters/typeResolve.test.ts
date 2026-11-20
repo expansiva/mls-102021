@@ -81,6 +81,24 @@ void test('d1_200: a type with everything in place expands nothing; an unknown t
   assert.equal((await resolve('export interface In { a: string }', 'Other')).text, '');
 });
 
+void test('d1_239: an interface that extends a name re-exported by the catalog barrel is expanded', async () => {
+  const cm = [
+    "export type CmSimulationLevel = 'canDo' | 'understands';",
+    'export interface CmSimulateAgentInput { agentId: string; level: CmSimulationLevel; message?: string }',
+  ].join('\n');
+  const barrel = "export type { CmSimulateAgentInput } from '/_102034_/l2/shared/contracts/connections/cm.js';\n";
+  const entry = [
+    "import type { CmSimulateAgentInput } from '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.js';",
+    'export interface ListAgentSimulationInput extends CmSimulateAgentInput {}',
+  ].join('\n');
+  const read = async (specifier: string) => specifier.endsWith('/catalogs/cm.js') ? barrel : specifier.endsWith('/connections/cm.js') ? cm : null;
+  const resolved = await resolveInputType({ entry, typeName: 'ListAgentSimulationInput', readImport: read });
+  assert.match(resolved.text, /agentId: string;/u);
+  assert.match(resolved.text, /level: 'canDo' \| 'understands';/u);
+  assert.match(resolved.text, /message\?: string;/u);
+  assert.deepEqual(resolved.unresolved, []);
+});
+
 void test('d1_237: export type { A as B } from is an import; GetAgentDraftInput is CmReadAgentInput and CmSimulationLevel is its union', async () => {
   const cm = [
     'export interface CmReadAgentInput { agentId: string }',

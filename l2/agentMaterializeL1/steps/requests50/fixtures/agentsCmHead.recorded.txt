@@ -1,0 +1,246 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/cm.ts" enhancement="_blank"/>
+
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type {
+  CmAgentDraftReadyInput,
+  CmAgentDraftReadyOutput,
+  CmDescribeInput,
+  CmDescribeOutput,
+  CmRecordInput,
+  CmRecordOutput,
+  CmTool,
+} from '/_102034_/l2/shared/contracts/connections/cm.js';
+import { createAgentTool } from '/_102047_/l1/agents/layer_2_application/usecases/createAgentTool.js';
+import { listAgentTool } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentTool.js';
+import { listPersonToolRestriction } from '/_102047_/l1/agents/layer_2_application/usecases/listPersonToolRestriction.js';
+import { listTool } from '/_102047_/l1/agents/layer_2_application/usecases/listTool.js';
+import { recordExecutionSummary } from '/_102047_/l1/agents/layer_2_application/workflows/executionRecording.js';
+
+class AppError extends Error {
+  code: string;
+  status: number;
+  details?: Record<string, unknown>;
+  constructor(code: string, message: string, status: number, details?: Record<string, unknown>) {
+    super(message);
+    this.name = 'AppError';
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+}
+
+const MAX_PAGE_SIZE = 200;
+
+async function fetchAll<T>(
+  read: (page: number, pageSize: number) => Promise<{ items: T[]; hasMore: boolean }>,
+): Promise<T[]> {
+  const all: T[] = [];
+  let page = 1;
+  for (;;) {
+    const res = await read(page, MAX_PAGE_SIZE);
+    for (const item of res.items) all.push(item);
+    if (!res.hasMore) break;
+    page += 1;
+  }
+  return all;
+}
+
+function requireText(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new AppError('INVALID_INPUT', `The field ${field} is required.`, 400, { details: { field } });
+  }
+  return value;
+}
+
+interface LooseCatalogItem {
+  actionId?: unknown;
+  title?: unknown;
+  kind?: unknown;
+  actors?: unknown;
+}
+
+interface ParsedCatalogItem {
+  entry: CmTool['entry'];
+  actionId: string;
+  title: string | undefined;
+  kind: 'cmd' | 'qry';
+  actors: string[];
+}
+
+function parseCatalogItem(raw: string, toolKey: string): ParsedCatalogItem {
+  let entry: CmTool['entry'];
+  let loose: LooseCatalogItem;
+  try {
+    entry = JSON.parse(raw);
+    loose = JSON.parse(raw);
+  } catch (err) {
+    throw new AppError('INVALID_CATALOG_ITEM', `The stored catalog item of the tool ${toolKey} is not valid JSON.`, 500, {
+      details: { toolKey, cause: err instanceof Error ? err.message : String(err) },
+    });
+  }
+  if (typeof loose.actionId !== 'string' || loose.actionId === '') {
+    throw new AppError('INVALID_CATALOG_ITEM', `The stored catalog item of the tool ${toolKey} has no actionId.`, 500, {
+      details: { toolKey },
+    });
+  }
+  const actors = Array.isArray(loose.actors) ? loose.actors.filter((a): a is string => typeof a === 'string') : [];
+  return {
+    entry,
+    actionId: loose.actionId,
+    title: typeof loose.title === 'string' && loose.title !== '' ? loose.title : undefined,
+    kind: loose.kind === 'cmd' ? 'cmd' : 'qry',
+    actors,
+  };
+}
+
+function hashText(text: string): string {
+  let h = 5381;
+  for (let i = 0; i < text.length; i += 1) {
+    h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(36);
+}
+
+function connectionOf(ctx: RequestContext) {
+  const conn = ctx.requestMeta?.connection;
+  if (!conn) {
+    throw new AppError('INVALID_INPUT', 'The call did not come through a connection.', 400);
+  }
+  return conn;
+}
+
+export const requests: {
+  'agents.cm.agentDraftReady': (input: CmAgentDraftReadyInput, ctx: RequestContext) => Promise<CmAgentDraftReadyOutput>;
+  'agents.cm.describe': (input: CmDescribeInput, ctx: RequestContext) => Promise<CmDescribeOutput>;
+  'agents.cm.record': (input: CmRecordInput, ctx: RequestContext) => Promise<CmRecordOutput>;
+} = {
+  'agents.cm.agentDraftReady': async function (input, ctx) {
+    const draftId = requireText(input.draftId, 'draftId');
+    if (input.status !== 'ready' && input.status !== 'refused') {
+      throw new AppError('INVALID_INPUT', 'The status must be ready or refused.', 400, { details: { status: input.status } });
+    }
+    await ctx.data.moduleData.runInTransaction(async (tx) => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      // refused: nothing changes here (the reason stays in the cm card)
+      if (input.status !== 'ready') return;
+      const suggested = input.suggestedTools ?? [];
+      if (suggested.length === 0) return;
+      const tools = await fetchAll((page, pageSize) => listTool({ status: 'available', page, pageSize }, bound));
+      const existing = await fetchAll((page, pageSize) => listAgentTool({ agentId: draftId, page, pageSize }, bound));
+      const linked = new Set<string>(existing.map((a) => a.toolId));
+      for (const actionId of suggested) {
+        const tool = tools.find(
+          (t) => t.toolKey === actionId || t.name === actionId || parseCatalogItem(t.details.catalogItem, t.toolKey).actionId === actionId,
+        );
+        if (!tool) {
+          throw new AppError('NOT_FOUND', `The suggested tool ${actionId} is not in the tool catalog.`, 404, {
+            details: { draftId, actionId },
+          });
+        }
+        // a repeated notice changes nothing
+        if (linked.has(tool.id)) continue;
+        await createAgentTool(
+          {
+            agentId: draftId,
+            toolId: tool.id,
+            enabled: true,
+            choiceSource: 'automatic',
+            details: { automaticOrigin: 'draftSuggestion' },
+          },
+          bound,
+        );
+        linked.add(tool.id);
+      }
+    });
+    return {};
+  },
+
+  'agents.cm.describe': async function (input, ctx) {
+    const conn = connectionOf(ctx);
+    const agentId = requireText(input.agentId, 'agentId');
+    const personId = requireText(conn.context.actorMdmId, 'context.actorMdmId');
+    const authorities = input.authorities ?? [];
+
+    const links = await fetchAll((page, pageSize) => listAgentTool({ agentId, page, pageSize }, ctx));
+    const restrictions = await fetchAll((page, pageSize) => listPersonToolRestriction({ personId, page, pageSize }, ctx));
+    const restricted = new Set<string>(restrictions.map((r) => r.toolId));
+    const on = links.filter((l) => l.enabled);
+
+    const tools: CmTool[] = [];
+    const allowed: string[] = [];
+    const versionParts: string[] = [];
+    const sortedLinks = [...links].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const toolById = new Map<string, Awaited<ReturnType<typeof listTool>>['items'][number]>();
+    for (const link of sortedLinks) {
+      const res = await listTool({ id: link.toolId, page: 1, pageSize: 1 }, ctx);
+      const tool = res.items[0];
+      if (!tool) {
+        throw new AppError('NOT_FOUND', 'A tool linked to the agent was not found in the tool catalog.', 404, {
+          details: { agentId, toolId: link.toolId },
+        });
+      }
+      toolById.set(link.toolId, tool);
+      versionParts.push(`${link.id}:${link.version}:${link.enabled ? 1 : 0}:${tool.id}:${tool.version}:${tool.status}`);
+    }
+    const version = links.length === 0 ? 'empty' : hashText(versionParts.join('|'));
+
+    for (const link of on) {
+      if (restricted.has(link.toolId)) continue;
+      const tool = toolById.get(link.toolId);
+      if (!tool || tool.status === 'removed') continue;
+      const parsed = parseCatalogItem(tool.details.catalogItem, tool.toolKey);
+      tools.push({
+        moduleId: tool.moduleName,
+        moduleTitle: tool.details.moduleTitle,
+        subject: tool.subject,
+        subjectTitle: tool.details.subjectTitle,
+        actionId: parsed.actionId,
+        title: parsed.title ?? tool.name,
+        purpose: tool.details.description,
+        kind: parsed.kind,
+        entry: parsed.entry,
+      });
+      const permitted =
+        parsed.actors.length === 0 ||
+        parsed.actors.some((a) => authorities.includes(`${tool.moduleName}:${a}`) || authorities.includes(a));
+      if (permitted) allowed.push(parsed.actionId);
+    }
+
+    if (input.knownVersion != null && input.knownVersion === version) {
+      return { version, allowed };
+    }
+    return { version, toolsMode: 'all', tools, allowed };
+  },
+
+  'agents.cm.record': async function (input, ctx) {
+    const conn = connectionOf(ctx);
+    const executionId = requireText(input.executionId, 'executionId');
+    const agentId = requireText(input.agentId, 'agentId');
+    const startedAt = requireText(input.startedAt, 'startedAt');
+    const personId = conn.context.actorMdmId;
+    const conversationId = input.refs?.conversationId;
+
+    return ctx.data.moduleData.runInTransaction(async (tx) => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      const summary = await recordExecutionSummary(
+        {
+          agentId,
+          ...(personId != null && personId !== '' ? { personId } : {}),
+          executionRef: executionId,
+          startedAt,
+          details: {
+            durationMs: input.durationMs,
+            cost: String(input.costUsd),
+            tookOver: input.handedOff,
+            ...(conversationId != null && conversationId !== '' ? { conversationLink: conversationId } : {}),
+            actions: input.actions.map((a) => ({ toolName: a.actionId, result: a.outcome })),
+          },
+        },
+        bound,
+      );
+      // the process opens one occurrence per execution: a version above 1 is an occurrence already recorded
+      const status: CmRecordOutput['status'] = summary.version > 1 ? 'existing' : 'recorded';
+      return { status };
+    });
+  },
+};

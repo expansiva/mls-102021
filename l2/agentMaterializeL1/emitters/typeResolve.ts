@@ -391,12 +391,19 @@ export async function resolveInputType(input: ResolveInput): Promise<ResolvedTyp
     }
   }
 
-  const lookup = (env: FileEnv, name: string): Decl | null => {
+  // A catalog barrel re-exports the type (`export type { A } from`). The declaration is one file further.
+  const lookup = (env: FileEnv, name: string, seen?: Set<string>): Decl | null => {
     const local = env.decls.get(name);
     if (local) return local;
     const imported = env.imports.get(name);
     if (!imported) return null;
-    return files.get(imported.specifier)?.decls.get(imported.original) ?? null;
+    const next = files.get(imported.specifier);
+    if (!next) return null;
+    const mark = `${imported.specifier}\0${imported.original}`;
+    const trail = seen ?? new Set<string>();
+    if (trail.has(mark)) return null;
+    trail.add(mark);
+    return lookup(next, imported.original, trail);
   };
 
   const comment = (text: string, pad: string): string => {

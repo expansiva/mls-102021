@@ -357,9 +357,10 @@ void test('the request gate holds the contract routes, the atomic command and th
   const mappedGood = good.replace('export const requests = {', `export const requests: ${requestsTypeOf('PContracts')} = {`);
   assert.deepEqual(requestGate(mappedGood, withIface), []);
   assert.ok(requestGate(mappedGood.replace('return {};', 'return {} as unknown as never;'), withIface).some(item => item.includes('as unknown as')));
-  // A rule outside the unit (the model saw every rule of the module) is dropped, not refused; a listed one needs a reason.
-  assert.deepEqual(readNotApplicable([{ ruleId: 'x', reason: 'long enough reason' }, { ruleId: 'y', reason: 'another operation' }], ['x']), { items: [{ ruleId: 'x', reason: 'long enough reason' }], problems: [] });
-  assert.deepEqual(readNotApplicable([{ ruleId: 'x', reason: '' }], ['x']).problems, ['notApplicable x needs a reason.']);
+  // A ruleId of the module the unit does not list is dropped (05/10); one no rule of the module has is a problem. A listed one needs a reason of at least 10 characters, and the repair names the rule and what arrived.
+  assert.deepEqual(readNotApplicable([{ ruleId: 'x', reason: 'long enough reason' }, { ruleId: 'y', reason: 'another operation' }], ['x'], ['x', 'y']), { items: [{ ruleId: 'x', reason: 'long enough reason' }], problems: [] });
+  assert.deepEqual(readNotApplicable([{ ruleId: 'x', reason: 'long enough reason' }, { ruleId: 'z', reason: 'another operation' }], ['x'], ['x', 'y']), { items: [{ ruleId: 'x', reason: 'long enough reason' }], problems: ['notApplicable "z" is not a rule of this module.'] });
+  assert.deepEqual(readNotApplicable([{ ruleId: 'x', reason: '' }], ['x']).problems, ['notApplicable x needs a reason of at least 10 characters (why this rule does not govern this operation); got "" (0 characters).']);
 });
 
 void test('every prompt declares a model type the Collab LLM proxy knows (no default "cost" alias)', () => {
