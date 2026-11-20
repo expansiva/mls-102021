@@ -14,11 +14,12 @@ import { clip } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
+import { usecaseInputsOf, type M12InputField } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
 import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import { stepCallProblems, stepCallsOf, withUsecases, type StepCall } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/stepCalls.js';
 import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/engineImports.js';
 import { connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
-import { connectionRowsOf, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { connectionRowsOf, emptyCastProblems, emptyRequiredProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
@@ -682,7 +683,7 @@ export function workflowTransitionProblems(code: string, targets: ReadonlyMap<st
 }
 
 /** Problems of a model-written workflow service. Empty = the gate passes. */
-export function workflowGate(code: string, input: { siblingImports?: readonly string[]; header: string; facts: M12WorkflowFacts; project: number; moduleName: string; ports: readonly string[]; gateways?: readonly string[]; targets?: ReadonlyMap<string, string>; llmExports?: readonly string[] }): string[] {
+export function workflowGate(code: string, input: { siblingImports?: readonly string[]; header: string; facts: M12WorkflowFacts; project: number; moduleName: string; ports: readonly string[]; gateways?: readonly string[]; targets?: ReadonlyMap<string, string>; llmExports?: readonly string[] ; usecaseInputs?: ReadonlyMap<string, readonly M12InputField[]> }): string[] {
   const problems: string[] = [];
   if (input.targets) problems.push(...workflowTransitionProblems(code, input.targets));
   if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
@@ -700,6 +701,8 @@ export function workflowGate(code: string, input: { siblingImports?: readonly st
     problems.push(`The process keeps an occurrence of ${input.facts.occurrence}: open and advance it through the module engine (${moduleSpecifier(workflowEngineFile(input.project, input.moduleName))}), never in a table of your own.`);
   }
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) problems.push('No `as unknown as` and no `as any`.');
+  problems.push(...emptyCastProblems(code));
+  problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
   problems.push(...repositoryProblems(code, input.ports, input.gateways));
   problems.push(...gatewayBypassProblems(code));
   const ownL1 = `/_${input.project}_/l1/${input.moduleName}/`;
@@ -748,7 +751,7 @@ export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, cod
   const l4Ref = unit.definition.dependencies.find(ref => ref.endsWith(`/l4/${moduleName}/workflows.defs.ts`)) ?? `_${project}_/l4/${moduleName}/workflows.defs.ts`;
   const llmExports = workflowLlmExportNames(facts.processId, workflowProcessSteps(l4Process(await ctx.read(l4Ref), facts.processId)));
   return [
-    ...workflowGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, project, moduleName), header, facts, project, moduleName, ports, gateways, targets: transitionTargets(ctx.units), llmExports }),
+    ...workflowGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, project, moduleName), header, facts, project, moduleName, ports, gateways, targets: transitionTargets(ctx.units), llmExports, usecaseInputs: await usecaseInputsOf(ctx) }),
     ...await missingImports(ctx, code),
     ...stepCallProblems(code, await stepCallsFor(ctx, facts.processId)),
   ];
@@ -820,10 +823,12 @@ function exportHeader(source: string, name: string): string | null {
   }
 }
 
-function functionTextProblems(code: string, project: number, moduleName: string, targets: ReadonlyMap<string, string>, siblingImports: readonly string[] = []): string[] {
+function functionTextProblems(code: string, project: number, moduleName: string, targets: ReadonlyMap<string, string>, siblingImports: readonly string[] = [], usecaseInputs: ReadonlyMap<string, readonly M12InputField[]> = new Map()): string[] {
   const problems: string[] = [];
   problems.push(...workflowTransitionProblems(code, targets));
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) problems.push('No `as unknown as` and no `as any`.');
+  problems.push(...emptyCastProblems(code));
+  problems.push(...emptyRequiredProblems(code, usecaseInputs));
   const ownL1 = `/_${project}_/l1/${moduleName}/`;
   for (const specifier of importSpecifiers(code)) {
     if (!specifier.startsWith('/') || !specifier.endsWith('.js')) { problems.push(`Import "${specifier}" must start with / and end with .js.`); continue; }
@@ -912,6 +917,7 @@ export const workflowSequence: M12SequenceSpec = {
         ports: moduleGatewayNames(ctx.units),
         gateways: moduleGatewayNames(ctx.units),
         llmExports: workflowLlmExportNames(facts.processId, steps),
+        usecaseInputs: await usecaseInputsOf(ctx),
       });
       for (const item of fixedForms(facts.processId, steps, facts.trigger.kind === 'scheduled')) {
         const got = exportHeader(code, item.name);
@@ -936,7 +942,7 @@ export const workflowSequence: M12SequenceSpec = {
       if (!/export\s+async\s+function\s+onTick\s*\(/u.test(code)) problems.push('A scheduled process exports `onTick(ctx: RequestContext, now: Date): Promise<void>`.');
       if (!/\bevaluateSchedule\s*\(/u.test(code)) problems.push('`onTick` asks `evaluateSchedule(schedule, now, lastRun)` whether an occurrence is due: never a hard-coded hour.');
     }
-    problems.push(...functionTextProblems(snippet, project, moduleName, transitionTargets(ctx.units), await siblingDeclarationImports(ctx.read, project, moduleName)));
+    problems.push(...functionTextProblems(snippet, project, moduleName, transitionTargets(ctx.units), await siblingDeclarationImports(ctx.read, project, moduleName), await usecaseInputsOf(ctx)));
     if (problems.length) return { source: assembled, problems };
     try {
       const merged = completeEngineImports(replaceFunction(addHelpers(mergeImports(assembled, importLines), helpers), name, code.endsWith('\n') ? code : `${code}\n`), engine);

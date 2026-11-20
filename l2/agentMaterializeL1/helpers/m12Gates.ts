@@ -4,6 +4,7 @@
 // repair prompt can act on.
 
 import { isCatalogImport } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
+import type { M12InputField } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
 
 export interface M12CodeGateInput {
   /** Declarations of sibling systems this module's connections name: the only files of a sibling an import may name (d1_208). */
@@ -35,6 +36,86 @@ export interface M12CodeGateInput {
   publishers?: readonly M12EventPublisher[];
   /** Entities the L4 says this usecase's parent entity records (d1_221): the file must `create` each one through its port, after the calls above. */
   childRecords?: readonly M12ChildRecord[];
+  /** The input fields of the usecases of the module, by function name (d1_224): a call may not fill a required one with an empty literal. */
+  usecaseInputs?: ReadonlyMap<string, readonly M12InputField[]>;
+}
+
+/** The text with every comment blanked and every line break kept, so an offset still names its line. */
+function blankComments(code: string): string {
+  const blank = (text: string): string => text.replace(/[^\n]/gu, ' ');
+  return code.replace(/\/\*[\s\S]*?\*\//gu, blank).replace(/(^|[^:\\])(\/\/[^\n]*)/gu, (_all, before: string, comment: string) => `${before}${blank(comment)}`);
+}
+
+function lineOf(text: string, index: number): number {
+  return text.slice(0, index).split('\n').length;
+}
+
+/**
+ * d1_224: an empty object cast to a record type (`{} as Record`, `Object.assign({} as Record, fields)`) makes the compiler accept a value whose
+ * fields are missing or named otherwise. `as const` is not one. The message says how to build the record, and what to do for a field with no source.
+ */
+export function emptyCastProblems(code: string): string[] {
+  const clean = blankComments(code);
+  const problems: string[] = [];
+  for (const match of clean.matchAll(/\{\s*\}\s+as\s+([A-Za-z_$][\w$.]*)/gu)) {
+    if (match[1] === 'const') continue;
+    problems.push(`CAST_EMPTY_RECORD (line ${lineOf(clean, match.index ?? 0)}): \`{} as ${match[1]}\` makes an empty object pass for a record, so the compiler cannot see that fields are missing or named otherwise. Build the record as \`const record: ${match[1]} = { … }\` with every field the type declares, each from the input, the context or the answer of an earlier call. A field with no source is not made up: throw an error that names it.`);
+  }
+  return problems;
+}
+
+const EMPTY_LITERAL = /^(?:''|""|``|\[\s*\]|\{\s*\})$/u;
+
+/**
+ * d1_224: a call to a usecase of the module (imported from `usecases/`) fills a required field of its input with an empty literal. An empty
+ * string for a string, an empty list for a list, `{}` for an object that has required members: the value was missing and the code made one
+ * up (a file written with no text). `{}` for an object of optional members is a value, not a gap, and `0` and `false` are not asked about.
+ */
+export function emptyRequiredProblems(code: string, inputs: ReadonlyMap<string, readonly M12InputField[]>): string[] {
+  const clean = blankComments(code);
+  const problems: string[] = [];
+  for (const [fn, fields] of inputs) {
+    if (!new RegExp(String.raw`import\s*(?:type\s*)?\{[^}]*\b${fn}\b[^}]*\}\s*from\s*['"][^'"]*/usecases/`, 'u').test(clean)) continue;
+    for (const call of clean.matchAll(new RegExp(String.raw`(?<![\w$.])${fn}\s*\(`, 'gu'))) {
+      const open = (call.index ?? 0) + call[0].length - 1;
+      const first = callArguments(clean, open).args[0] ?? '';
+      if (!first.startsWith('{')) continue;
+      const inner = first.slice(1, first.lastIndexOf('}'));
+      let depth = 0;
+      let quote = '';
+      let start = 0;
+      const properties: string[] = [];
+      for (let index = 0; index <= inner.length; index += 1) {
+        const char = inner[index];
+        if (index < inner.length && quote) {
+          if (char === '\\') index += 1;
+          else if (char === quote) quote = '';
+          continue;
+        }
+        if (char === '"' || char === "'" || char === '`') quote = char;
+        else if (char === '{' || char === '(' || char === '[') depth += 1;
+        else if (char === '}' || char === ')' || char === ']') depth -= 1;
+        else if ((char === ',' && depth === 0) || index === inner.length) {
+          properties.push(inner.slice(start, index));
+          start = index + 1;
+        }
+      }
+      for (const property of properties) {
+        const pair = /^\s*([A-Za-z_$][\w$]*)\s*:\s*([\s\S]*?)\s*$/u.exec(property);
+        if (!pair || !EMPTY_LITERAL.test(pair[2])) continue;
+        const field = fields.find(item => item.name === pair[1]);
+        if (!field || field.optional) continue;
+        const literal = pair[2].replace(/\s+/gu, '');
+        const empty = (literal === '[]' && field.kind === 'array')
+          || (literal === '{}' && field.kind === 'object' && field.requiredMembers > 0)
+          || (['\'\'', '""', '``'].includes(literal) && field.kind === 'string');
+        if (!empty) continue;
+        const at = new RegExp(String.raw`\b${field.name}\s*:\s*${literal.replace(/[[\]{}()]/gu, '\\$&')}`, 'u').exec(clean.slice(call.index ?? 0));
+        problems.push(`EMPTY_REQUIRED_VALUE (line ${lineOf(clean, (call.index ?? 0) + (at?.index ?? 0))}): \`${fn}\` is called with \`${field.name}: ${literal}\`, but \`${field.name}\` is a required field of its input and an empty value is not a value of the field. Do not make one up: if the input of this function does not carry \`${field.name}\`, throw a distinct error that names it (\`throw new AppError('INVALID_INPUT', '${field.name} is missing', 400)\`) and write nothing.`);
+      }
+    }
+  }
+  return problems;
 }
 
 /** One entity the usecase records with the entity it writes, and the port that creates it. */
@@ -616,6 +697,8 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...eventPublishProblems(code, input.publishers ?? []));
   problems.push(...consumerCallProblems(code, input.consumerCalls ?? []));
   problems.push(...childRecordProblems(code, input.childRecords ?? [], (input.consumerCalls ?? []).map(call => call.operationId)));
+  problems.push(...emptyCastProblems(code));
+  problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
   // The rules of a write on an external entity are met by the external system: the call answers (or refuses) with them.
   for (const ruleId of input.externalEntity ? [] : input.ruleIds) {
     if (!code.includes(`'${ruleId}'`) && !code.includes(`"${ruleId}"`)) problems.push(`Rule ${ruleId} is not enforced: no AppError carries ruleId '${ruleId}'.`);

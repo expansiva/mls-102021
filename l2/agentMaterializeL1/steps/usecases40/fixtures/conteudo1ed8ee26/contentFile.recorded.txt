@@ -1,0 +1,10 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_3_domain/entities/contentFile.ts" enhancement="_blank"/>
+export type ContentFile = {
+  path: string;
+  folder: 'blog' | 'docs' | 'site';
+  name: string;
+  title: string;
+  content: string;
+  sha: string;
+  lastModifiedAt: string;
+};

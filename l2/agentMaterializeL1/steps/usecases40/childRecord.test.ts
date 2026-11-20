@@ -12,7 +12,7 @@ import test from 'node:test';
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { childRecordProblems } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
-import { childRecordSection, childRecordsOf, loadUsecaseContext, usecaseAnswerProblems } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { childRecordFieldsOf, childRecordSection, childRecordsOf, loadUsecaseContext, usecaseAnswerProblems } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 
 const PROJECT = 102099;
 const MODULE = 'conteudo';
@@ -148,5 +148,39 @@ void test('d1_221 s2: the usecase that records the publication compiles against 
     assert.equal(diagnostics, '');
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+void test('d1_224 s2: the section lists the fields of the child from the def and the type of its entity, with where each one comes from', async () => {
+  const publicationDef = (JSON.parse(/definition = (\{[\s\S]*\}) as const;/u.exec(fixture('conteudo1ed8ee26/publication.defs.recorded.txt'))![1]) as { data: Record<string, unknown> }).data;
+  const publicationTs = fixture('conteudo1ed8ee26/publication.recorded.txt');
+  const { ctx: base, create } = setup(true);
+  const entityUnit = unit('domainEntity', 'Publication', publicationDef, `_${PROJECT}_/l1/${MODULE}/layer_3_domain/entities/publication.ts`);
+  const baseUnits = (base as unknown as { units: M12Unit[]; read: (ref: string) => Promise<string | null>; run: unknown }).units.filter(item => !(item.definition.artifactType === 'domainEntity' && item.definition.artifactId === 'Publication'));
+  const ctx = { ...(base as object), units: [...baseUnits, entityUnit] } as never;
+  const previous = globalThis.mls;
+  (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: { [keyOf(entityUnit.output as M12FileInfo)]: { getContent: async () => publicationTs } }, getKeyToFile: keyOf } };
+  try {
+    const [records] = [await childRecordFieldsOf(ctx, create)];
+    assert.equal(records.length, 1);
+    const byPath = new Map(records[0].fields.map(field => [field.path, field]));
+    // The platform's fields (id, version, the moment) and the object that only holds the members below it are not listed.
+    assert.deepEqual([...byPath.keys()].sort(), ['contentPath', 'details.operation', 'details.revision', 'details.title', 'editorId', 'folder']);
+    assert.deepEqual([byPath.get('contentPath')?.required, byPath.get('contentPath')?.type], [true, 'reference to ContentFile']);
+    assert.match(byPath.get('contentPath')?.origin ?? '', /^the identity of the ContentFile this usecase writes$/u);
+    assert.match(byPath.get('editorId')?.origin ?? '', /Editor, who or what the step names: from `ctx` \(the session\) or from the input; if neither carries it, throw an error that names the field/u);
+    assert.equal(byPath.get('folder')?.required, true);
+    assert.equal(byPath.get('details.operation')?.required, true);
+    assert.equal(byPath.get('details.title')?.required, false);
+    assert.equal(byPath.get('details.revision')?.required, false);
+    assert.match(byPath.get('folder')?.origin ?? '', /^a value of the step: the input of this usecase or the answer of the outside call, never a default$/u);
+    const text = childRecordSection(records, ['gravarArquivo']);
+    assert.match(text, /Fields of Publication \(a missing one is an error that names it, not a value made up\):/u);
+    assert.match(text, /- editorId \(reference to Editor, required\): Editor, who or what the step names/u);
+    assert.match(text, /- details\.title \(string, optional\): a value of the step/u);
+    assert.equal(text.includes('- id ('), false);
+    assert.equal(text.includes('- publishedAt ('), false);
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
   }
 });

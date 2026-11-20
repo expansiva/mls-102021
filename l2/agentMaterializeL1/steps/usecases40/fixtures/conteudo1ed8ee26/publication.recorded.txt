@@ -1,0 +1,14 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_3_domain/entities/publication.ts" enhancement="_blank"/>
+export type Publication = {
+  id: string;
+  version: number;
+  editorId: string;
+  contentPath: string;
+  folder: 'blog' | 'docs' | 'site';
+  publishedAt: string;
+  details: {
+    operation: 'create' | 'update';
+    title?: string;
+    revision?: string;
+  };
+};

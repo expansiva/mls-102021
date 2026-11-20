@@ -1,0 +1,1 @@
+Taken with `git show 1ed8ee26:<path>` from `mls-102047` (the real generation of the module `conteudo`, generator 102021@0fc2a2d), under `l1/conteudo/`. The manager removes that L1 from HEAD, so the bytes live here. `.ts` is stored as `.recorded.txt`. d1_224.

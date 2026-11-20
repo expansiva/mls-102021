@@ -1,0 +1,93 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_2_application/requests/repoHost.ts" enhancement="_blank"/>
+
+import { updateContentFile } from '/_102047_/l1/conteudo/layer_2_application/usecases/updateContentFile.js';
+
+type RequestContext = Parameters<typeof updateContentFile>[1];
+
+export interface RepoHostRepositorioAlteradoFile {
+  path: string;
+  change: 'added' | 'modified' | 'removed';
+}
+
+export interface RepoHostRepositorioAlteradoMessage {
+  details: {
+    commitMessage: string;
+    files: RepoHostRepositorioAlteradoFile[];
+  };
+}
+
+class MessageFieldError extends Error {
+  readonly code: string;
+  readonly status: number;
+  readonly field: string;
+  constructor(code: string, field: string, message: string) {
+    super(message);
+    this.name = 'MessageFieldError';
+    this.code = code;
+    this.status = 400;
+    this.field = field;
+  }
+}
+
+const CONTENT_FOLDERS = ['blog/', 'docs/', 'site/'];
+
+function isContentPath(path: string): boolean {
+  return CONTENT_FOLDERS.some((folder) => path.startsWith(folder));
+}
+
+function checkMessage(input: RepoHostRepositorioAlteradoMessage): void {
+  const message: unknown = input;
+  if (message == null || typeof message !== 'object') {
+    throw new MessageFieldError('INVALID_MESSAGE', 'details', 'repositorioAlterado: message is missing or is not an object');
+  }
+  const details: unknown = (message as { details?: unknown }).details;
+  if (details == null || typeof details !== 'object') {
+    throw new MessageFieldError('INVALID_MESSAGE_DETAILS', 'details', 'repositorioAlterado: field "details" is missing or is not an object');
+  }
+  const commitMessage: unknown = (details as { commitMessage?: unknown }).commitMessage;
+  if (typeof commitMessage !== 'string' || commitMessage.length === 0) {
+    throw new MessageFieldError('INVALID_MESSAGE_COMMIT_MESSAGE', 'details.commitMessage', 'repositorioAlterado: field "details.commitMessage" is missing or is not a text');
+  }
+  const files: unknown = (details as { files?: unknown }).files;
+  if (!Array.isArray(files)) {
+    throw new MessageFieldError('INVALID_MESSAGE_FILES', 'details.files', 'repositorioAlterado: field "details.files" is missing or is not a list');
+  }
+  files.forEach((file: unknown, index: number) => {
+    if (file == null || typeof file !== 'object') {
+      throw new MessageFieldError('INVALID_MESSAGE_FILE', `details.files[${index}]`, `repositorioAlterado: field "details.files[${index}]" is not an object`);
+    }
+    const path: unknown = (file as { path?: unknown }).path;
+    if (typeof path !== 'string' || path.length === 0) {
+      throw new MessageFieldError('INVALID_MESSAGE_FILE_PATH', `details.files[${index}].path`, `repositorioAlterado: field "details.files[${index}].path" is missing or is not a text`);
+    }
+    const change: unknown = (file as { change?: unknown }).change;
+    if (change !== 'added' && change !== 'modified' && change !== 'removed') {
+      throw new MessageFieldError('INVALID_MESSAGE_FILE_CHANGE', `details.files[${index}].change`, `repositorioAlterado: field "details.files[${index}].change" must be added, modified or removed`);
+    }
+  });
+}
+
+export const requests: { 'conteudo.repoHost.repositorioAlterado': (input: RepoHostRepositorioAlteradoMessage, ctx: RequestContext) => Promise<{ received: true }> } = {
+  'conteudo.repoHost.repositorioAlterado': async function (input, ctx) {
+    checkMessage(input);
+    await ctx.data.moduleData.runInTransaction(async (tx) => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      for (const file of input.details.files) {
+        // only the folders blog, docs and site are kept in the list of content files
+        if (!isContentPath(file.path)) continue;
+        // a removed file has nothing to write: the usecase writes (creates or updates) a file
+        if (file.change === 'removed') continue;
+        await updateContentFile(
+          {
+            caminho: file.path,
+            // the message carries no text of the file and the module keeps no copy of it
+            conteudo: '',
+            mensagemRegistro: input.details.commitMessage,
+          },
+          bound,
+        );
+      }
+    });
+    return { received: true };
+  },
+};

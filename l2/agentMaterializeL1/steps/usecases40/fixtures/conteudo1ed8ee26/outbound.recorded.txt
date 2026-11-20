@@ -1,0 +1,47 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_1_external/adapters/integration/outbound.ts" enhancement="_blank"/>
+import { AppError, type RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { callConnection, type CallConnectionOptions } from '/_102034_/l1/server/layer_1_external/connections/callConnection.js';
+import { publishModuleEvent } from '/_102034_/l1/server/layer_1_external/events/publishModuleEvent.js';
+
+const STATUS: Record<string, number> = {"not_found":404,"disabled":409,"unavailable":503,"conflict":409,"refused":422,"forbidden":403,"invalid":400};
+
+import type { GravarArquivoInput, GravarArquivoOutput, LerArquivoInput, LerArquivoOutput, ListarConteudoInput, ListarConteudoOutput } from '/_102047_/l1/repoHost/layer_1_external/connections/github.js';
+
+export interface GithubGateway {
+  gravarArquivo(input: GravarArquivoInput, ctx: RequestContext, opts?: CallConnectionOptions): Promise<GravarArquivoOutput>;
+  lerArquivo(input: LerArquivoInput, ctx: RequestContext, opts?: CallConnectionOptions): Promise<LerArquivoOutput>;
+  listarConteudo(input: ListarConteudoInput, ctx: RequestContext, opts?: CallConnectionOptions): Promise<ListarConteudoOutput>;
+}
+
+export function createGithubGateway(ctx: RequestContext): GithubGateway {
+  return {
+    async gravarArquivo(input: GravarArquivoInput, ctx: RequestContext, opts?: CallConnectionOptions): Promise<GravarArquivoOutput> {
+      const requestId = opts?.requestId ?? ctx.requestMeta?.requestId;
+      const callOptions = requestId === undefined ? opts : { ...opts, requestId };
+      const result = await callConnection("github", "gravarArquivo", input, { actorMdmId: ctx.sessionContext.person?.mdmId }, callOptions);
+      if (!result.ok) throw new AppError(result.code, result.message, STATUS[result.code]);
+      return result.output as GravarArquivoOutput;
+    },
+    async lerArquivo(input: LerArquivoInput, ctx: RequestContext, opts?: CallConnectionOptions): Promise<LerArquivoOutput> {
+      const requestId = opts?.requestId ?? ctx.requestMeta?.requestId;
+      const callOptions = requestId === undefined ? opts : { ...opts, requestId };
+      const result = await callConnection("github", "lerArquivo", input, { actorMdmId: ctx.sessionContext.person?.mdmId }, callOptions);
+      if (!result.ok) throw new AppError(result.code, result.message, STATUS[result.code]);
+      return result.output as LerArquivoOutput;
+    },
+    async listarConteudo(input: ListarConteudoInput, ctx: RequestContext, opts?: CallConnectionOptions): Promise<ListarConteudoOutput> {
+      const requestId = opts?.requestId ?? ctx.requestMeta?.requestId;
+      const callOptions = requestId === undefined ? opts : { ...opts, requestId };
+      const result = await callConnection("github", "listarConteudo", input, { actorMdmId: ctx.sessionContext.person?.mdmId }, callOptions);
+      if (!result.ok) throw new AppError(result.code, result.message, STATUS[result.code]);
+      return result.output as ListarConteudoOutput;
+    },
+  };
+}
+
+/** conteudoPublicado: published by conteudo when Publication.create happens. */
+export async function publishConteudoPublicado(payload: unknown, ctx: RequestContext, opts?: { requestId?: string }): Promise<{ eventId: string }> {
+  const result = await publishModuleEvent({ module: "conteudo", eventId: "conteudoPublicado" }, payload, ctx, opts);
+  if (!result.ok) throw new AppError(result.code, result.message, STATUS[result.code]);
+  return result.output;
+}

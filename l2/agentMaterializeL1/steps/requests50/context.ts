@@ -4,6 +4,7 @@
 // rules, access), the request-service def, the recipe attempt, the generated usecases it may call, the rule
 // texts and the platform signatures.
 
+import { usecaseInputsOf, type M12InputField } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
 import { connectionCatalogSource, isCatalogImport, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { systemIdentity } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
@@ -12,7 +13,7 @@ import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/conn
 import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { recordFieldFromGrant, recordFieldsFromGrant, scopeJoins } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
-import { gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { emptyCastProblems, emptyRequiredProblems, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, infoOfRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -978,6 +979,8 @@ export function requestGate(code: string, input: {
   externalEnums?: readonly ExternalEnumPair[];
   /** Serve routes with `uses`: the body of each must call one of them. */
   serveUses?: ReadonlyArray<{ route: string; uses: readonly string[] }>;
+  /** The input fields of the usecases of the module (d1_224): a call may not fill a required one with an empty literal. */
+  usecaseInputs?: ReadonlyMap<string, readonly M12InputField[]>;
 }): string[] {
   const problems: string[] = [];
   if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
@@ -996,6 +999,8 @@ export function requestGate(code: string, input: {
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) {
     problems.push('No `as unknown as` and no `as any`: they hide a wrong shape from the compiler (a list returned as `{}` reached a page that way). Build the value with its type, or convert a field with String()/Number().');
   }
+  problems.push(...emptyCastProblems(code));
+  problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
   problems.push(...untypedInputProblems(code));
   if (/\bas\s+Parameters\s*</u.test(code)) {
     problems.push('No `as Parameters<typeof <usecase>>[0]`: it forces the contract input onto the usecase input and hides a field the usecase reads that the contract does not send (createProfissional read `input.details.person` and threw). Build the usecase input field by field from the contract input.');
@@ -1063,7 +1068,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const readUsecase = (name: string): Promise<string | null> => ctx.read(`_${ctx.run.project}_/l1/${ctx.run.module}/layer_2_application/usecases/${name}.ts`);
   return [
     ...waived.problems,
-    ...requestGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses }),
+    ...requestGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, usecaseInputs: await usecaseInputsOf(ctx) }),
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared

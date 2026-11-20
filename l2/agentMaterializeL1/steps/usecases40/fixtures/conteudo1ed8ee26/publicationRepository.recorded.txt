@@ -1,0 +1,28 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_2_application/ports/publicationRepository.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { createMemoryTableRepository } from '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
+import type { Publication } from '/_102047_/l1/conteudo/layer_3_domain/entities/publication.js';
+
+export type PublicationFilter = Record<string, unknown>;
+
+export interface PublicationRepository {
+  create(publication: Publication): Promise<Publication>;
+  list(publicationFilter: PublicationFilter): Promise<Publication[]>;
+}
+
+let rows = createMemoryTableRepository<Publication>([]);
+function table() { return rows; }
+export function resetMemory(seed: Publication[] = []): void {
+  rows = createMemoryTableRepository(seed.map(row => ({ ...row })));
+}
+export async function removeMemory(id: string): Promise<boolean> {
+  const where = { id } as unknown as Partial<Publication>;
+  if (!await table().findOne({ where })) return false;
+  await table().delete({ where });
+  return true;
+}
+
+export const pendingPublicationRepository: PublicationRepository = {
+  async create(record: Publication): Promise<Publication> { await table().insert({ record }); return record; },
+  async list(filter: PublicationFilter): Promise<Publication[]> { return table().findMany({ where: filter as Partial<Publication> }); },
+};

@@ -1,0 +1,61 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_2_application/usecases/updateContentFile.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { GravarArquivoInput, GravarArquivoOutput } from '/_102047_/l1/repoHost/layer_1_external/connections/github.js';
+import type { GithubGateway } from '/_102047_/l1/conteudo/layer_1_external/adapters/integration/outbound.js';
+import type { PublicationRepository } from '/_102047_/l1/conteudo/layer_2_application/ports/publicationRepository.js';
+
+export interface UpdateContentFileInput extends GravarArquivoInput {}
+export interface UpdateContentFileOutput extends GravarArquivoOutput {}
+
+type PublicationRecord = Parameters<PublicationRepository['create']>[0];
+
+export async function updateContentFile(input: UpdateContentFileInput, ctx: RequestContext): Promise<UpdateContentFileOutput> {
+  const gateway = resolveRepository<GithubGateway>(ctx, 'GithubGateway');
+
+  // The external system applies the rules of the write (folders, read version); its code, message and status pass through.
+  let output: GravarArquivoOutput;
+  try {
+    output = await gateway.gravarArquivo(input, ctx);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw new AppError(error.code, error.message, error.statusCode, {
+        ruleIds: ['allowedFolders', 'recordPublicationOnWrite', 'repositoryIsSourceOfTruth', 'writeThroughIntegration'],
+      });
+    }
+    throw error;
+  }
+
+  // The write was accepted: record the publication now, with the moment of acceptance.
+  const sent: Record<string, unknown> = { ...input };
+  const answered: Record<string, unknown> = { ...output };
+
+  const contentPath = answered.path ?? sent.path;
+  if (typeof contentPath !== 'string' || contentPath === '') {
+    throw new AppError('PUBLICATION_PATH_MISSING', 'The repository answer and the input carry no file path to record the publication.', 400, { ruleIds: ['recordPublicationOnWrite'] });
+  }
+  const folder = answered.folder ?? sent.folder;
+  if (typeof folder !== 'string' || folder === '') {
+    throw new AppError('PUBLICATION_FOLDER_MISSING', 'No folder is available to record the publication.', 400, { ruleIds: ['recordPublicationOnWrite'] });
+  }
+  const publishedBy = ctx.sessionContext.person?.email ?? ctx.sessionContext.actorId;
+  if (!publishedBy) {
+    throw new AppError('PUBLICATION_AUTHOR_MISSING', 'The session carries no person to record as the publisher.', 400, { ruleIds: ['recordPublicationOnWrite'] });
+  }
+
+  const fields = {
+    id: ctx.idGenerator.newId(),
+    contentPath,
+    folder,
+    publishedBy,
+    publishedAt: ctx.clock.nowIso(),
+    action: 'updated',
+    version: 1,
+  };
+  const publication: PublicationRecord = Object.assign({} as PublicationRecord, fields);
+  const repository = resolveRepository<PublicationRepository>(ctx, 'PublicationRepository');
+  await repository.create(publication);
+
+  return output;
+}

@@ -10,6 +10,8 @@ import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/conn
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { flatFieldsOf, usecaseInputsOf } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
+import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
 import { dependencyUnits, recipeDraft, rulesToEnforce, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { connectionRowsOf, externalEntityIds, externalRepositoryPort, gatewayNameOf, moduleGatewayNames, repositoryPortNames, usecaseGate, type M12ChildRecord, type M12ConsumerCall, type M12EventPublisher, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
@@ -353,17 +355,73 @@ export function childRecordsOf(ctx: M12Context, unit: M12Unit): M12ChildRecord[]
   return out.sort((a, b) => a.entityId.localeCompare(b.entityId));
 }
 
-/** What the model must do for each entity the usecase records with its parent: resolve the port and create, after the outside call when there is one. */
-export function childRecordSection(records: readonly M12ChildRecord[], afterOperations: readonly string[]): string {
+/** A field of the child the usecase fills, with where its value comes from. */
+export interface M12ChildField {
+  path: string;
+  type: string;
+  required: boolean;
+  origin: string;
+}
+
+export interface M12ChildRecordFields extends M12ChildRecord {
+  parentId: string;
+  fields: M12ChildField[];
+}
+
+/**
+ * d1_224: the fields of each entity the usecase records, from the def of the entity (name, type, `ref`, derived) and the type the compiler sees
+ * (which are optional). A derived field is the platform's, so it is not listed; an object that only holds the members listed below it is not either.
+ * The origin is read from the shape of the field and from nothing else: the identity of the parent this usecase writes, who (a reference to another
+ * entity), when (a timestamp), or a value of the step.
+ */
+export async function childRecordFieldsOf(ctx: M12Context, unit: M12Unit): Promise<M12ChildRecordFields[]> {
+  const parentId = String(unit.definition.data.entityId ?? '');
+  const out: M12ChildRecordFields[] = [];
+  for (const record of childRecordsOf(ctx, unit)) {
+    const entity = ctx.units.find(item => item.definition.artifactType === 'domainEntity' && String(item.definition.data.entityId ?? '') === record.entityId);
+    const defined = Array.isArray(entity?.definition.data.fields) ? entity.definition.data.fields as Array<Record<string, unknown>> : [];
+    const generated = entity ? await readOptional(entity.output) : null;
+    const resolved = generated ? await resolveInputType({ entry: generated, typeName: record.entityId, readImport: async () => null }) : null;
+    const known = new Map(flatFieldsOf(resolved?.text ?? '').map(field => [field.path, field.optional]));
+    const fields: M12ChildField[] = [];
+    for (const field of defined) {
+      const path = String(field.name ?? '');
+      const type = String(field.type ?? '');
+      if (!path || field.derived === true || type === 'object') continue;
+      const ref = typeof field.ref === 'string' ? field.ref : '';
+      fields.push({
+        path,
+        type: ref ? `reference to ${ref}` : type,
+        required: known.has(path) ? known.get(path) === false : true,
+        origin: ref === parentId
+          ? `the identity of the ${parentId} this usecase writes`
+          : ref
+            ? `${ref}, who or what the step names: from \`ctx\` (the session) or from the input; if neither carries it, throw an error that names the field`
+            : type === 'timestamp'
+              ? 'the moment of the write: `ctx.clock.nowIso()`'
+              : 'a value of the step: the input of this usecase or the answer of the outside call, never a default',
+      });
+    }
+    out.push({ ...record, parentId, fields });
+  }
+  return out;
+}
+
+/** What the model must do for each entity the usecase records with its parent: resolve the port and create, after the outside call when there is one; and the fields. */
+export function childRecordSection(records: readonly M12ChildRecordFields[] | readonly M12ChildRecord[], afterOperations: readonly string[]): string {
   if (records.length === 0) return '';
   const order = afterOperations.length
     ? `The entity this usecase writes lives outside the module: record the child only once the call to ${afterOperations.map(operation => `\`${operation}\``).join(', ')} has answered with success, never before it and never when it refused.`
     : 'Record the child after the write of the entity, in the same transaction, so both are saved or neither is.';
+  const listed = (records as readonly Partial<M12ChildRecordFields>[]).flatMap(record => record.fields?.length
+    ? [`Fields of ${record.entityId} (a missing one is an error that names it, not a value made up):`, ...record.fields.map(field => `- ${field.path} (${field.type}, ${field.required ? 'required' : 'optional'}): ${field.origin}`)]
+    : []);
   return section('Records this usecase writes with its entity', [
     'The L4 says the entity below has no step of its own: the usecase that writes its parent records it. Each one is a port dependency of this usecase.',
     ...records.map(record => `- ${record.entityId}: \`const repository = resolveRepository<${record.port}>(ctx, '${record.port}')\`, then \`await repository.create(record)\`.`),
     order,
     'The fields the system fills (who did it, when, the id of the entity written) come from `ctx` and from the answer of the write. A value the L4 does not give is not made up: if one is missing, say so in the error, do not use a default.',
+    ...(listed.length ? [listed.join('\n')] : []),
   ].join('\n\n'));
 }
 
@@ -524,7 +582,7 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
   if (gateways) parts.push(gateways);
   const publishing = eventPublishSection(ctx, eventPublishersOf(ctx, unit));
   if (publishing) parts.push(publishing);
-  const recording = childRecordSection(childRecordsOf(ctx, unit), consumerCallsOf(ctx, functionName, unit.definition.artifactId).map(call => call.operationId));
+  const recording = childRecordSection(await childRecordFieldsOf(ctx, unit), consumerCallsOf(ctx, functionName, unit.definition.artifactId).map(call => call.operationId));
   if (recording) parts.push(recording);
   for (const ref of [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry]) {
     const text = await ctx.read(ref);
@@ -912,7 +970,7 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const transition = await transitionOf(ctx, unit);
   return [
     ...waived.problems,
-    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId), childRecords: childRecordsOf(ctx, unit) }),
+    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId), childRecords: childRecordsOf(ctx, unit), usecaseInputs: await usecaseInputsOf(ctx) }),
   ];
 }
 

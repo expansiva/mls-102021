@@ -1,0 +1,28 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_2_application/usecases/createContentFile.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "createContentFile",
+  "moduleName": "conteudo",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/conteudo/layer_2_application/ports/publicationRepository.defs.ts",
+    "_102047_/l1/conteudo/layer_3_domain/entities/contentFile.defs.ts",
+    "_102047_/l4/conteudo/rules.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "createContentFile",
+    "entityId": "ContentFile",
+    "operation": "create",
+    "rulesApplied": [
+      "allowedFolders",
+      "recordPublicationOnWrite",
+      "repositoryIsSourceOfTruth",
+      "writeThroughIntegration"
+    ],
+    "effects": []
+  }
+} as const;
+
+export default definition;

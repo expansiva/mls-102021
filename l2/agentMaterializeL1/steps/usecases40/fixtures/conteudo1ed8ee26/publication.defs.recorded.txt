@@ -1,0 +1,75 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_3_domain/entities/publication.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "Publication",
+  "moduleName": "conteudo",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/conteudo/layer_3_domain/entities/contentFile.defs.ts",
+    "_102047_/l1/conteudo/layer_3_domain/entities/editor.defs.ts"
+  ],
+  "data": {
+    "entityId": "Publication",
+    "storageTarget": "moduleDatabase",
+    "fields": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "derived": true
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "editorId",
+        "type": "record",
+        "ref": "Editor"
+      },
+      {
+        "name": "contentPath",
+        "type": "record",
+        "ref": "ContentFile"
+      },
+      {
+        "name": "folder",
+        "type": "enum"
+      },
+      {
+        "name": "publishedAt",
+        "type": "timestamp",
+        "derived": true
+      },
+      {
+        "name": "details",
+        "type": "object"
+      },
+      {
+        "name": "details.operation",
+        "type": "enum"
+      },
+      {
+        "name": "details.title",
+        "type": "string"
+      },
+      {
+        "name": "details.revision",
+        "type": "string"
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [
+      "publicationRecordedOnSave",
+      "publicationIsImmutable"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;
