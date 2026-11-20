@@ -156,7 +156,7 @@ export interface M12RequestContext {
   workflowRoutes: M12WorkflowRoute[];
   /** Enum fields of an external entity whose values differ from the catalog and need a typed map (d1_198). */
   externalEnums: ExternalEnumPair[];
-  /** Serve routes that name usecases (`uses`): the body must call one of them (d1_201). */
+  /** Serve routes that name usecases (`uses`): the body must call every one of them (d1_201, d1_230). */
   serveUses: Array<{ route: string; uses: string[] }>;
   human: string;
 }
@@ -585,9 +585,9 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
   })).filter(item => item.uses.length > 0);
   if (serveUses.length) {
     const named = new Set(serveUses.flatMap(item => item.uses));
-    parts.push(section('Usecases of the routes (the def names them in `uses`: each route calls one of its usecases)', [
+    parts.push(section('Usecases of the routes (the def names them in `uses`: each route calls every one of its usecases)', [
       ...serveUses.map(item => `- ${item.route} → ${item.uses.join(', ')}`),
-      'The route is the entrance for the connection: it checks the catalog input, calls the usecase with it and returns the catalog output. A route that does not call its usecase does nothing. Throwing `missingUsecase` or returning without the call is wrong.',
+      'The route is the entrance for the connection: it checks the catalog input, calls each usecase listed here with it and returns the catalog output. A route that skips one of them drops what that usecase answers. Throwing `missingUsecase` or returning without the call is wrong.',
     ].join('\n')));
     for (const item of ctx.units.filter(candidate => candidate.definition.artifactType === 'usecase' && named.has(candidate.unitId))) {
       const shown = await usecaseSection(ctx, item, true);
@@ -719,7 +719,7 @@ async function loadConsumeRequestContext(ctx: M12Context, unit: M12Unit, repair?
   const serveUses = routes.map(item => ({ route: item.route, uses: Array.isArray(item.item.row.uses) ? item.item.row.uses.map(String).filter(Boolean) : [] })).filter(item => item.uses.length > 0);
   if (serveUses.length) {
     const named = new Set(serveUses.flatMap(item => item.uses));
-    parts.push(section('Usecases of the routes (the def names them in `uses`: each route calls one of its usecases)', [
+    parts.push(section('Usecases of the routes (the def names them in `uses`: each route calls every one of its usecases)', [
       ...serveUses.map(item => `- ${item.route} → ${item.uses.join(', ')}`),
       'The route is the entrance for the event: it calls the usecase with the message and returns. A route that does not call its usecase does nothing. Throwing `missingUsecase` or returning without the call is wrong.',
     ].join('\n')));
@@ -955,7 +955,7 @@ async function resolvedInputSection(ctx: M12Context, generated: string): Promise
 }
 
 /**
- * d1_201/d1_202: a serve route that names usecases in `uses` calls one of them. The body of a route is the property of that key in
+ * d1_201/d1_202: a serve route that names usecases in `uses` calls each of them (d1_230). The body of a route is the property of that key in
  * the object `requests` (found by structure: the type annotation repeats the keys). Only a call counts: a `missingUsecase` throw, a comment or an import does not.
  */
 export function serveUsecaseProblems(code: string, routes: ReadonlyArray<{ route: string; uses: readonly string[] }>): string[] {
@@ -963,8 +963,9 @@ export function serveUsecaseProblems(code: string, routes: ReadonlyArray<{ route
   const problems: string[] = [];
   for (const item of routes) {
     const body = bodies.get(item.route) ?? '';
-    const calls = item.uses.some(name => new RegExp(`(?<![\\w$.])${name}\\s*\\(`, 'u').test(body));
-    if (!calls) problems.push(`SERVE_ROUTE_WITHOUT_USECASE_CALL: route ${item.route} must call one of its usecases (${item.uses.join(', ')}) with the catalog input. Throwing \`missingUsecase\`, returning without the call or only importing the usecase does not count.`);
+    // d1_230: every usecase the def names is called, not one of them: a route that reads two entities and calls one drops the other.
+    const missing = item.uses.filter(name => !new RegExp(`(?<![\\w$.])${name}\\s*\\(`, 'u').test(body));
+    if (missing.length) problems.push(`SERVE_ROUTE_WITHOUT_USECASE_CALL: route ${item.route} must call each of its usecases (${item.uses.join(', ')}) with the catalog input; it does not call ${missing.join(', ')}. Throwing \`missingUsecase\`, returning without the call or only importing the usecase does not count.`);
   }
   return problems;
 }
@@ -1001,7 +1002,7 @@ export function requestGate(code: string, input: {
   waived: ReadonlySet<string>;
   /** Enum pairs the code must translate with a typed one to one map. */
   externalEnums?: readonly ExternalEnumPair[];
-  /** Serve routes with `uses`: the body of each must call one of them. */
+  /** Serve and consume routes with `uses`: the body of each must call every one of them (d1_230). */
   serveUses?: ReadonlyArray<{ route: string; uses: readonly string[] }>;
   /** The input fields of the usecases of the module (d1_224): a call may not fill a required one with an empty literal. */
   usecaseInputs?: ReadonlyMap<string, readonly M12InputField[]>;

@@ -29,6 +29,9 @@ const OPERATION_OF_EFFECT: Record<string, L1Operation> = {
   remove: 'delete',
 };
 
+/** Effects that read: a serve with them uses one usecase per entity of the line (d1_230). */
+const READ_EFFECTS = new Set<string>(['list', 'read']);
+
 const CREATED = new Set<string>(L1_OPERATIONS.filter(operation => operation !== 'custom' && operation !== 'transition'));
 
 export interface DeriveServeInput {
@@ -199,24 +202,33 @@ function oneServe(input: DeriveServeInput, line: D1ServeLine): D1SelectedRequest
     }
     params = topParams(source, operation.inputType);
   }
-  const entity = line.entityRefs?.[0] || '';
+  const refs = (line.entityRefs ?? []).filter(Boolean);
+  const entity = refs[0] || '';
   const effect = line.effect || '';
   const writes = entity && effect ? `${entity}.${effect}` : '';
   const uses: string[] = [];
   const operationName = entity && effect ? OPERATION_OF_EFFECT[effect] : '';
   if (entity && effect && operationName && !input.processTriggers?.has(serves)) {
-    takeUsecase({
-      problems: input.problems,
-      path,
-      routeName: route,
-      entity,
-      operation: operationName,
-      transitionKey: '',
-      usecases: input.usecases,
-      uses,
-      colliding: new Set(),
-      refusalOf: usecaseId => usecaseRefusal(entity, operationName, usecaseId, input.entities, input.plannedIds, input.removedIds),
-    });
+    // d1_230: a read serve reads every entity the line lists, one usecase each, in the order of the L4. A write serve states one effect,
+    // which the L4 does not say for the others: the first keeps the usecase and the rest are named in a review, never dropped silently.
+    const reads = READ_EFFECTS.has(effect);
+    for (const name of reads ? refs : [entity]) {
+      takeUsecase({
+        problems: input.problems,
+        path,
+        routeName: route,
+        entity: name,
+        operation: operationName,
+        transitionKey: '',
+        usecases: input.usecases,
+        uses,
+        colliding: new Set(),
+        refusalOf: usecaseId => usecaseRefusal(name, operationName, usecaseId, input.entities, input.plannedIds, input.removedIds),
+      });
+    }
+    if (!reads && refs.length > 1) {
+      problem(input.problems, 'review', 'SERVE_WRITE_EXTRA_ENTITYREFS', path, `Route ${route} writes with effect ${effect} and lists ${refs.length} entities. Only ${entity} has a usecase; the L4 does not say which effect applies to ${refs.slice(1).join(', ')}.`, route);
+    }
   }
   return {
     route,

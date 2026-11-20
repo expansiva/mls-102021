@@ -98,7 +98,7 @@ function keyOf(info: { project: number; level: number; folder: string; shortName
   return `${info.project}_${info.level}_${info.folder}/${info.shortName}${info.extension}`;
 }
 
-test('d1_201: a serve route that names usecases gets them in the prompt and the repair, resolved, and must call one of them', async () => {
+test('d1_201: a serve route that names usecases gets them in the prompt and the repair, resolved, and must call each of them', async () => {
   const previous = globalThis.mls;
   const withUses = unit('requestService', 'cm', {
     pageId: 'cm',
@@ -146,12 +146,17 @@ test('d1_201: the serve gate refuses a route that returns {}, throws missingUsec
   const other = `${MODULE}.cm.describe`;
   const uses = [{ route, uses: ['createExecutionSummary'] }, { route: other, uses: ['listTool', 'listAgentTool'] }];
   const call = "async (input, ctx) => { const row = await createExecutionSummary(input, ctx); return row; }";
-  const good = `import { createExecutionSummary } from 'x';\nexport const requests = {\n  "${route}": ${call},\n  "${other}": async (input, ctx) => listAgentTool(input, ctx),\n};\n`;
+  const good = `import { createExecutionSummary } from 'x';\nexport const requests = {\n  "${route}": ${call},\n  "${other}": async (input, ctx) => [await listTool(input, ctx), await listAgentTool(input, ctx)],\n};\n`;
   assert.deepEqual(serveUsecaseProblems(good, uses), []);
-  const empty = `import { createExecutionSummary } from 'x';\nexport const requests = {\n  "${route}": async () => ({}),\n  "${other}": async (input, ctx) => listTool(input, ctx),\n};\n`;
+  // d1_230: calling one of two usecases of a route is refused, and the message names the one it skips.
+  const one = good.replace('[await listTool(input, ctx), await listAgentTool(input, ctx)]', 'listAgentTool(input, ctx)');
+  const oneProblems = serveUsecaseProblems(one, uses);
+  assert.equal(oneProblems.length, 1);
+  assert.match(oneProblems[0], /route .*describe must call each of its usecases \(listTool, listAgentTool\).*does not call listTool\./u);
+  const empty = `import { createExecutionSummary } from 'x';\nexport const requests = {\n  "${route}": async () => ({}),\n  "${other}": async (input, ctx) => [await listTool(input, ctx), await listAgentTool(input, ctx)],\n};\n`;
   const emptyProblems = serveUsecaseProblems(empty, uses);
   assert.equal(emptyProblems.length, 1);
-  assert.match(emptyProblems[0], new RegExp(`^SERVE_ROUTE_WITHOUT_USECASE_CALL: route ${route.replace(/\./gu, '\\.')} must call one of its usecases \\(createExecutionSummary\\)`, 'u'));
+  assert.match(emptyProblems[0], new RegExp(`^SERVE_ROUTE_WITHOUT_USECASE_CALL: route ${route.replace(/\./gu, '\\.')} must call each of its usecases \\(createExecutionSummary\\)`, 'u'));
   const thrown = good.replace(call, "async () => { throw new AppError('missingUsecase', 'createExecutionSummary is not wired', 500); }");
   assert.equal(serveUsecaseProblems(thrown, uses).length, 1);
   const commented = good.replace(call, "async () => { /* createExecutionSummary(input, ctx) */ return {}; }");
@@ -389,4 +394,35 @@ void test('d1_218 s2: the route of a system outside the app is told the input is
   const platformRead = async (ref: string) => (ref.replace(/^\//u, '') === CATALOG_REF.replace(/^\//u, '') ? CATALOG : null);
   const platform = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [platformService], read: platformRead } as never, platformService);
   assert.equal(platform.human.includes('the body the outside system sends'), false);
+});
+
+void test('d1_230: the describe route derived from the L4 line lists both usecases; the cm.ts of today (one call) is refused and a route that calls both passes', async () => {
+  const { deriveServeRequests } = await import('/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js');
+  const derived = deriveServeRequests({
+    moduleName: MODULE,
+    lines: [{ connectionId: 'cm', operationId: 'describe', entityRefs: ['AgentTool', 'PersonToolRestriction'], effect: 'list' }],
+    catalogTexts: { cm: CATALOG },
+    usecases: [],
+    problems: [],
+    entities: { AgentTool: {}, PersonToolRestriction: {} },
+    plannedIds: new Map(),
+    removedIds: new Set(),
+  });
+  assert.deepEqual(derived[0]?.uses, ['listAgentTool', 'listPersonToolRestriction']);
+  const route = `${MODULE}.cm.describe`;
+  const uses = [{ route, uses: derived[0]!.uses }];
+  const today = readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures/agentsCmToday.recorded.txt'), 'utf8');
+  const refused = serveUsecaseProblems(today, uses);
+  assert.equal(refused.length, 1);
+  assert.match(refused[0], /^SERVE_ROUTE_WITHOUT_USECASE_CALL: route agents\.cm\.describe must call each of its usecases \(listAgentTool, listPersonToolRestriction\).*does not call listPersonToolRestriction\./u);
+  // The same file whose describe also reads the restrictions of the person: both calls are in the body of the route.
+  const both = today.replace(
+    "    const active = enabledTools.filter((t) => !t.toolRemoved);",
+    "    const restrictions = await listPersonToolRestriction({ personId: String(ctx.requestMeta?.connection?.context?.actorMdmId ?? ''), page: 1, pageSize: MAX_PAGE_SIZE }, ctx);\n    const restricted = new Set(restrictions.items.map((item) => item.toolId));\n    const active = enabledTools.filter((t) => !t.toolRemoved && !restricted.has(t.toolId));",
+  );
+  assert.notEqual(both, today);
+  assert.deepEqual(serveUsecaseProblems(both, uses), []);
+  // A call of the other usecase in another route of the same file does not count for this route.
+  const elsewhere = today.replace("return { version, toolsMode: 'all', allowed };", "return { version, toolsMode: 'all', allowed };").replace("const out: CmRecordOutput = { status: 'recorded' };", "await listPersonToolRestriction({}, ctx);\n      const out: CmRecordOutput = { status: 'recorded' };");
+  assert.equal(serveUsecaseProblems(elsewhere, uses).length, 1);
 });

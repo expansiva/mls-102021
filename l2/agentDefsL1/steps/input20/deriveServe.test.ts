@@ -245,3 +245,60 @@ void test('d1_208: a platform catalog wins over a declared system of the same id
   assert.deepEqual(problems.filter(item => item.severity === 'error'), []);
   assert.notDeepEqual(requests[0]?.params, [], 'the params still come from the catalog file');
 });
+
+function runMany(lines: D1ServeLine[], entities: string[], usecases: D1SelectedUsecase[] = []): { requests: ReturnType<typeof deriveServeRequests>; problems: D1InputProblem[]; usecases: D1SelectedUsecase[] } {
+  const problems: D1InputProblem[] = [];
+  const requests = deriveServeRequests({
+    moduleName: MODULE,
+    lines,
+    catalogTexts: { cm: catalogText },
+    usecases,
+    problems,
+    entities: Object.fromEntries(entities.map(name => [name, { entityId: name }])),
+    plannedIds: new Map(usecases.map(item => [item.usecaseId, `${item.entity}.${item.operation}`])),
+    removedIds: new Set(),
+  });
+  return { requests, problems, usecases };
+}
+
+void test('d1_230: a read serve that lists two entities gets one usecase for each, in the order of the L4', () => {
+  const { requests, problems, usecases } = runMany([
+    { connectionId: 'cm', operationId: 'record', entityRefs: ['AgentTool', 'PersonToolRestriction'], effect: 'list' },
+  ], ['AgentTool', 'PersonToolRestriction']);
+  assert.deepEqual(requests[0]?.uses, ['listAgentTool', 'listPersonToolRestriction']);
+  assert.deepEqual(usecases.map(item => `${item.entity}.${item.operation}`), ['AgentTool.list', 'PersonToolRestriction.list']);
+  assert.deepEqual(problems.map(item => item.code), ['USECASE_FROM_CONTRACT', 'USECASE_FROM_CONTRACT']);
+  // A usecase already in the plan is used, not created again.
+  const planned: D1SelectedUsecase[] = [{ usecaseId: 'listAgentTool', entity: 'AgentTool', operation: 'list', status: 'create', existing: '', identity: 'listAgentTool', routes: [] } as D1SelectedUsecase];
+  const again = runMany([{ connectionId: 'cm', operationId: 'record', entityRefs: ['AgentTool', 'PersonToolRestriction'], effect: 'list' }], ['AgentTool', 'PersonToolRestriction'], planned);
+  assert.deepEqual(again.requests[0]?.uses, ['listAgentTool', 'listPersonToolRestriction']);
+  assert.equal(again.usecases.filter(item => item.usecaseId === 'listAgentTool').length, 1);
+  const get = runMany([{ connectionId: 'cm', operationId: 'record', entityRefs: ['AgentTool', 'PersonToolRestriction'], effect: 'read' }], ['AgentTool', 'PersonToolRestriction']);
+  assert.deepEqual(get.requests[0]?.uses, ['getAgentTool', 'getPersonToolRestriction']);
+});
+
+void test('d1_230: an entity of a read serve that has no possible usecase is an error that names it, never dropped', () => {
+  const { requests, problems } = runMany([
+    { connectionId: 'cm', operationId: 'record', entityRefs: ['AgentTool', 'Ghost'], effect: 'list' },
+  ], ['AgentTool']);
+  assert.deepEqual(requests[0]?.uses, ['listAgentTool']);
+  const refused = problems.filter(item => item.code === 'REQUEST_USECASE_UNPLANNED');
+  assert.equal(refused.length, 1);
+  assert.match(refused[0].message, /Entity Ghost is not in the module ontology/);
+});
+
+void test('d1_230: a write serve with several entities keeps the first usecase and names the others in a review', () => {
+  const { requests, problems } = runMany([
+    { connectionId: 'cm', operationId: 'record', entityRefs: ['AgentTool', 'PersonToolRestriction'], effect: 'create' },
+  ], ['AgentTool', 'PersonToolRestriction']);
+  assert.deepEqual(requests[0]?.uses, ['createAgentTool']);
+  const extra = problems.filter(item => item.code === 'SERVE_WRITE_EXTRA_ENTITYREFS');
+  assert.equal(extra.length, 1);
+  assert.equal(extra[0].severity, 'review');
+  assert.match(extra[0].message, /PersonToolRestriction/);
+  assert.equal(extra[0].message.includes('Only AgentTool has a usecase'), true);
+  assert.equal(problems.some(item => item.severity === 'error'), false);
+  // One entity: no review.
+  const single = runMany([{ connectionId: 'cm', operationId: 'record', entityRefs: ['AgentTool'], effect: 'create' }], ['AgentTool']);
+  assert.equal(single.problems.some(item => item.code === 'SERVE_WRITE_EXTRA_ENTITYREFS'), false);
+});

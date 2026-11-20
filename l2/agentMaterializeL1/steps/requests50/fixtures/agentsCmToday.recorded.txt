@@ -1,0 +1,121 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/cm.ts" enhancement="_blank"/>
+
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type {
+  CmAgentDraftReadyInput,
+  CmAgentDraftReadyOutput,
+  CmDescribeInput,
+  CmDescribeOutput,
+  CmRecordInput,
+  CmRecordOutput,
+} from '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.js';
+import { createAgentTool } from '/_102047_/l1/agents/layer_2_application/usecases/createAgentTool.js';
+import { listAgentTool } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentTool.js';
+import { createExecutionSummary } from '/_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.js';
+
+const MAX_PAGE_SIZE = 200;
+
+export const requests: { 'agents.cm.agentDraftReady': (input: CmAgentDraftReadyInput, ctx: RequestContext) => Promise<CmAgentDraftReadyOutput>; 'agents.cm.describe': (input: CmDescribeInput, ctx: RequestContext) => Promise<CmDescribeOutput>; 'agents.cm.record': (input: CmRecordInput, ctx: RequestContext) => Promise<CmRecordOutput> } = {
+  'agents.cm.agentDraftReady': async function (input, ctx) {
+    if (!input.draftId) {
+      throw new Error('agents.cm.agentDraftReady: draftId is required');
+    }
+    if (input.status === 'refused') {
+      if (!input.refusedReason) {
+        throw new Error('agents.cm.agentDraftReady: a refused draft needs refusedReason');
+      }
+      // A refused preparation suggests no tool: there is nothing for the tool usecase to write.
+      return {};
+    }
+    const suggested = input.suggestedTools ?? [];
+    return ctx.data.moduleData.runInTransaction(async (tx) => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      const seen = new Set<string>();
+      for (const toolId of suggested) {
+        if (seen.has(toolId)) continue;
+        seen.add(toolId);
+        await createAgentTool(
+          {
+            agentId: input.draftId,
+            toolId,
+            enabled: true,
+            choiceSource: 'automatic',
+            details: { automaticOrigin: 'cm' },
+          },
+          bound,
+        );
+      }
+      const out: CmAgentDraftReadyOutput = {};
+      return out;
+    });
+  },
+
+  'agents.cm.describe': async function (input, ctx) {
+    if (!input.agentId) {
+      throw new Error('agents.cm.describe: agentId is required');
+    }
+    if (!Array.isArray(input.authorities) || input.authorities.length === 0) {
+      throw new Error('agents.cm.describe: authorities are required to compute allowed');
+    }
+    const enabledTools: Array<{ toolId: string; version: number; toolRemoved: boolean }> = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+      const res = await listAgentTool(
+        { agentId: input.agentId, enabled: true, page, pageSize: MAX_PAGE_SIZE },
+        ctx,
+      );
+      for (const item of res.items) {
+        enabledTools.push({
+          toolId: item.toolId,
+          version: Number(item.version),
+          toolRemoved: item.details?.toolRemoved === true,
+        });
+      }
+      hasMore = res.hasMore === true;
+      page += 1;
+    }
+    const active = enabledTools.filter((t) => !t.toolRemoved);
+    const version = active
+      .map((t) => `${t.toolId}:${t.version}`)
+      .sort()
+      .join('|');
+    const allowed = Array.from(new Set(active.map((t) => t.toolId)));
+    if (input.knownVersion != null && input.knownVersion === version) {
+      // Same version: only what depends on the actor is answered.
+      return { version, allowed };
+    }
+    return { version, toolsMode: 'all', allowed };
+  },
+
+  'agents.cm.record': async function (input, ctx) {
+    if (!input.executionId) {
+      throw new Error('agents.cm.record: executionId is required');
+    }
+    if (!input.agentId) {
+      throw new Error('agents.cm.record: agentId is required');
+    }
+    const actorId = ctx.requestMeta?.connection?.context?.actorMdmId;
+    return ctx.data.moduleData.runInTransaction(async (tx) => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      await createExecutionSummary(
+        {
+          agentId: input.agentId,
+          ...(actorId != null ? { personId: String(actorId) } : {}),
+          executionRef: input.executionId,
+          startedAt: input.startedAt,
+          details: {
+            durationMs: input.durationMs,
+            cost: String(input.costUsd),
+            tookOver: input.handedOff,
+            ...(input.refs.conversationId != null ? { conversationLink: input.refs.conversationId } : {}),
+            actions: input.actions.map((a) => ({ toolName: a.actionId, result: a.outcome })),
+          },
+        },
+        bound,
+      );
+      const out: CmRecordOutput = { status: 'recorded' };
+      return out;
+    });
+  },
+};
