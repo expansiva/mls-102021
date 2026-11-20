@@ -6,8 +6,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { draftScenarioRow, referenceSeedUnit, seedRowProblems, seedRowsHuman } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
-import { settleReferenceSeed, uuidV5 } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';
+import { draftScenarioRow, referenceSeedUnit, seedRowProblems, seedRowsHuman, seedScenariosOf, type SeedColumn } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
+import { completeInitialRows, settleReferenceSeed, uuidV5 } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';
 import { seedTableColumns } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRows.js';
 import type { M12Layer } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -203,4 +203,72 @@ test('a scenario row does not put a field that is not a column at the root', asy
   const legacy = await draftScenarioRow(draft);
   assert.ok('row' in legacy);
   assert.equal(legacy.row.version, 1, 'without the table columns the l4 key went to the root');
+});
+
+const AGENTS = '/Volumes/WagnerSSD1/collab/mls-base/mls-102047';
+const SEED_TOKEN = /^[a-z][\w]*\.[\w]+\.[\w]+\.[\w.]+$/;
+
+function stringValues(value: unknown, out: string[]): void {
+  if (typeof value === 'string') out.push(value);
+  else if (value && typeof value === 'object') {
+    for (const item of Object.values(value as Record<string, unknown>)) stringValues(item, out);
+  }
+}
+
+function patternCount(columns: readonly SeedColumn[]): number {
+  return columns.reduce((sum, column) => sum + (column.pattern ? 1 : 0) + patternCount(column.fields), 0);
+}
+
+test('agents scenario seed text is the field title plus the scenario position', async () => {
+  const plan = readFileSync(path.join(AGENTS, 'l1/agents/layer_1_external/adapters/persistence/seeds.ts'), 'utf8');
+  const start = plan.indexOf('export const seedPlan = ');
+  const end = plan.indexOf('} as const;', start);
+  assert.ok(start >= 0 && end > start);
+  const scenarios = seedScenariosOf(JSON.parse(plan.slice(start + 'export const seedPlan = '.length, end + 1)));
+  const byTable = new Map<string, Record<string, unknown>[]>();
+  let patterns = 0;
+  for (const scenario of scenarios) {
+    const ontology = readFileSync(path.join(AGENTS, `l4/agents/ontology/${scenario.entityId}.defs.ts`), 'utf8');
+    const draft = referenceSeedUnit({
+      scenarioId: scenario.scenarioId,
+      tableId: scenario.tableId,
+      ontologySource: ontology,
+      states: scenario.states,
+      stateField: scenario.stateField,
+      requireInitial: false,
+      constraints: scenario.constraints,
+    });
+    assert.ok(draft);
+    patterns += patternCount(draft.columns);
+    const scenarioIndex = scenarios.filter(item => item.tableId === scenario.tableId).indexOf(scenario) + 1;
+    const drafted = await draftScenarioRow({ ...draft, scenarioIndex });
+    if ('problems' in drafted) continue;
+    const completed = await completeInitialRows(draft, [drafted.row]);
+    assert.ok('rows' in completed, 'problems' in completed ? completed.problems.join('; ') : '');
+    const row = completed.rows[0];
+    const texts: string[] = [];
+    stringValues(row, texts);
+    for (const text of texts) assert.equal(SEED_TOKEN.test(text), false, text);
+    const rows = byTable.get(scenario.tableId) ?? [];
+    rows.push(row);
+    byTable.set(scenario.tableId, rows);
+  }
+  assert.equal(patterns, 0, 'agents scenario columns with pattern');
+  const tools = byTable.get('agentTool') ?? [];
+  assert.equal(tools.length, 2);
+  assert.notEqual(`${tools[0].agentId}|${tools[0].toolId}`, `${tools[1].agentId}|${tools[1].toolId}`);
+  const summary = byTable.get('executionSummary')?.[0];
+  assert.ok(summary);
+  assert.equal(summary.executionRef, 'Execution reference 1');
+  assert.ok(String(summary.executionRef).length <= 120);
+
+  const short = 'export const item = { "entityId": "Item", "kind": "entity", "moduleName": "sample", "record": { "fields": { "label": { "type": "string", "required": true, "title": "Execution reference", "maxLength": 8 } } }, "uniqueKeys": [["label"]] } as const;\n';
+  const cut = referenceSeedUnit({ scenarioId: 'one', tableId: 'item', ontologySource: short, states: [], stateField: '', requireInitial: false });
+  assert.ok(cut);
+  const first = await draftScenarioRow({ ...cut, scenarioIndex: 1 });
+  const second = await draftScenarioRow({ ...cut, scenarioIndex: 2 });
+  assert.ok('row' in first && 'row' in second);
+  assert.equal(first.row.label, 'Execut 1');
+  assert.equal(second.row.label, 'Execut 2');
+  assert.equal(String(first.row.label).length, 8);
 });

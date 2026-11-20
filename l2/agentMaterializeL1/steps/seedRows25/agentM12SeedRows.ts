@@ -112,7 +112,8 @@ export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSe
   const { completeInitialRows } = await import('/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js');
   for (const seed of ctx.units) {
     if (seed.definition.artifactType !== 'persistenceSeeds') continue;
-    for (const scenario of seedScenariosOf(seed.definition.data)) {
+    const scenarios = seedScenariosOf(seed.definition.data);
+    for (const scenario of scenarios) {
       const source = await ctx.read(seedOntologyRef(ctx.run.project, ctx.run.module, scenario.entityId));
       if (!source) continue;
       const draft = referenceSeedUnit({
@@ -126,7 +127,8 @@ export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSe
       });
       if (!draft) continue;
       const stateField = scenario.stateField || stateFieldFor(draft.columns, scenario.states);
-      const unit = { ...draft, tableColumns: seedTableColumns(ctx.units, scenario.tableId), ...(stateField ? { stateField } : {}) };
+      const scenarioIndex = scenarios.filter(item => item.tableId === scenario.tableId).indexOf(scenario) + 1;
+      const unit = { ...draft, scenarioIndex, tableColumns: seedTableColumns(ctx.units, scenario.tableId), ...(stateField ? { stateField } : {}) };
       const drafted = await draftScenarioRow(unit);
       if ('problems' in drafted) continue;
       const completed = await completeInitialRows(unit, [drafted.row]);

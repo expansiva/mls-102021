@@ -10,6 +10,8 @@ export const SEED_ROWS_TOOL_DESCRIPTION = 'Return the seed rows of one reference
 
 export interface SeedColumn {
   name: string;
+  /** L4 field title. Empty when the def has none; the seed text then humanizes `name`. */
+  title: string;
   type: 'string' | 'integer' | 'boolean' | 'timestamp' | 'uuid' | 'enum' | 'object' | 'unknown';
   required: boolean;
   /** True when the l4 marks the field indexed, so persistence promotes it to a column. */
@@ -22,6 +24,8 @@ export interface SeedColumn {
 
 export interface SeedTableUnit {
   scenarioId: string;
+  /** 1-based position of this scenario among the scenarios of `tableId`, in `seedScenariosOf` order. */
+  scenarioIndex: number;
   tableId: string;
   /** L4 `moduleName`. The stable primary key is `<moduleName>.<tableId>:<unique key>`. */
   moduleName: string;
@@ -104,6 +108,7 @@ function columnsOf(fields: unknown): SeedColumn[] {
       : [];
     out.push({
       name,
+      title: typeof meta.title === 'string' ? meta.title.trim() : '',
       type: columnType(meta),
       required: meta.required === true && !derived,
       indexed: meta.indexed === true,
@@ -163,6 +168,7 @@ export function referenceSeedUnit(input: {
   if (input.requireInitial !== false && !ontology.initialData) return null;
   return {
     scenarioId: input.scenarioId,
+    scenarioIndex: 1,
     tableId: input.tableId,
     moduleName: ontology.moduleName,
     entityId: ontology.entityId,
@@ -367,25 +373,50 @@ export function seedRowProblems(unit: SeedTableUnit, rows: readonly Record<strin
   return problems;
 }
 
-function placeholder(column: SeedColumn, token: string, uuidFor: (name: string) => Promise<string>): Promise<unknown> {
-  if (column.type === 'string') {
-    const text = token || 'seed';
-    return Promise.resolve(column.maxLength !== null ? text.slice(0, column.maxLength) : text);
+function humanFieldTitle(name: string): string {
+  const spaced = name.replace(/[_.]/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim();
+  if (!spaced) return 'Seed';
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/** `<title> <n>`, cutting the title so `n` and `maxLength` both stay whole. */
+function readableSeedText(column: SeedColumn, scenarioIndex: number): string {
+  const n = scenarioIndex > 0 ? scenarioIndex : 1;
+  const suffix = ` ${n}`;
+  const title = column.title || humanFieldTitle(column.name);
+  if (column.maxLength === null) return `${title}${suffix}`;
+  const room = column.maxLength - suffix.length;
+  if (room < 1) return String(n).slice(0, column.maxLength);
+  return `${title.slice(0, room)}${suffix}`;
+}
+
+function stringPlaceholder(column: SeedColumn, token: string, scenarioIndex: number): string {
+  const readable = readableSeedText(column, scenarioIndex);
+  let text = readable;
+  if (column.pattern) {
+    let matches = false;
+    try { matches = new RegExp(column.pattern).test(readable); } catch { matches = false; }
+    if (!matches) text = token || 'seed';
   }
+  return column.maxLength !== null ? text.slice(0, column.maxLength) : text;
+}
+
+function placeholder(column: SeedColumn, token: string, uuidFor: (name: string) => Promise<string>, scenarioIndex: number): Promise<unknown> {
+  if (column.type === 'string') return Promise.resolve(stringPlaceholder(column, token, scenarioIndex));
   if (column.type === 'integer') return Promise.resolve(1);
   if (column.type === 'boolean') return Promise.resolve(true);
   if (column.type === 'timestamp') return Promise.resolve('2026-01-01T00:00:00.000Z');
   if (column.type === 'uuid') return uuidFor(token);
   if (column.type === 'enum') return Promise.resolve(column.enumValues[0] ?? '');
-  if (column.type === 'object') return objectPlaceholder(column.fields, token, uuidFor);
+  if (column.type === 'object') return objectPlaceholder(column.fields, token, uuidFor, scenarioIndex);
   return Promise.resolve(undefined);
 }
 
-async function objectPlaceholder(fields: readonly SeedColumn[], token: string, uuidFor: (name: string) => Promise<string>): Promise<Record<string, unknown>> {
+async function objectPlaceholder(fields: readonly SeedColumn[], token: string, uuidFor: (name: string) => Promise<string>, scenarioIndex: number): Promise<Record<string, unknown>> {
   const nested: Record<string, unknown> = {};
   for (const field of fields) {
     if (!field.required) continue;
-    nested[field.name] = await placeholder(field, `${token}.${field.name}`, uuidFor);
+    nested[field.name] = await placeholder(field, `${token}.${field.name}`, uuidFor, scenarioIndex);
   }
   return nested;
 }
@@ -413,7 +444,7 @@ export async function draftScenarioRow(unit: SeedTableUnit): Promise<{ row: Reco
     // A field that is not a column of the table is not written at the root: the runtime refuses it.
     if (unit.tableColumns && !unit.tableColumns.includes(name)) continue;
     const token = `${unit.moduleName}.${unit.tableId}.${unit.scenarioId}.${name}`;
-    row[name] = await placeholder(column, token, name => stableActorMdmId(unit.moduleName, `${unit.scenarioId}:${name}`));
+    row[name] = await placeholder(column, token, field => stableActorMdmId(unit.moduleName, `${unit.scenarioId}:${field}`), unit.scenarioIndex);
   }
   if (unit.stateField && unit.states.length > 0) {
     const column = unit.columns.find(item => item.name === unit.stateField);
