@@ -5,6 +5,7 @@ import { outboundOnKeys, qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers
 import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
+import { childWritersOf, type D1ChildWriter } from '/_102021_/l2/agentDefsL1/steps/usecases50/childWriters.js';
 import { parseCatalogSource, resolveEntityCatalogs } from '/_102021_/l2/agentDefsL1/steps/input20/entityCatalog.js';
 import {
   contractPath,
@@ -53,6 +54,7 @@ export interface JourneyStepView {
   kind: string;
   entity: string;
   effect: string;
+  affects: string[];
   transitionRef: string;
   description: string;
 }
@@ -78,6 +80,8 @@ export interface VerifiedBundle {
   needs: unknown | null;
   needsPath: string;
   journeys: JourneyView[];
+  /** d1_221: the entities the L4 says are written by their parent (the rule of the NS5), with the parent. */
+  childWriters: D1ChildWriter[];
   catalogs: Array<{ path: string; rules: Record<string, string> }>;
   bodies: Record<string, unknown | null>;
   entityPaths: Record<string, string>;
@@ -153,6 +157,12 @@ export async function loadVerifiedSources(
     if (view) journeys.push(view);
   }
   journeys.sort((left, right) => left.journeyId.localeCompare(right.journeyId));
+  const ontologyIndex = await take(project, paths.ontologyIndex, 'defs', snapshot.sources, findings, hashes, files);
+  const childWriters = childWritersOf(
+    ontologyIndex,
+    Object.fromEntries(Object.entries(bodies).filter(([, body]) => body !== null)),
+    journeys.map(journey => ({ journeyId: journey.journeyId, steps: journey.steps })),
+  );
   const pages = new Set(snapshot.selection.pages.map(page => page.pageId));
   for (const request of snapshot.selection.requests || []) pages.add(request.pageId);
   const contracts: D1ContractSource[] = [];
@@ -177,6 +187,7 @@ export async function loadVerifiedSources(
     needs,
     needsPath: paths.needs,
     journeys,
+    childWriters,
     catalogs,
     bodies,
     entityPaths,
@@ -1239,6 +1250,7 @@ function journeyView(journeyId: string, path: string, body: unknown): JourneyVie
         kind: typeof step.kind === 'string' ? step.kind : '',
         entity: typeof step.entity === 'string' ? step.entity : '',
         effect: typeof step.effect === 'string' ? step.effect : '',
+        affects: stringList(step.affects),
         transitionRef: typeof step.transitionRef === 'string' ? step.transitionRef : '',
         description: typeof step.description === 'string' ? step.description : '',
       });

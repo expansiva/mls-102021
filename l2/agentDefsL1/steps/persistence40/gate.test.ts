@@ -558,3 +558,22 @@ void test('a create-only entity with a unique key declares the list its M1 body 
   }));
   assert.deepEqual(plain.ports[0].methods.map(method => method.name), ['create']);
 });
+
+void test('d1_221: the port of an entity its parent writes can create, though only a read of it is selected; any other port is as before', () => {
+  const asked = {
+    moduleName: 'sampleModule',
+    entityId: 'Note',
+    tableId: 'note',
+    portId: 'NoteRepository',
+    entities: noteEntity,
+    operations: ['list', 'get'],
+  };
+  const before = buildD1Persistence(planned(asked));
+  assert.deepEqual(before.ports[0].methods.map(method => method.name), ['list', 'get']);
+  const recorded = buildD1Persistence({ ...planned(asked), recordedWithParent: ['Note'] });
+  assert.equal(recorded.ok, true, JSON.stringify(recorded.problems));
+  assert.deepEqual(recorded.ports[0].methods.map(method => method.name), ['create', 'list', 'get']);
+  assert.deepEqual(recorded.adapters[0].methods.map(method => method.name), ['create', 'list', 'get']);
+  const other = buildD1Persistence({ ...planned(asked), recordedWithParent: ['SomethingElse'] });
+  assert.deepEqual(other.ports[0].methods.map(method => method.name), ['list', 'get']);
+});

@@ -61,6 +61,8 @@ function forbiddenImportReason(spec: string): string | null {
   }
   if (spec.startsWith('/_102020_/l2/helpers/contractV2/')) return null;
   if (spec === '/_102020_/l2/helpers/connections/catalogPath.js') return null;
+  // d1_221: the writer resolution of the NS5 is a pure file (types and the L4 view, no node, no gate, no step) that the L1 reads, not copies.
+  if (spec === '/_102035_/l2/solution/entityWriter.js' || spec === '/_102035_/l2/solution/ontologyView.js') return null;
   if (spec.startsWith('/_102035_/') || spec.startsWith('/_102020_/')) return `static import outside this agent (${spec})`;
   return null;
 }

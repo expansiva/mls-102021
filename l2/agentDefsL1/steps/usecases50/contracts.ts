@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/contracts.ts" enhancement="_blank"/>
 
+import type { D1ChildWriter } from '/_102021_/l2/agentDefsL1/steps/usecases50/childWriters.js';
 import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import type { D1DerivedRead } from '/_102021_/l2/agentDefsL1/steps/usecases50/derivedRead.js';
@@ -340,6 +341,8 @@ export interface D1UsecaseRequest {
   outbound: D1OutboundEvent[];
   contracts: D1ContractSource[];
   contexts?: D1UsecaseContext[];
+  /** d1_221: entities the L4 says are written by their parent (the NS5 rule). Their port is a dependency of the usecases that write the parent. */
+  childWriters?: D1ChildWriter[];
   sourceFindings?: D1SourceFinding[];
   sourceHashes?: D1SourceHash[];
   /** Raw dependency texts. The fidelity reader uses these, not the draft. */

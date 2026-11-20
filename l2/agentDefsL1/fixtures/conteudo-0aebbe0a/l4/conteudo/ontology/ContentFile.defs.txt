@@ -1,0 +1,95 @@
+/// <mls fileReference="_102047_/l4/conteudo/ontology/ContentFile.defs.ts" enhancement="_blank"/>
+
+import type { Ns5OntologyEntityV3, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const conteudoEntityContentFile = {
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "conteudo",
+  "entityId": "ContentFile",
+  "title": "Arquivo de conteúdo",
+  "description": "Arquivo markdown do blog, da documentação ou do site guardado no repositório de conteúdo. O texto de verdade vive no repositório; o módulo não guarda cópia e lê, cria e grava pelo módulo de integração.",
+  "displayField": "path",
+  "relationships": {
+    "publications": {
+      "relationshipId": "publicationContentFile",
+      "to": "Publication",
+      "via": "Publication.contentPath",
+      "cardinality": "1:N",
+      "title": "Publicações do arquivo",
+      "description": "Histórico de quem criou ou alterou este arquivo e quando.",
+      "mode": "fk",
+      "direction": "to",
+      "required": true
+    }
+  },
+  "capabilities": {},
+  "rules": [
+    "repositoryIsSourceOfTruth",
+    "writeThroughIntegration",
+    "allowedFolders",
+    "recordPublicationOnWrite"
+  ],
+  "kind": "external",
+  "connectionId": "github",
+  "record": {
+    "fields": {
+      "path": {
+        "type": "string",
+        "required": true,
+        "title": "Caminho",
+        "description": "Caminho do arquivo markdown no repositório de conteúdo, por exemplo blog/meu-post.md; identifica o arquivo."
+      },
+      "folder": {
+        "type": "enum",
+        "required": true,
+        "values": [
+          {
+            "value": "blog",
+            "title": "Blog"
+          },
+          {
+            "value": "docs",
+            "title": "Documentação"
+          },
+          {
+            "value": "site",
+            "title": "Site institucional"
+          }
+        ],
+        "title": "Pasta",
+        "description": "Pasta do repositório onde o arquivo fica."
+      },
+      "name": {
+        "type": "string",
+        "required": true,
+        "title": "Nome do arquivo",
+        "description": "Nome do arquivo markdown dentro da pasta."
+      },
+      "title": {
+        "type": "string",
+        "title": "Título",
+        "description": "Título do conteúdo, informado pelo editor ao criar o arquivo.",
+        "maxLength": 200
+      },
+      "content": {
+        "type": "text",
+        "title": "Texto",
+        "description": "Texto markdown do arquivo como está no repositório; lido e gravado pelo módulo de integração, nunca guardado no módulo."
+      },
+      "sha": {
+        "type": "string",
+        "title": "Versão no repositório",
+        "description": "Identificador da versão atual do arquivo no repositório, usado para gravar a alteração sobre a versão lida."
+      },
+      "lastModifiedAt": {
+        "type": "timestamp",
+        "title": "Última alteração",
+        "description": "Momento da última alteração do arquivo no repositório."
+      }
+    }
+  }
+} as const satisfies Ns5Readonly<Ns5OntologyEntityV3>;
+
+export type ConteudoEntityContentFileType = typeof conteudoEntityContentFile;
+
+export default conteudoEntityContentFile;

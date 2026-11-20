@@ -1,0 +1,160 @@
+/// <mls fileReference="_102047_/l4/conteudo/ontology/Publication.defs.ts" enhancement="_blank"/>
+
+import type { Ns5OntologyEntityV3, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const conteudoEntityPublication = {
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "conteudo",
+  "entityId": "Publication",
+  "title": "Publicação",
+  "description": "Registro do histórico: qual arquivo foi publicado, em qual pasta, por quem, quando e se foi criação ou alteração. Gravado a cada salvamento ou criação de conteúdo.",
+  "displayField": "contentPath",
+  "relationships": {
+    "editor": {
+      "relationshipId": "publicationEditor",
+      "to": "Editor",
+      "via": "Publication.editorId",
+      "cardinality": "N:1",
+      "title": "Pessoa que publicou",
+      "description": "Cada publicação registra a pessoa que publicou.",
+      "mode": "fk",
+      "required": true
+    },
+    "contentFile": {
+      "relationshipId": "publicationContentFile",
+      "to": "ContentFile",
+      "via": "Publication.contentPath",
+      "cardinality": "N:1",
+      "title": "Arquivo publicado",
+      "description": "Cada publicação aponta para o arquivo do repositório que foi criado ou alterado.",
+      "mode": "fk",
+      "required": true
+    }
+  },
+  "capabilities": {
+    "read.byId": "Abre uma publicação pelo id para o editor ver qual arquivo foi publicado, por quem, quando e se foi criação ou alteração.",
+    "locate.byColumn": "Lista o histórico de publicações filtrado por pessoa, pasta ou período (editorId, folder, publishedAt), da mais recente para a mais antiga, paginado; usado pelo editor na consulta do histórico.",
+    "locate.byText": "Procura publicações pelo trecho do caminho do arquivo digitado na busca da tela de histórico do editor.",
+    "count": "Conta as publicações que o filtro do histórico encontra, para o total exibido no topo da lista.",
+    "listByForeignKey": "Lista as publicações de um arquivo ou de uma pessoa, preenchendo a lista de uma vez a partir de vários ids.",
+    "create": "Grava uma publicação a cada salvamento ou criação de conteúdo, logo depois que o repositório aceita a gravação pelo módulo de integração.",
+    "read.mdmRecord": "Lê o registro mestre da pessoa que publicou para mostrar seu nome no histórico, hidratando a lista inteira de uma vez."
+  },
+  "rules": [
+    "publicationRecordedOnSave",
+    "publicationIsImmutable"
+  ],
+  "kind": "entity",
+  "class": "event",
+  "storage": {
+    "target": "moduleDatabase",
+    "table": "conteudo_publication",
+    "kind": "relational"
+  },
+  "record": {
+    "fields": {
+      "id": {
+        "type": "uuid",
+        "required": true,
+        "derived": true,
+        "indexed": true,
+        "title": "Id"
+      },
+      "version": {
+        "type": "integer",
+        "required": true,
+        "derived": true
+      },
+      "editorId": {
+        "type": "record",
+        "required": true,
+        "indexed": true,
+        "to": [
+          "Editor"
+        ],
+        "title": "Publicado por",
+        "description": "Pessoa da empresa que salvou ou criou o conteúdo no repositório. O histórico é filtrado por ela."
+      },
+      "contentPath": {
+        "type": "record",
+        "required": true,
+        "indexed": true,
+        "to": [
+          "ContentFile"
+        ],
+        "title": "Arquivo",
+        "description": "Caminho do arquivo markdown no repositório de conteúdo que foi criado ou alterado (ex.: blog/2026/novidades.md). Identifica o arquivo publicado e serve para buscar o histórico de um arquivo.",
+        "maxLength": 500
+      },
+      "folder": {
+        "type": "enum",
+        "required": true,
+        "indexed": true,
+        "values": [
+          {
+            "value": "blog",
+            "title": "Blog"
+          },
+          {
+            "value": "docs",
+            "title": "Documentação"
+          },
+          {
+            "value": "site",
+            "title": "Site institucional"
+          }
+        ],
+        "title": "Pasta",
+        "description": "Pasta do repositório em que o arquivo está; o editor filtra o histórico por ela."
+      },
+      "publishedAt": {
+        "type": "timestamp",
+        "required": true,
+        "indexed": true,
+        "derived": true,
+        "title": "Publicado em",
+        "description": "Momento em que a gravação foi aceita pelo repositório, preenchido pelo sistema. O histórico é filtrado por período e ordenado por ele."
+      },
+      "details": {
+        "type": "object",
+        "required": true,
+        "title": "Detalhes",
+        "description": "Dados da publicação que só são exibidos.",
+        "fields": {
+          "operation": {
+            "type": "enum",
+            "required": true,
+            "values": [
+              {
+                "value": "create",
+                "title": "Criação"
+              },
+              {
+                "value": "update",
+                "title": "Alteração"
+              }
+            ],
+            "title": "Tipo de publicação",
+            "description": "Se a gravação criou um conteúdo novo ou alterou um arquivo existente."
+          },
+          "title": {
+            "type": "string",
+            "title": "Título",
+            "description": "Título do conteúdo no momento da publicação, como informado pelo editor ou lido do arquivo.",
+            "maxLength": 300
+          },
+          "revision": {
+            "type": "string",
+            "title": "Revisão no repositório",
+            "description": "Identificador da gravação devolvido pelo repositório de conteúdo por meio do módulo de integração, para localizar a versão publicada.",
+            "maxLength": 100
+          }
+        }
+      }
+    }
+  }
+} as const satisfies Ns5Readonly<Ns5OntologyEntityV3>;
+
+export type ConteudoEntityPublicationType = typeof conteudoEntityPublication;
+
+export default conteudoEntityPublication;

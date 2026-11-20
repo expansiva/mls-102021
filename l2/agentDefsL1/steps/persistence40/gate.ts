@@ -593,6 +593,8 @@ function methodsFor(
     blocked.add(entityId);
     return null;
   }
+  // d1_221: the usecase of the parent records this entity, so its port creates even though no usecase of its own is selected.
+  if ((request.recordedWithParent ?? []).includes(entityId)) selected.add('create');
   if (selected.size === 0) {
     error(problems, 'METHODS_EMPTY', entityId, `Entity ${entityId} has no selected operation. No repository method was invented.`);
     blocked.add(entityId);

@@ -1,0 +1,47 @@
+/// <mls fileReference="_102047_/l4/conteudo/journeys/lerConteudo.defs.ts" enhancement="_blank"/>
+
+import type { Ns5JourneyArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const lerConteudoJourney = {
+  "schemaVersion": "2026-09-10-ns5-journey-v1",
+  "journeyId": "lerConteudo",
+  "business": {
+    "actorRef": "editor",
+    "title": "Navegar e ler conteúdo",
+    "goal": "Encontrar um arquivo markdown do blog, da documentação ou do site e ler seu texto como está no repositório.",
+    "icon": "folder-open",
+    "entry": {
+      "mode": "coldStart"
+    },
+    "steps": [
+      {
+        "stepId": "navegarPastas",
+        "kind": "locate",
+        "entity": "ContentFile",
+        "title": "Navegar pelas pastas",
+        "description": "O editor percorre as pastas blog, docs e site e vê a lista de arquivos atualizada a partir do repositório.",
+        "icon": "folder-tree"
+      },
+      {
+        "stepId": "abrirArquivo",
+        "kind": "inspect",
+        "entity": "ContentFile",
+        "title": "Abrir e ler arquivo",
+        "description": "O editor abre o arquivo escolhido e lê o texto markdown trazido do repositório de conteúdo.",
+        "icon": "file-text"
+      }
+    ],
+    "outcome": {
+      "statement": "O editor leu o conteúdo atual do arquivo, exatamente como está no repositório.",
+      "evidence": [
+        "O texto exibido corresponde à versão atual do arquivo no repositório",
+        "A lista da pasta mostra os arquivos presentes no repositório, inclusive os alterados por fora"
+      ]
+    }
+  },
+  "businessHash": "sha256:8d9638fc880b24102a17c9664862fceb08e23613f7662877d8804dbdab1db9a4"
+} as const satisfies Ns5Readonly<Ns5JourneyArtifact>;
+
+export type LerConteudoJourneyType = typeof lerConteudoJourney;
+
+export default lerConteudoJourney;

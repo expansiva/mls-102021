@@ -1,0 +1,56 @@
+/// <mls fileReference="_102047_/l4/conteudo/journeys/alterarConteudo.defs.ts" enhancement="_blank"/>
+
+import type { Ns5JourneyArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const alterarConteudoJourney = {
+  "schemaVersion": "2026-09-10-ns5-journey-v1",
+  "journeyId": "alterarConteudo",
+  "business": {
+    "actorRef": "editor",
+    "title": "Alterar e salvar conteúdo",
+    "goal": "Editar o texto de um arquivo existente e gravar a alteração no repositório.",
+    "icon": "pencil",
+    "entry": {
+      "mode": "contextOrLookup"
+    },
+    "steps": [
+      {
+        "stepId": "localizarArquivo",
+        "kind": "locate",
+        "entity": "ContentFile",
+        "title": "Localizar o arquivo",
+        "description": "O editor usa o arquivo já aberto ou o encontra navegando pelas pastas blog, docs e site.",
+        "icon": "search"
+      },
+      {
+        "stepId": "lerArquivo",
+        "kind": "inspect",
+        "entity": "ContentFile",
+        "title": "Ler o texto atual",
+        "description": "O editor lê a versão atual do arquivo vinda do repositório antes de alterar.",
+        "icon": "file-text"
+      },
+      {
+        "stepId": "salvarAlteracao",
+        "kind": "act",
+        "entity": "ContentFile",
+        "effect": "update",
+        "title": "Alterar e salvar",
+        "description": "O editor altera o texto markdown e salva; a gravação vai ao repositório pelo módulo de integração e fica registrada no histórico quem publicou e quando.",
+        "icon": "save"
+      }
+    ],
+    "outcome": {
+      "statement": "A alteração foi gravada no repositório e registrada no histórico de publicações.",
+      "evidence": [
+        "Ao reabrir o arquivo, o texto alterado aparece vindo do repositório",
+        "O histórico mostra a publicação com o nome do editor e a data e hora"
+      ]
+    }
+  },
+  "businessHash": "sha256:6b9ba47b47c24f5dac05eb2c26cce0848248bfd5e14c700f89ed3889bf9eff1b"
+} as const satisfies Ns5Readonly<Ns5JourneyArtifact>;
+
+export type AlterarConteudoJourneyType = typeof alterarConteudoJourney;
+
+export default alterarConteudoJourney;

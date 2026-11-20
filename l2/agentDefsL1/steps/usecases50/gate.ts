@@ -29,6 +29,7 @@ import {
   type D1UsecaseEntity,
   type D1UsecaseEnumeration,
   type D1UsecaseItem,
+  type D1UsecasePort,
   type D1MdmArgument,
   type D1MdmPlannedCall,
   type D1UsecaseMdm,
@@ -443,6 +444,12 @@ function pipelineFor(request: D1UsecaseRequest, item: D1UsecaseItem): D1Pipeline
     dependsOn.push(pipelineId(request.project, request.moduleName, 'repositoryPort', port.portId));
     if (port.defPath) dependsFiles.push(qualifyDefPath(request.project, port.defPath));
   }
+  for (const child of childPortsOf(request, item)) {
+    const dependsId = pipelineId(request.project, request.moduleName, 'repositoryPort', child.portId);
+    if (!dependsOn.includes(dependsId)) dependsOn.push(dependsId);
+    const path = qualifyDefPath(request.project, child.defPath);
+    if (child.defPath && !dependsFiles.includes(path)) dependsFiles.push(path);
+  }
   for (const path of dependencyPaths(request, item)) {
     if (!dependsFiles.includes(path)) dependsFiles.push(path);
   }
@@ -456,6 +463,22 @@ function pipelineFor(request: D1UsecaseRequest, item: D1UsecaseItem): D1Pipeline
     dependsOn,
     skills: skillPaths('usecase'),
   };
+}
+
+/**
+ * d1_221: the ports of the entities the L4 says the parent writes. A usecase that writes the parent (any operation but a read) records them
+ * in the same unit of work, so their port is one of its dependencies. A child that is not in the module database has no port: nothing to add.
+ */
+function childPortsOf(request: D1UsecaseRequest, item: D1UsecaseItem): D1UsecasePort[] {
+  if (READ_OPERATIONS.has(item.operation)) return [];
+  const out: D1UsecasePort[] = [];
+  for (const child of request.childWriters ?? []) {
+    if (child.parentId !== item.entityId) continue;
+    const entity = request.entities.find(entry => entry.entityId === child.childId);
+    const port = request.ports.find(entry => entry.entityId === child.childId);
+    if (port && entity?.storageTarget === 'moduleDatabase' && !out.some(entry => entry.portId === port.portId)) out.push(port);
+  }
+  return out;
 }
 
 /** A usecase file must not depend on an adapter. */

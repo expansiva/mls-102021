@@ -1,0 +1,48 @@
+/// <mls fileReference="_102047_/l4/conteudo/journeys/criarConteudo.defs.ts" enhancement="_blank"/>
+
+import type { Ns5JourneyArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const criarConteudoJourney = {
+  "schemaVersion": "2026-09-10-ns5-journey-v1",
+  "journeyId": "criarConteudo",
+  "business": {
+    "actorRef": "editor",
+    "title": "Criar conteúdo novo",
+    "goal": "Publicar um novo arquivo markdown escolhendo a pasta, o título e o texto.",
+    "icon": "file-plus",
+    "entry": {
+      "mode": "coldStart"
+    },
+    "steps": [
+      {
+        "stepId": "escolherPasta",
+        "kind": "locate",
+        "entity": "ContentFile",
+        "title": "Escolher a pasta",
+        "description": "O editor escolhe em qual pasta o conteúdo novo ficará: blog, docs ou site.",
+        "icon": "folder"
+      },
+      {
+        "stepId": "criarArquivo",
+        "kind": "act",
+        "entity": "ContentFile",
+        "effect": "create",
+        "title": "Escrever e salvar",
+        "description": "O editor informa o título e o texto e salva; o arquivo é criado no repositório pelo módulo de integração e a publicação entra no histórico.",
+        "icon": "file-plus"
+      }
+    ],
+    "outcome": {
+      "statement": "O novo conteúdo existe no repositório, na pasta escolhida, e sua publicação está no histórico.",
+      "evidence": [
+        "O novo arquivo aparece na lista da pasta escolhida",
+        "O histórico mostra a criação com o nome do editor e a data e hora"
+      ]
+    }
+  },
+  "businessHash": "sha256:cbbfdf7e68b4c18c7a347575a1d210d2615036cc31b19b33439b7e6f41140a06"
+} as const satisfies Ns5Readonly<Ns5JourneyArtifact>;
+
+export type CriarConteudoJourneyType = typeof criarConteudoJourney;
+
+export default criarConteudoJourney;

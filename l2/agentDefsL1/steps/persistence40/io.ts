@@ -12,6 +12,7 @@ import { resolveEntityCatalogs } from '/_102021_/l2/agentDefsL1/steps/input20/en
 import { entityCatalogSource, entityPath, isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import type { D1PersistenceBuild, D1PersistenceRequest } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
+import { childWritersOf, loadWriterJourneys } from '/_102021_/l2/agentDefsL1/steps/usecases50/childWriters.js';
 import { buildD1Persistence } from '/_102021_/l2/agentDefsL1/steps/persistence40/gate.js';
 
 export async function assembleD1Persistence(
@@ -150,7 +151,14 @@ async function persistenceRequest(
     physicalCitations: {},
     catalogsRead,
     catalogRefs: resolved.refs,
+    recordedWithParent: await recordedWithParentOf(moduleName, entities, project),
   };
+}
+
+/** The entities the L4 says their parent writes (the rule of the NS5): the port of each one can create. */
+async function recordedWithParentOf(moduleName: string, entities: Record<string, unknown>, project: number): Promise<string[]> {
+  const { index, journeys } = await loadWriterJourneys(moduleName, logical => readLogical(project, logical));
+  return childWritersOf(index, entities, journeys).map(child => child.childId);
 }
 
 async function readLogical(project: number, logical: string): Promise<string | null> {

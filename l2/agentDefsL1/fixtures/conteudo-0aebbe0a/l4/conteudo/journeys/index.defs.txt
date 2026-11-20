@@ -1,0 +1,35 @@
+/// <mls fileReference="_102047_/l4/conteudo/journeys/index.defs.ts" enhancement="_blank"/>
+
+import type { Ns5JourneyIndexArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const conteudoJourneyIndex = {
+  "schemaVersion": "2026-09-10-ns5-journey-v1",
+  "moduleName": "conteudo",
+  "journeys": [
+    {
+      "journeyId": "lerConteudo",
+      "actorRef": "editor",
+      "title": "Navegar e ler conteúdo"
+    },
+    {
+      "journeyId": "alterarConteudo",
+      "actorRef": "editor",
+      "title": "Alterar e salvar conteúdo"
+    },
+    {
+      "journeyId": "criarConteudo",
+      "actorRef": "editor",
+      "title": "Criar conteúdo novo"
+    },
+    {
+      "journeyId": "consultarHistorico",
+      "actorRef": "editor",
+      "title": "Consultar histórico de publicações"
+    }
+  ],
+  "systemDecisions": []
+} as const satisfies Ns5Readonly<Ns5JourneyIndexArtifact>;
+
+export type ConteudoJourneyIndexType = typeof conteudoJourneyIndex;
+
+export default conteudoJourneyIndex;

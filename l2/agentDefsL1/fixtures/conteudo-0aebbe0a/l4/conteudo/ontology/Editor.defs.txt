@@ -1,0 +1,185 @@
+/// <mls fileReference="_102047_/l4/conteudo/ontology/Editor.defs.ts" enhancement="_blank"/>
+
+import type { Ns5OntologyEntityV3, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const conteudoEntityEditor = {
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "conteudo",
+  "entityId": "Editor",
+  "title": "Editor",
+  "description": "Pessoa da empresa, usuária da organização, que lê, altera e cria conteúdos e aparece no histórico como autora das publicações. Escolhida na lista de usuários da plataforma, nunca cadastrada pelo módulo.",
+  "displayField": "details.identification.name",
+  "relationships": {
+    "publications": {
+      "relationshipId": "publicationEditor",
+      "to": "Publication",
+      "via": "Publication.editorId",
+      "cardinality": "1:N",
+      "title": "Publicações do editor",
+      "description": "Cada publicação registra a pessoa que publicou; daqui se lê o que o editor publicou e quando.",
+      "mode": "fk",
+      "direction": "to",
+      "required": true
+    }
+  },
+  "capabilities": {
+    "locate.users": "Lista as pessoas da organização que já têm login, para escolher quem é editor, sem cadastrá-las; usa a lista de usuários da plataforma.",
+    "read.byId": "Lê o editor pelo identificador para preencher o autor em cada publicação do histórico.",
+    "locate.byName": "Busca editores pelo nome ao filtrar o histórico de publicações por autor.",
+    "locate.byLogin": "Encontra a pessoa pelo e-mail de login da sessão para saber quem é o editor que está salvando.",
+    "locate.byTag": "Encontra as pessoas que têm o papel conteudo.Editor pela etiqueta do módulo.",
+    "edit.moduleNamespace": "Altera apenas o namespace do módulo de conteúdo sobre o editor, hoje vazio.",
+    "inactivate": "Inativa um editor que deixou de manter conteúdo, mantendo seu histórico de publicações; pode ser reativado.",
+    "listLinks": "Mostra os vínculos do editor, como a quem ele se reporta, na tela do registro.",
+    "audit": "Permite ao administrador ver quem alterou o registro do editor e quando."
+  },
+  "rules": [
+    "rule-foreign-namespace-refused",
+    "rule-identity-never-in-namespace",
+    "rule-delete-blocked-by-relationships"
+  ],
+  "kind": "role",
+  "subtype": "Person",
+  "roleTag": "conteudo.Editor",
+  "source": "/_102034_/l4/ontology/mdm.defs.ts",
+  "record": {
+    "fields": {
+      "id": {
+        "type": "uuid",
+        "required": true,
+        "indexed": true,
+        "derived": true,
+        "description": "mdmId; stable through promotion and merge."
+      },
+      "version": {
+        "type": "integer",
+        "required": true,
+        "derived": true,
+        "writePrecondition": true,
+        "description": "Bumped by the engine on every write; optimistic concurrency."
+      },
+      "details": {
+        "type": "object",
+        "required": true,
+        "description": "The JSONB document, as a map of groups (see groups).",
+        "fields": {
+          "identification": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {
+              "subtype": {
+                "type": "enum",
+                "required": true,
+                "indexed": true,
+                "derived": true,
+                "values": [
+                  "Person",
+                  "Company",
+                  "ContactChannel",
+                  "Animal",
+                  "Product",
+                  "Service",
+                  "Location",
+                  "BankAccount",
+                  "Document",
+                  "AssetGeneric",
+                  "AssetVehicle",
+                  "AssetProperty",
+                  "AssetEquipment"
+                ],
+                "description": "Sempre Pessoa: o editor é uma pessoa da empresa.",
+                "title": "Subtipo"
+              },
+              "name": {
+                "type": "string",
+                "required": true,
+                "indexed": true,
+                "maxLength": 200,
+                "description": "Nome pelo qual o editor é reconhecido nas listas e no histórico de publicações.",
+                "title": "Nome"
+              },
+              "status": {
+                "type": "enum",
+                "required": true,
+                "indexed": true,
+                "derived": true,
+                "values": [
+                  "Active",
+                  "Inactive",
+                  "Merged",
+                  "Blocked"
+                ],
+                "title": "Situação",
+                "description": "Ativo ou inativo; um editor inativo deixa de ser escolhido para novas publicações, mas continua no histórico."
+              },
+              "countryCode": {
+                "type": "string",
+                "required": true,
+                "indexed": true,
+                "pattern": "^[A-Z]{2}$",
+                "maxLength": 2,
+                "default": "US",
+                "description": "País da pessoa, conforme o cadastro da organização.",
+                "title": "País"
+              },
+              "tags": {
+                "type": "string",
+                "required": true,
+                "collection": true,
+                "derived": true,
+                "description": "Papéis da pessoa nos módulos; inclui conteudo.Editor.",
+                "title": "Papéis"
+              }
+            },
+            "description": "Identificação da pessoa na plataforma; o editor é um usuário da organização escolhido na lista de usuários."
+          },
+          "base": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {
+              "contacts": {
+                "type": "object",
+                "required": true,
+                "collection": true,
+                "of": "ContactSummary",
+                "derived": true,
+                "description": "Resumo dos canais de contato ligados à pessoa; lido, nunca digitado neste módulo.",
+                "title": "Contatos"
+              }
+            },
+            "description": "Dados comuns da pessoa mantidos pela organização; o módulo de conteúdo não os altera."
+          },
+          "person": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {},
+            "description": "Dados de pessoa física mantidos pela organização; o módulo de conteúdo não usa nenhum deles."
+          },
+          "general": {
+            "type": "object",
+            "owner": "organization",
+            "open": true,
+            "description": "Campos promovidos pela organização; apenas lidos aqui."
+          },
+          "conteudo": {
+            "type": "object",
+            "owner": "module",
+            "fields": {
+              "loginEmail": {
+                "type": "string",
+                "derived": true,
+                "title": "E-mail de login",
+                "description": "Lido do login da plataforma; nunca digitado nem guardado pelo módulo."
+              }
+            },
+            "description": "Namespace do módulo de conteúdo sobre o editor. Nada além do papel é necessário."
+          }
+        }
+      }
+    }
+  }
+} as const satisfies Ns5Readonly<Ns5OntologyEntityV3>;
+
+export type ConteudoEntityEditorType = typeof conteudoEntityEditor;
+
+export default conteudoEntityEditor;

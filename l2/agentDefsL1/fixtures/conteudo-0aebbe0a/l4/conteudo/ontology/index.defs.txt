@@ -1,0 +1,56 @@
+/// <mls fileReference="_102047_/l4/conteudo/ontology/index.defs.ts" enhancement="_blank"/>
+
+import type { Ns5OntologyIndexV3, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const conteudoOntologyIndex = {
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "conteudo",
+  "businessDomain": "Gestão de conteúdo markdown (blog, documentação e site institucional) mantido no repositório de conteúdo, com histórico de publicações por pessoa.",
+  "platformOntology": "/_102034_/l4/ontology/mdm.defs.ts",
+  "moduleNamespace": {
+    "key": "conteudo",
+    "description": "Branch details.conteudo of the master records this module has a role on; only this module writes it."
+  },
+  "entities": [
+    {
+      "entityId": "ContentFile",
+      "kind": "external"
+    },
+    {
+      "entityId": "Publication",
+      "kind": "entity",
+      "class": "event"
+    },
+    {
+      "entityId": "Editor",
+      "kind": "role",
+      "subtype": "Person"
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "publicationEditor",
+      "from": "Publication",
+      "to": "Editor",
+      "type": "manyToOne",
+      "required": true,
+      "mode": "fk",
+      "description": "Cada publicação registra a pessoa que publicou.",
+      "field": "Publication.editorId"
+    },
+    {
+      "relationshipId": "publicationContentFile",
+      "from": "Publication",
+      "to": "ContentFile",
+      "type": "manyToOne",
+      "required": true,
+      "mode": "fk",
+      "description": "Cada publicação aponta para o arquivo do repositório que foi criado ou alterado.",
+      "field": "Publication.contentPath"
+    }
+  ]
+} as const satisfies Ns5Readonly<Ns5OntologyIndexV3>;
+
+export type ConteudoOntologyIndexType = typeof conteudoOntologyIndex;
+
+export default conteudoOntologyIndex;

@@ -330,6 +330,7 @@ async function usecaseRequest(
     outbound: bundle.outbound,
     contracts: bundle.contracts,
     contexts,
+    childWriters: bundle.childWriters,
     sourceFindings: bundle.findings,
     sourceHashes: bundle.hashes,
     files: bundle.files,

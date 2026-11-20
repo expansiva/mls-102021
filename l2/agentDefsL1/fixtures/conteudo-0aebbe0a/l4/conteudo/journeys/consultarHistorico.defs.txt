@@ -1,0 +1,46 @@
+/// <mls fileReference="_102047_/l4/conteudo/journeys/consultarHistorico.defs.ts" enhancement="_blank"/>
+
+import type { Ns5JourneyArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const consultarHistoricoJourney = {
+  "schemaVersion": "2026-09-10-ns5-journey-v1",
+  "journeyId": "consultarHistorico",
+  "business": {
+    "actorRef": "editor",
+    "title": "Consultar histórico de publicações",
+    "goal": "Saber o que cada pessoa publicou e quando.",
+    "icon": "history",
+    "entry": {
+      "mode": "coldStart"
+    },
+    "steps": [
+      {
+        "stepId": "listarPublicacoes",
+        "kind": "locate",
+        "entity": "Publication",
+        "title": "Listar publicações",
+        "description": "O editor filtra o histórico por pessoa, pasta ou período.",
+        "icon": "list"
+      },
+      {
+        "stepId": "verPublicacao",
+        "kind": "inspect",
+        "entity": "Publication",
+        "title": "Ver detalhes da publicação",
+        "description": "O editor vê qual arquivo foi publicado, por quem, quando e se foi criação ou alteração.",
+        "icon": "eye"
+      }
+    ],
+    "outcome": {
+      "statement": "O editor sabe quem publicou cada conteúdo e quando.",
+      "evidence": [
+        "A lista mostra cada publicação com a pessoa, o arquivo e a data e hora"
+      ]
+    }
+  },
+  "businessHash": "sha256:481b1731273c84c6f3463d9ad6f7dce9a3a84b1397017a2763f9335806729061"
+} as const satisfies Ns5Readonly<Ns5JourneyArtifact>;
+
+export type ConsultarHistoricoJourneyType = typeof consultarHistoricoJourney;
+
+export default consultarHistoricoJourney;

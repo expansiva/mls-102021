@@ -135,6 +135,8 @@ export interface D1PersistenceRequest {
   catalogsRead: string[];
   /** d1_220: `connectionId` → the source an `external` entity opens (the platform file or a sibling declaration). Absent: the platform path. */
   catalogRefs?: Record<string, string>;
+  /** d1_221: entities the L4 says their parent writes. Their port has `create`, though no usecase of their own asks for it. */
+  recordedWithParent?: string[];
 }
 
 /** Logical field encoded by one column string. `json:` marks the details envelope. */

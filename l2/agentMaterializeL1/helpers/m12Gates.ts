@@ -33,6 +33,41 @@ export interface M12CodeGateInput {
   consumerCalls?: readonly M12ConsumerCall[];
   /** Events the def lists as effects of this usecase and binds to the platform publisher (d1_216): the file must publish each one. */
   publishers?: readonly M12EventPublisher[];
+  /** Entities the L4 says this usecase's parent entity records (d1_221): the file must `create` each one through its port, after the calls above. */
+  childRecords?: readonly M12ChildRecord[];
+}
+
+/** One entity the usecase records with the entity it writes, and the port that creates it. */
+export interface M12ChildRecord {
+  entityId: string;
+  port: string;
+}
+
+/**
+ * d1_221: the usecase records each child with its parent: the repository of the child's port is resolved and `<repository>.create(` is
+ * called, and when the usecase makes calls of a connection (an outside parent) the record comes after the last of them, since the L4 says
+ * it is written once the outside system accepts. Reading the port, importing it or naming it does not count.
+ */
+export function childRecordProblems(code: string, records: readonly M12ChildRecord[], afterOperations: readonly string[]): string[] {
+  const clean = withoutComments(code);
+  const problems: string[] = [];
+  for (const record of records) {
+    const bound = new RegExp(String.raw`(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]+)?=\s*(?:await\s+)?resolveRepository\s*<\s*${record.port}\s*>`, 'u').exec(clean)?.[1] ?? '';
+    const create = bound ? new RegExp(String.raw`\b${bound}\s*\.\s*create\s*\(`, 'u').exec(clean) : null;
+    if (!create) {
+      problems.push(`CHILD_RECORD_MISSING: the usecase must record ${record.entityId} with the entity it writes: \`const repository = resolveRepository<${record.port}>(ctx, '${record.port}')\` (with the \`bound\` context when in a transaction) and \`await repository.create(…)\`. Reading it, or importing the port, is not recording.`);
+      continue;
+    }
+    const last = Math.max(-1, ...afterOperations.map(operation => {
+      let at = -1;
+      for (const match of clean.matchAll(new RegExp(String.raw`\.${operation}\s*\(`, 'gu'))) at = match.index ?? at;
+      return at;
+    }));
+    if (last >= 0 && create.index < last) {
+      problems.push(`CHILD_RECORD_BEFORE_CALL: ${record.entityId} is recorded only after the outside system accepts: move \`create\` after the call to ${afterOperations.join(', ')}.`);
+    }
+  }
+  return problems;
 }
 
 /** One call of a connection that the usecase consumes. */
@@ -580,6 +615,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...undeclaredInputProblems(code));
   problems.push(...eventPublishProblems(code, input.publishers ?? []));
   problems.push(...consumerCallProblems(code, input.consumerCalls ?? []));
+  problems.push(...childRecordProblems(code, input.childRecords ?? [], (input.consumerCalls ?? []).map(call => call.operationId)));
   // The rules of a write on an external entity are met by the external system: the call answers (or refuses) with them.
   for (const ruleId of input.externalEntity ? [] : input.ruleIds) {
     if (!code.includes(`'${ruleId}'`) && !code.includes(`"${ruleId}"`)) problems.push(`Rule ${ruleId} is not enforced: no AppError carries ruleId '${ruleId}'.`);

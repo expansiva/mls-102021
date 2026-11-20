@@ -1,0 +1,1 @@
+Copied byte for byte from `mls-102047` commit `0aebbe0a`: the L4 ontology and journeys of the module `conteudo` (d1_221). `.defs.ts` is stored as `.defs.txt` so the project scan does not compile the copy. Only what the writer resolution of the NS5 reads.
