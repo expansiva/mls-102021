@@ -7,8 +7,9 @@
 
 import { connectionCatalogSource, isCatalogImport, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
-import { upsertKeyOf, type ArrivalUpsert } from '/_102021_/l2/helpers/l1Defs/arrivalUpsert.js';
-import { ontologyEntityOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/arrivalUpsert.js';
+import type { ArrivalUpsert } from '/_102021_/l2/helpers/l1Defs/arrivalUpsert.js';
+import { routeUpsertsOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/arrivalUpsert.js';
+import { arrivalLineOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/serveSource.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { bindHumanPages, moduleSpecifier, transitionDestinations, workflowEngineFile, workflowEngineSource, workflowTablesFromL4, type HumanPageSource, type WorkflowStepEmit } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
@@ -295,18 +296,16 @@ export function l4Process(source: string | null, processId: string): string {
 }
 
 /**
- * d1_232: the entities the arrival that starts this process creates and updates (the plan put `create` and `update` of the entity in the process
- * operations, on a step `arrival:<event>`), each with its key. The process writes them through the port: find, then update or create.
+ * d1_232: the entities the arrival that starts this process creates and updates, each with its key. The arrival is the L4 line the trigger event
+ * names, read by the one reader of the NS5 (d1_235: the plan puts its operations on a task of the process, not on a step of its own). The
+ * process writes them through the port: find, then update or create.
  */
 export async function processUpserts(ctx: M12Context, facts: M12WorkflowFacts): Promise<ArrivalUpsert[]> {
-  const arrival = (operation: string) => facts.operations.some(row => row.operation === operation && row.steps.some(step => step.startsWith('arrival:')));
-  const out: ArrivalUpsert[] = [];
-  for (const entityId of [...new Set(facts.operations.map(row => row.operation.split('.')[0] ?? '').filter(Boolean))]) {
-    if (!arrival(`${entityId}.create`) || !arrival(`${entityId}.update`)) continue;
-    const key = upsertKeyOf(ontologyEntityOf(await ctx.read(`_${ctx.run.project}_/l4/${ctx.run.module}/ontology/${entityId}.defs.ts`)));
-    if (key) out.push({ entityId, ...key });
-  }
-  return out;
+  if (facts.trigger.kind !== 'event' || !facts.trigger.event) return [];
+  const line = arrivalLineOf(await ctx.read(`_${ctx.run.project}_/l4/${ctx.run.module}/integration.defs.ts`), facts.trigger.event);
+  if (!line) return [];
+  const upserts = await routeUpsertsOf(facts.trigger.event, line.row, line.kind, entityId => ctx.read(`_${ctx.run.project}_/l4/${ctx.run.module}/ontology/${entityId}.defs.ts`));
+  return upserts.map(({ route: _route, ...upsert }) => upsert);
 }
 
 /** The usecase that runs one operation (`Entidade.<op>` or `Entidade.<transição>`), among the units of the module. */

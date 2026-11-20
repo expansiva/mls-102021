@@ -35,6 +35,7 @@ import {
 import { requestServiceDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { applyResolutions } from '/_102021_/l2/agentDefsL1/steps/input20/deriveRequest.js';
 import { consumeLinesOf, deriveConsumeRequests } from '/_102021_/l2/agentDefsL1/steps/input20/deriveConsume.js';
+import { deriveProcessUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/deriveProcess.js';
 import { deriveServeRequests, processTriggerServes, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
 import { externalCallsOf, routeCallsOf, splitExternalUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import type {
@@ -330,8 +331,21 @@ export function buildD1InputSnapshot(
     removedIds: planned.removed,
     takenPages: new Set([...pageIds, ...serveLines.map(line => line.connectionId)]),
   }));
+  // d1_235: the usecases of the process an arrival starts; the route of the arrival is their route, though it calls the process.
+  const processKept = deriveProcessUsecases({
+    moduleName,
+    workflows,
+    requests,
+    usecases: selectedUsecases,
+    problems,
+    entities: artifacts.entities,
+    plannedIds: planned.ids,
+    removedIds: planned.removed,
+  });
   for (const usecase of selectedUsecases) {
-    usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
+    usecase.routes = requests
+      .filter(request => request.uses.includes(usecase.usecaseId) || processKept.get(request.route)?.has(usecase.usecaseId))
+      .map(request => request.route);
   }
   selectedUsecases.sort((left, right) => left.usecaseId.localeCompare(right.usecaseId));
   noteExternalEffects(problems, paths.integration, integration, entityKind, selectedUsecases, artifacts.journeys);
@@ -1234,7 +1248,7 @@ function noteUnrequested(
   if (!sawContract) return;
   const used = new Set(requests.flatMap(request => request.uses));
   for (const usecase of usecases) {
-    if (used.has(usecase.usecaseId)) continue;
+    if (used.has(usecase.usecaseId) || usecase.routes.length > 0) continue;
     const fate = previousUsecaseFile(previous, usecase.usecaseId) ? 'removed' : 'not generated';
     review(problems, 'USECASE_WITHOUT_REQUEST', path, `Usecase ${usecase.usecaseId} is in the pool and no contract request calls it. It is ${fate}.`, usecase.usecaseId);
   }

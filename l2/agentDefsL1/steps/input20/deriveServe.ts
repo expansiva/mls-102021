@@ -242,7 +242,7 @@ function oneServe(input: DeriveServeInput, line: D1ServeLine): D1SelectedRequest
   };
 }
 
-function usecaseRefusal(
+export function usecaseRefusal(
   entity: string,
   operation: string,
   usecaseId: string,

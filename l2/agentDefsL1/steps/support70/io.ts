@@ -1072,10 +1072,14 @@ export async function processesOf(
       );
     }
     // d1_232: the arrival that starts the process says create and update on an entity: the process writes both, whatever its tasks say.
+    // The step of an operation is a step of the process (`task:` or `journey:`): the arrival starts the process, its first task does the write.
     const started = isRecord(row.trigger) && row.trigger.kind === 'event' && typeof row.trigger.event === 'string' ? row.trigger.event : '';
-    for (const entity of arrivals.get(started) ?? []) {
-      add(entity, 'create', '', `arrival:${started}`);
-      add(entity, 'update', '', `arrival:${started}`);
+    const firstTask = tasks.map(task => (typeof task.taskId === 'string' ? task.taskId : '')).find(Boolean);
+    if (firstTask) {
+      for (const entity of arrivals.get(started) ?? []) {
+        add(entity, 'create', '', `task:${firstTask}`);
+        add(entity, 'update', '', `task:${firstTask}`);
+      }
     }
     const functions = arrayOf(row.functions).flatMap(item => (
       isRecord(item) && typeof item.functionId === 'string' && item.functionId ? [item.functionId] : []

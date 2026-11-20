@@ -2,7 +2,7 @@
 
 // d1_234: the maintenance flow (the plan made with the L1 in disk → prepare → input20) gives the usecases per call of a clean plan. The plan is the
 // one the planner wrote for the module `agents` (fixture agents-d9a7a597, evidence l4_p4_133_s5c); the list below is what the clean plan gives for the
-// same L4 (the L1 empty, the plan of 18/11 that a planner with no L1 writes).
+// same L4 (the L1 empty, the plan of 18/11 that a planner with no L1 writes), with the usecases of the processes the arrivals start (d1_235).
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -20,6 +20,8 @@ const CLEAN_PLAN_USECASES = [
   'activate|AgentDraft|transition|toCreate|cm.activateAgent',
   'createAgentDraft|AgentDraft|create|toCreate|cm.createAgent',
   'createAgentTool|AgentTool|create|toCreate|',
+  'createExecutionSummary|ExecutionSummary|create|toCreate|',
+  'createTool|Tool|create|toCreate|',
   'discard|AgentDraft|transition|toCreate|cm.discardAgentDraft',
   'getAgent|Agent|get|toCreate|cm.readAgent',
   'getAgentBehavior|AgentBehavior|get|toCreate|cm.readAgent',
@@ -35,6 +37,7 @@ const CLEAN_PLAN_USECASES = [
   'updateAgent|Agent|update|toCreate|cm.updateAgent',
   'updateAgentAgentBehavior|AgentBehavior|update|toCreate|cm.updateAgent',
   'updateAgentTool|AgentTool|update|toCreate|',
+  'updateTool|Tool|update|toCreate|',
   'updatePersonToolRestriction|PersonToolRestriction|update|toCreate|',
   'updatePersonalConduct|PersonalConduct|update|toCreate|cm.updateAgent',
 ].sort();

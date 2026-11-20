@@ -40,3 +40,15 @@ export function serveRowOf(integrationSource: string | null, connectionId: strin
   const rows = (integrationRoot(integrationSource)?.connections as unknown[] | undefined) ?? [];
   return rows.filter(isRecord).find(item => item.direction === 'serve' && item.connectionId === connectionId && item.operationId === operationId) ?? null;
 }
+
+/** The arrival line of the L4 that an event id names: `<connectionId>.<operationId>` of a serve line, or `<publisher>.<event>` of an inbound event line. */
+export function arrivalLineOf(integrationSource: string | null, eventId: string): { row: Record<string, unknown>; kind: 'serve' | 'inbound' } | null {
+  const root = integrationRoot(integrationSource);
+  if (!root) return null;
+  const serve = (Array.isArray(root.connections) ? root.connections : []).filter(isRecord)
+    .find(item => item.direction === 'serve' && `${String(item.connectionId)}.${String(item.operationId)}` === eventId);
+  if (serve) return { row: serve, kind: 'serve' };
+  const inbound = (Array.isArray(root.inbound) ? root.inbound : []).filter(isRecord)
+    .find(item => item.kind === 'event' && `${String(item.from)}.${String(item.event ?? item.id)}` === eventId);
+  return inbound ? { row: inbound, kind: 'inbound' } : null;
+}

@@ -23,24 +23,29 @@ function processUnit(operations: Array<{ operation: string; steps: string[] }>):
 }
 
 const ONTOLOGY = `export const entity = ${JSON.stringify({ entityId: 'Tool', uniqueKeys: [['toolKey']], record: { fields: { id: {}, toolKey: {} } } })} as const;\n`;
-const ctx = { run: { project: PROJECT, module: MODULE }, units: [], read: async (ref: string) => (ref.replace(/^\//u, '') === `_${PROJECT}_/l4/${MODULE}/ontology/Tool.defs.ts` ? ONTOLOGY : null) } as never;
+const integration = (effects: string[]) => `export const agentsIntegration = ${JSON.stringify({ connections: [{ connectionId: 'platform', operationId: 'releaseCatalogChanged', direction: 'serve', entityEffects: [{ entityId: 'Tool', effects }] }] })} as const;\n`;
+const ctxOf = (effects: string[]) => ({ run: { project: PROJECT, module: MODULE }, units: [], read: async (ref: string) => {
+  const key = ref.replace(/^\//u, '');
+  if (key === `_${PROJECT}_/l4/${MODULE}/ontology/Tool.defs.ts`) return ONTOLOGY;
+  if (key === `_${PROJECT}_/l4/${MODULE}/integration.defs.ts`) return integration(effects);
+  return null;
+} }) as never;
 
-void test('d1_232: the process of an arrival that creates and updates Tool has the upsert with the key of the ontology; one that only has its tasks does not', async () => {
-  const both = workflowFacts(processUnit([
-    { operation: 'Tool.create', steps: ['arrival:platform.releaseCatalogChanged'] },
-    { operation: 'Tool.update', steps: ['task:rebuild', 'arrival:platform.releaseCatalogChanged'] },
-  ]));
-  assert.deepEqual(await processUpserts(ctx, both), [{ entityId: 'Tool', key: ['toolKey'], keyKind: 'unique' }]);
-  const tasksOnly = workflowFacts(processUnit([{ operation: 'Tool.create', steps: ['task:a'] }, { operation: 'Tool.update', steps: ['task:b'] }]));
-  assert.deepEqual(await processUpserts(ctx, tasksOnly), [], 'create and update from tasks are not an arrival upsert');
-  const oneSide = workflowFacts(processUnit([{ operation: 'Tool.update', steps: ['arrival:platform.releaseCatalogChanged'] }]));
-  assert.deepEqual(await processUpserts(ctx, oneSide), []);
+void test('d1_232/d1_235: the process an arrival that creates and updates Tool starts has the upsert with the key of the ontology, read from the L4 line of its trigger', async () => {
+  const facts = workflowFacts(processUnit([{ operation: 'Tool.update', steps: ['task:rebuild'] }]));
+  assert.deepEqual(await processUpserts(ctxOf(['create', 'update']), facts), [{ entityId: 'Tool', key: ['toolKey'], keyKind: 'unique' }]);
+  assert.deepEqual(await processUpserts(ctxOf(['update']), facts), [], 'one effect is no upsert');
+  const manual = workflowFacts({ ...processUnit([]), definition: { ...processUnit([]).definition, data: { processId: 'p', trigger: { kind: 'manual' }, functions: [], operations: [] } } } as never);
+  assert.deepEqual(await processUpserts(ctxOf(['create', 'update']), manual), [], 'a process no arrival starts');
+  const other = workflowFacts(processUnit([]));
+  other.trigger.event = 'platform.somethingElse';
+  assert.deepEqual(await processUpserts(ctxOf(['create', 'update']), other), [], 'an event no line names');
 });
 
 void test('d1_232: the workflow file of today writes a new tool with update and never creates: refused; the same file creating the new tool passes', async () => {
-  const upserts = await processUpserts(ctx, workflowFacts(processUnit([
-    { operation: 'Tool.create', steps: ['arrival:platform.releaseCatalogChanged'] },
-    { operation: 'Tool.update', steps: ['arrival:platform.releaseCatalogChanged'] },
+  const upserts = await processUpserts(ctxOf(['create', 'update']), workflowFacts(processUnit([
+    { operation: 'Tool.create', steps: ['task:rebuild'] },
+    { operation: 'Tool.update', steps: ['task:rebuild'] },
   ])));
   const refused = arrivalUpsertProblems(TODAY, upserts, 'process', 'the process catalogRefresh');
   assert.deepEqual(refused.map(item => item.split(':')[0]), ['ARRIVAL_UPSERT_NEVER_CREATES']);

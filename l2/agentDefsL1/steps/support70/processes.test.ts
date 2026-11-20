@@ -106,8 +106,8 @@ void test('d1_232: the arrival that starts a process says create and update on a
   assert.deepEqual([...arrivals], [['sys.arrived', ['Item']], ['other.thing', ['Else']]]);
   const both = await processesOf(PROJECT, 'sample', selected, new Set(['sys.arrived']), arrivals);
   assert.deepEqual(both[0].operations, [
-    { operation: 'Item.create', steps: ['arrival:sys.arrived'], selected: true },
-    { operation: 'Item.update', steps: ['task:rebuild', 'arrival:sys.arrived'], selected: true },
+    { operation: 'Item.create', steps: ['task:rebuild'], selected: true },
+    { operation: 'Item.update', steps: ['task:rebuild'], selected: true },
   ]);
 });
 
