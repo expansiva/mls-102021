@@ -18,7 +18,8 @@ export const SERVE_ROUTE_NO_PAGE_TEST = 'SERVE_ROUTE_NO_PAGE_TEST' as const;
 /** True when a request-service def has a row that serves a connection operation. */
 export function requestServiceServes(data: Record<string, unknown> | undefined): boolean {
   const requests = Array.isArray(data?.requests) ? data.requests : [];
-  return requests.some(row => isRecord(row) && typeof row.serves === 'string' && row.serves !== '');
+  // A page that receives module events (`consumes`, d1_217) has no L2 contract either: no page test.
+  return requests.some(row => isRecord(row) && ((typeof row.serves === 'string' && row.serves !== '') || (typeof row.consumes === 'string' && row.consumes !== '')));
 }
 
 export const M12_TESTS_SCHEMA: Record<string, unknown> = {

@@ -92,12 +92,33 @@ export function typeObjectOpen(source: string, name: string): number {
   const declared = source.indexOf(`export interface ${name} `);
   if (declared >= 0) return source.indexOf('{', declared);
   const alias = new RegExp(`export\\s+type\\s+${name}\\s*=\\s*\\{`, 'u').exec(source);
-  return alias ? alias.index + alias[0].length - 1 : -1;
+  if (!alias) return -1;
+  const open = alias.index + alias[0].length - 1;
+  // `{ … } | { … }` and `{ … } & Other` start with an object literal and are not one.
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    else if (source[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return /^\s*[|&]/u.test(source.slice(index + 1)) ? -1 : open;
+    }
+  }
+  return open;
 }
 
 /** True when `<name>` is declared as a type alias whose right side is not an object literal (a union, an intersection, another name). */
 export function isNonObjectAlias(source: string, name: string): boolean {
   return ident(name) && typeObjectOpen(source, name) < 0 && new RegExp(`export\\s+type\\s+${name}\\s*=`, 'u').test(source);
+}
+
+/**
+ * The name of the type of the message a route receives from a module event (d1_217): `<Publisher><Event>Message`. The request service
+ * declares and exports it; the controller imports it from there. One rule for the prompt, the gate and the controller.
+ */
+export function consumeMessageTypeName(mark: string): string {
+  const [from = '', eventId = ''] = mark.split('.');
+  const pascal = (value: string): string => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+  return `${pascal(from)}${pascal(eventId)}Message`;
 }
 
 export function catalogOperations(source: string): CatalogOperation[] | null {

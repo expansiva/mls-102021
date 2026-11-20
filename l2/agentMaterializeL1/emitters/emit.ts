@@ -8,7 +8,7 @@ import of a file that does not exist.
  */
 
 import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
-import { catalogOperations, isNonObjectAlias, typeObjectOpen } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
+import { catalogOperations, consumeMessageTypeName, isNonObjectAlias, typeObjectOpen } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { parseDefinitionExport, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import {
   isRecord,
@@ -413,7 +413,10 @@ async function emitAdapter(
   if (!serviceDep) return { code: 'USECASE_UNBOUND', detail: `${definition.artifactId} has no request service.` };
   const serviceText = await read(serviceDep);
   if (serviceText === null) return { code: 'USECASE_UNBOUND', detail: `${serviceDep} could not be read.` };
-  const serveRoutes = handlers.every(handler => servesOf(serviceText, typeof handler.route === 'string' ? handler.route : '') !== null);
+  const serveRoutes = handlers.every(handler => {
+    const route = typeof handler.route === 'string' ? handler.route : '';
+    return servesOf(serviceText, route) !== null || consumesOf(serviceText, route) !== null;
+  });
   const authorityDep = definition.dependencies.find(path => path.endsWith('/authorityMap.defs.ts'));
   const needsAuthority = handlers.some(handler => stringList(handler.grantIds).length > 0);
   if (needsAuthority && !authorityDep) {
@@ -428,13 +431,14 @@ async function emitAdapter(
   // A connection controller has no page contract, so unlisted page routes are not invented for it.
   const listed = serveRoutes ? handlers : [...handlers, ...await unlistedContractRoutes(definition, handlers, read)];
   for (const handler of listed) {
-    const resolved = await resolveAdapterRoute(definition, handler, read, serviceText);
+    const resolved = await resolveAdapterRoute(definition, handler, read, serviceText, serviceDep);
     if ('code' in resolved) return resolved;
     routes.push(resolved.route);
     if (resolved.route.inputTypeName) {
       const names = catalogTypes.get(resolved.specifier) ?? new Set<string>();
       names.add(resolved.route.inputTypeName);
-      names.add(resolved.route.outputTypeName);
+      // A consumes route answers a literal type: only a name is imported.
+      if (IDENT.test(resolved.route.outputTypeName)) names.add(resolved.route.outputTypeName);
       catalogTypes.set(resolved.specifier, names);
     } else {
       contracts.set(resolved.specifier, { specifier: resolved.specifier, iface: resolved.route.contractInterface });
@@ -526,6 +530,7 @@ async function resolveAdapterRoute(
   handler: Record<string, unknown>,
   read: StructureRead,
   serviceText: string | null,
+  serviceDep?: string,
 ): Promise<{ route: AdapterRoute; specifier: string } | EmitFailure> {
   const route = typeof handler.route === 'string' ? handler.route : '';
   const serviceFunction = typeof handler.serviceFunction === 'string' ? handler.serviceFunction : '';
@@ -535,6 +540,8 @@ async function resolveAdapterRoute(
   if (!route || !serviceFunction) return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} has a route without a service function.` };
   const serves = serviceText ? servesOf(serviceText, route) : null;
   if (serves !== null) return resolveServeRoute(definition, route, serviceFunction, grantIds, serves, read);
+  const consumes = serviceText ? consumesOf(serviceText, route) : null;
+  if (consumes !== null) return resolveConsumeRoute(definition, route, serviceFunction, grantIds, consumes, read, serviceDep);
   if (!contractPath || !IDENT.test(contractInterface) || /(?:Input|Output)$/.test(contractInterface)) {
     return { code: 'CONTRACT_SYMBOL', detail: `${route} has no contract interface.` };
   }
@@ -608,6 +615,61 @@ function servesOf(serviceText: string, route: string): string | null {
     return row.serves;
   }
   return null;
+}
+
+/** `consumes` on the request-service row of this route (d1_217). Null when the row does not carry the mark. */
+function consumesOf(serviceText: string, route: string): string | null {
+  const parsed = parseDefinitionExport(serviceText);
+  const requests = parsed && Array.isArray(parsed.data.requests) ? parsed.data.requests : [];
+  for (const row of requests) {
+    if (!isRecord(row) || row.route !== route || typeof row.consumes !== 'string') continue;
+    return row.consumes;
+  }
+  return null;
+}
+
+/**
+ * The route that receives a module event (d1_217). Its message type is declared and exported by the request service the model wrote
+ * (`<Publisher><Event>Message`), so the members the controller validates are read from that file, which exists before the controller
+ * is written. The route answers `{ received: true }`.
+ */
+async function resolveConsumeRoute(
+  definition: M1Definition,
+  route: string,
+  serviceFunction: string,
+  grantIds: string[],
+  consumes: string,
+  read: StructureRead,
+  serviceDep: string | undefined,
+): Promise<{ route: AdapterRoute; specifier: string } | EmitFailure> {
+  if (!SERVE_MARK.test(consumes)) return { code: 'CONSUMES_MARK', detail: `${route} consumes mark is not <module>.<eventId>.` };
+  if (!serviceDep) return { code: 'USECASE_UNBOUND', detail: `${route} has no request service.` };
+  const requestsRef = serviceDep.replace(/\.defs\.ts$/u, '.ts');
+  const source = await read(requestsRef);
+  if (source === null) return { code: 'CONSUMES_REQUESTS_UNREAD', detail: `${requestsRef} could not be read: the request service is written before its controller.` };
+  const typeName = consumeMessageTypeName(consumes);
+  const members = membersOfType(source, typeName);
+  if (!members) {
+    return isNonObjectAlias(source, typeName)
+      ? { code: 'CATALOG_INPUT_NOT_OBJECT', detail: `${typeName} is declared in ${requestsRef} as a type alias that is not an object literal: declare it as an interface or as \`export type ${typeName} = { … }\`.` }
+      : { code: 'CONSUMES_MESSAGE_UNREAD', detail: `${requestsRef} does not export the message type ${typeName} of ${route}.` };
+  }
+  return {
+    specifier: importSpecifier(serviceDep, 'output'),
+    route: {
+      route,
+      fn: functionName(route),
+      grantIds,
+      serviceFunction,
+      contractInterface: '',
+      inputTypeName: typeName,
+      outputTypeName: '{ received: true }',
+      requiredFields: members.requiredFields,
+      allowedInputPaths: members.allowedPaths,
+      nullableInputPaths: members.nullablePaths,
+      unions: members.unions,
+    },
+  };
 }
 
 async function resolveServeRoute(

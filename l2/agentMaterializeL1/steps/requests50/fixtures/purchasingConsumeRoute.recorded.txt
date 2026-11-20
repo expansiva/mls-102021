@@ -1,0 +1,18 @@
+/// <mls fileReference="_102099_/l1/stock/layer_2_application/requests/purchasing.ts" enhancement="_blank"/>
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { createStockMove } from '/_102099_/l1/stock/layer_2_application/usecases/createStockMove.js';
+
+export interface PurchasingGoodsReceivedMessage {
+  receiptId: string;
+  lines: { productId: string; quantity: number }[];
+  note?: string | null;
+}
+
+export const requests: { 'stock.purchasing.goodsReceived': (input: PurchasingGoodsReceivedMessage, ctx: RequestContext) => Promise<{ received: true }> } = {
+  'stock.purchasing.goodsReceived': async function (input, ctx) {
+    await ctx.data.moduleData.runInTransaction(async () => {
+      for (const line of input.lines) await createStockMove({ productId: line.productId, quantity: line.quantity }, ctx);
+    });
+    return { received: true };
+  },
+};

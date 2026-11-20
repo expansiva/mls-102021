@@ -4,7 +4,7 @@
 // the rules, record the status. The LLM usecase worker reuses the write/compile/record half.
 
 import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
-import { DECLARATION_TYPES_REF } from '/_102021_/l2/helpers/connections/catalogResolve.js';
+import { DECLARATION_TYPES_REF, integrationLogicalPath, integrationOf } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { isRecord, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { auditImports, emitController, emitValueObject, type EmitFailure, type EmitResult } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { behaviorNeedsLlm, emitBehavior } from '/_102021_/l2/agentMaterializeL1/emitters/emitBehavior.js';
@@ -208,6 +208,20 @@ export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: reado
       const mark = /^([a-z][A-Za-z0-9]*)\.[a-z][A-Za-z0-9]*$/u.exec(String(row.serves ?? ''));
       return mark ? [mark[1]] : [];
     }))].sort();
+    // d1_217: a route that receives a module event is derived from the L4 of the publisher and the entity it writes.
+    const published = [...new Set(requests.flatMap(row => {
+      const mark = /^([a-z][A-Za-z0-9]*)\.([a-z][A-Za-z0-9]*)$/u.exec(String(row.consumes ?? ''));
+      return mark ? [`${mark[1]}.${mark[2]}`] : [];
+    }))].sort();
+    for (const mark of published) {
+      const [from, eventId] = mark.split('.');
+      const l4Text = (await ctx.read(`_${ctx.run.project}_/${integrationLogicalPath(from)}`)) ?? '<absent>';
+      parts.push(`consumes:${mark}`, l4Text);
+      const root = integrationOf(l4Text === '<absent>' ? null : l4Text);
+      const line = isRecord(root) && Array.isArray(root.outbound) ? root.outbound.filter(isRecord).find(row => row.event === eventId || row.id === eventId) : undefined;
+      const entityId = String(line?.on ?? '').split('.')[0];
+      if (entityId) parts.push(`ontology:${entityId}`, (await ctx.read(`_${ctx.run.project}_/l4/${from}/ontology/${entityId}.defs.ts`)) ?? '<absent>');
+    }
     if (connectionIds.length) {
       // A serve request is derived from the connection catalog. A page request still hashes only its page contract.
       for (const connectionId of connectionIds) {

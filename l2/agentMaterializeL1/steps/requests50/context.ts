@@ -25,6 +25,8 @@ import { MDM_FACADE_REF, MDM_MODULE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdm
 import { contractRoutes, type M12ContractRoute } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import { serveSourceOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/serveSource.js';
 import { REGISTRATION_REF, onboardingModuleId, registrationAccessSection } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { consumeMessageTypeName } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
+import { integrationLogicalPath, integrationOf } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import { enumMapProblems, enumMapSection, externalEnumPairs, unpairedProblems, type ExternalEnumPair } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
 
@@ -644,7 +646,106 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
   };
 }
 
+/** The rows of a request service that receive a module event (d1_217): `consumes: '<publisher>.<eventId>'`. */
+function consumeMarks(data: Record<string, unknown>): { from: string; eventId: string; mark: string; row: Record<string, unknown> }[] {
+  const requests = Array.isArray(data.requests) ? data.requests.filter(isRecord) : [];
+  const out: { from: string; eventId: string; mark: string; row: Record<string, unknown> }[] = [];
+  for (const row of requests) {
+    const mark = SERVES_MARK.exec(String(row.consumes ?? ''));
+    if (mark) out.push({ from: mark[1], eventId: mark[2], mark: `${mark[1]}.${mark[2]}`, row });
+  }
+  return out;
+}
+
+const CONSUME_OUTPUT = '{ received: true }';
+
+/** The type of `requests` of a page that receives events: one function per route, the message type each route declares and exports. */
+export function requestsTypeOfConsume(routes: readonly { route: string; messageType: string }[]): string {
+  return `{ ${routes.map(item => `'${item.route}': (input: ${item.messageType}, ctx: RequestContext) => Promise<${CONSUME_OUTPUT}>`).join('; ')} }`;
+}
+
+/** The outbound event line of the publisher module's L4 and the entity it publishes. Throws a distinct error naming the module. */
+async function publisherEventSource(ctx: M12Context, from: string, eventId: string): Promise<{ entityId: string; line: Record<string, unknown>; ontology: string }> {
+  const { project } = ctx.run;
+  const l4Ref = `_${project}_/${integrationLogicalPath(from)}`;
+  const root = integrationOf(await ctx.read(l4Ref));
+  if (!isRecord(root)) throw new Error(`PUBLISHER_NOT_DECLARED: module ${from} has no readable ${l4Ref}, so the message of the event ${from}.${eventId} is unknown. Generate the L4 of ${from} first.`);
+  const line = (Array.isArray(root.outbound) ? root.outbound : []).filter(isRecord).find(row => row.kind === 'event' && (row.event === eventId || row.id === eventId));
+  if (!line) throw new Error(`PUBLISHER_EVENT_NOT_DECLARED: module ${from} does not declare the event ${eventId} (outbound of ${l4Ref}).`);
+  const entityId = String(line.on ?? '').split('.')[0] ?? '';
+  if (!entityId) throw new Error(`PUBLISHER_EVENT_NOT_DECLARED: the event ${from}.${eventId} has no \`on\` entity in ${l4Ref}.`);
+  const ontologyRef = `_${project}_/l4/${from}/ontology/${entityId}.defs.ts`;
+  const source = await ctx.read(ontologyRef);
+  if (!source) throw new Error(`PUBLISHER_ENTITY_UNREAD: ${ontologyRef} (the entity ${entityId} of the event ${from}.${eventId}) could not be read.`);
+  return { entityId, line, ontology: ontologyForPrompt(source) ?? source };
+}
+
+/**
+ * The request service of a page whose routes receive module events (d1_217). The model declares and exports the type of each message
+ * from the entity the publisher writes (source below), and each route calls the usecase of the line, in the transaction.
+ */
+async function loadConsumeRequestContext(ctx: M12Context, unit: M12Unit, repair?: M12Repair): Promise<M12RequestContext> {
+  const { project, module: moduleName } = ctx.run;
+  const pageId = String(unit.definition.data.pageId ?? unit.unitId);
+  const marks = consumeMarks(unit.definition.data);
+  const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
+  const l4Ref = `_${project}_/${integrationLogicalPath(moduleName)}`;
+  const l4 = integrationOf(await ctx.read(l4Ref));
+  const inbound = isRecord(l4) && Array.isArray(l4.inbound) ? l4.inbound.filter(isRecord) : [];
+  const routes = marks.map(item => ({ route: String(item.row.route ?? `${moduleName}.${item.from}.${item.eventId}`), messageType: consumeMessageTypeName(item.mark), item }));
+  const contractsInterface = requestsTypeOfConsume(routes);
+  const parts: string[] = [];
+  parts.push(section('Task', [
+    `Write the request service of the routes of module ${moduleName} that receive events of module ${pageId}, file \`${unit.outputRef}\`. There is no page contract.`,
+    `It exports \`requests\`, typed exactly \`${contractsInterface}\`: one async function per route, keyed by the route string.`,
+    `Before \`requests\`, export the message type of each route: ${routes.map(item => `\`${item.messageType}\``).join(', ')}, an interface with the fields of the entity the publisher wrote that this route uses (the entity is below).`,
+    'Each function runs inside `ctx.data.moduleData.runInTransaction`, calls the usecase of its line with what the message carries, and returns `{ received: true }`. Do not call fetch or any HTTP client.',
+  ].join('\n')));
+  for (const item of routes) {
+    const published = await publisherEventSource(ctx, item.item.from, item.item.eventId);
+    const line = inbound.find(row => row.kind === 'event' && row.from === item.item.from && (row.event === item.item.eventId || row.id === item.item.eventId));
+    parts.push(section(`Event ${item.item.mark} (l4, source)`, [
+      line ? `What this module does with it (inbound line of ${l4Ref}):\n${fence('json', JSON.stringify(line, null, 2))}` : `(no inbound line of ${l4Ref} names this event)`,
+      `What the publisher declares (outbound line of module ${item.item.from}):\n${fence('json', JSON.stringify(published.line, null, 2))}`,
+      `The entity ${published.entityId} the publisher writes, whose record is the message:\n${fence('json', published.ontology)}`,
+    ].join('\n\n')));
+  }
+  const serveUses = routes.map(item => ({ route: item.route, uses: Array.isArray(item.item.row.uses) ? item.item.row.uses.map(String).filter(Boolean) : [] })).filter(item => item.uses.length > 0);
+  if (serveUses.length) {
+    const named = new Set(serveUses.flatMap(item => item.uses));
+    parts.push(section('Usecases of the routes (the def names them in `uses`: each route calls one of its usecases)', [
+      ...serveUses.map(item => `- ${item.route} → ${item.uses.join(', ')}`),
+      'The route is the entrance for the event: it calls the usecase with the message and returns. A route that does not call its usecase does nothing. Throwing `missingUsecase` or returning without the call is wrong.',
+    ].join('\n')));
+    for (const item of ctx.units.filter(candidate => candidate.definition.artifactType === 'usecase' && named.has(candidate.unitId))) {
+      const shown = await usecaseSection(ctx, item, true);
+      if (shown) parts.push(shown);
+    }
+  }
+  if (repair) {
+    parts.push(section('Repair', [
+      'The previous answer was refused. Fix exactly these problems and return the whole file again:',
+      repairProblemText(repair.problems),
+      repair.previous ? `\nPrevious answer:\n${fence('ts', repair.previous)}` : '',
+    ].join('\n')));
+  }
+  return {
+    pageId,
+    contractsInterface,
+    contractSpecifier: '',
+    header,
+    routes: routes.map(item => ({ route: item.route, kind: 'cmd', inputFields: [], actors: [], rules: [] })),
+    contractRef: l4Ref,
+    mdmInputs: [],
+    workflowRoutes: [],
+    externalEnums: [],
+    serveUses,
+    human: parts.join('\n'),
+  };
+}
+
 export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?: M12Repair): Promise<M12RequestContext> {
+  if (consumeMarks(unit.definition.data).length) return loadConsumeRequestContext(ctx, unit, repair);
   if (serveMarks(unit.definition.data).length) return loadServeRequestContext(ctx, unit, repair);
   const { project, module: moduleName } = ctx.run;
   const pageId = String(unit.definition.data.pageId ?? unit.unitId);
@@ -997,7 +1098,8 @@ export function normalizeRequestsTyping(code: string, contractsInterface: string
   const imports: string[] = [];
   if (serve) {
     const names = namedCatalogTypes(contractsInterface);
-    const present = names.every(name => new RegExp(`import\\s+(?:type\\s+)?\\{[^}]*\\b${name}\\b[^}]*\\}\\s+from`, 'u').test(next));
+    // A type the file declares itself (the message of a route that receives an event, d1_217) is not imported.
+    const present = names.every(name => new RegExp(`import\\s+(?:type\\s+)?\\{[^}]*\\b${name}\\b[^}]*\\}\\s+from`, 'u').test(next) || new RegExp(`(?:^|\\n)(?:export\\s+)?(?:interface|type)\\s+${name}\\b`, 'u').test(next));
     if (names.length && !present) imports.push(`import type { ${names.join(', ')} } from '${contractSpecifier}';`);
   } else if (!new RegExp(`import\\s+(?:type\\s+)?\\{[^}]*\\b${contractsInterface}\\b[^}]*\\}\\s+from`, 'u').test(next)) imports.push(`import type { ${contractsInterface} } from '${contractSpecifier}';`);
   if (!/import\s+(?:type\s+)?\{[^}]*\bRequestContext\b[^}]*\}\s+from/u.test(next)) imports.push("import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';");
