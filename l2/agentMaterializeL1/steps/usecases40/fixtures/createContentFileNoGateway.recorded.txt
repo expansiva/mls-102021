@@ -1,0 +1,104 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_2_application/usecases/createContentFile.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { ContentFileRepository } from '/_102047_/l1/conteudo/layer_2_application/ports/contentFileRepository.js';
+import type { ContentFile } from '/_102047_/l1/conteudo/layer_3_domain/entities/contentFile.js';
+
+export interface CreateContentFileInput {
+  folderId: string;
+  path: string;
+  title: string;
+  lastChangedAt?: string;
+  details: {
+    fileName: string;
+    repositoryRevision?: string;
+    changeOrigin?: string;
+  };
+}
+
+export interface CreateContentFileOutput {
+  id: string;
+  version: number;
+  folderId: string;
+  path: string;
+  title: string;
+  lastChangedAt?: string;
+  details: {
+    fileName: string;
+    repositoryRevision?: string;
+    changeOrigin?: string;
+    lastPublishedAt?: string;
+  };
+}
+
+function requiredText(value: unknown, name: string, maxLength: number, ruleId?: string): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (text === '') {
+    throw new AppError('INVALID_INPUT', `${name} is required.`, 400, ruleId ? { ruleId } : undefined);
+  }
+  if (text.length > maxLength) {
+    throw new AppError('INVALID_INPUT', `${name} must have at most ${maxLength} characters.`, 400);
+  }
+  return text;
+}
+
+export async function createContentFile(input: CreateContentFileInput, ctx: RequestContext): Promise<CreateContentFileOutput> {
+  const repository = resolveRepository<ContentFileRepository>(ctx, 'ContentFileRepository');
+
+  const folderId = requiredText(input.folderId, 'folderId', 100, 'newContentRequiresFolderTitleText');
+  const title = requiredText(input.title, 'title', 200, 'newContentRequiresFolderTitleText');
+  const path = requiredText(input.path, 'path', 500);
+  const fileName = requiredText(input.details?.fileName, 'details.fileName', 255);
+
+  let changeOrigin: 'module' | 'external' | undefined;
+  if (input.details.changeOrigin !== undefined) {
+    if (input.details.changeOrigin !== 'module' && input.details.changeOrigin !== 'external') {
+      throw new AppError('INVALID_INPUT', 'details.changeOrigin must be module or external.', 400);
+    }
+    changeOrigin = input.details.changeOrigin;
+  }
+
+  let repositoryRevision: string | undefined;
+  if (input.details.repositoryRevision !== undefined) {
+    repositoryRevision = String(input.details.repositoryRevision);
+    if (repositoryRevision.length > 100) {
+      throw new AppError('INVALID_INPUT', 'details.repositoryRevision must have at most 100 characters.', 400);
+    }
+  }
+
+  const sameFolderPath = await repository.list({ path });
+  if (sameFolderPath.length > 0) {
+    throw new AppError('CONFLICT', 'A content file with this path already exists.', 409, { ruleId: 'uniqueFilePath' });
+  }
+
+  const details: ContentFile['details'] = { fileName };
+  if (repositoryRevision !== undefined) details.repositoryRevision = repositoryRevision;
+  if (changeOrigin !== undefined) details.changeOrigin = changeOrigin;
+
+  const record: ContentFile = {
+    id: ctx.idGenerator.newId(),
+    version: 1,
+    folderId,
+    path,
+    title,
+    details,
+  };
+  if (input.lastChangedAt !== undefined) record.lastChangedAt = String(input.lastChangedAt);
+
+  const created = await repository.create(record);
+
+  const output: CreateContentFileOutput = {
+    id: created.id,
+    version: created.version,
+    folderId: created.folderId,
+    path: created.path,
+    title: created.title,
+    details: { fileName: created.details.fileName },
+  };
+  if (created.lastChangedAt !== undefined) output.lastChangedAt = created.lastChangedAt;
+  if (created.details.repositoryRevision !== undefined) output.details.repositoryRevision = created.details.repositoryRevision;
+  if (created.details.changeOrigin !== undefined) output.details.changeOrigin = created.details.changeOrigin;
+  if (created.details.lastPublishedAt !== undefined) output.details.lastPublishedAt = created.details.lastPublishedAt;
+  return output;
+}

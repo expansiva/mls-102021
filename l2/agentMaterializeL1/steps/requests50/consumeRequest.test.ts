@@ -1,7 +1,8 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/steps/requests50/consumeRequest.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -135,4 +136,38 @@ void test('d1_217 s2: the controller of the route reads the message type the req
 void test('d1_217: a page that receives events has no page test, as a connection page has none', () => {
   assert.equal(requestServiceServes(unit().definition.data), true);
   assert.equal(requestServiceServes({ requests: [{ route: 'x', kind: 'qry' }] }), false);
+});
+
+// d1_219 s2: the answer that declares `RequestContext` itself (the route of `conteudo`, T1) got an import beside it and failed with TS2440 three times.
+void test('d1_219 s2: a file that declares RequestContext keeps one declaration, and the normalized route compiles', () => {
+  const root = path.resolve(HERE, '../../../../..');
+  const recorded = readFileSync(path.join(HERE, 'fixtures/localContextConsumeRoute.recorded.txt'), 'utf8');
+  const contract = "{ 'conteudo.repoHost.repositorioAlterado': (input: RepoHostRepositorioAlteradoMessage, ctx: RequestContext) => Promise<{ received: true }> }";
+  const typed = normalizeRequestsTyping(recorded, contract, '');
+  assert.equal(/import type \{ RequestContext \}/u.test(typed), false, 'no import beside the local declaration');
+  assert.equal((typed.match(/\btype RequestContext\s*=/gu) ?? []).length, 1);
+  // A file that declares nothing still gets the import.
+  const plain = normalizeRequestsTyping(RECORDED.replace("import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';\n", ''), "{ 'stock.purchasing.goodsReceived': (input: PurchasingGoodsReceivedMessage, ctx: RequestContext) => Promise<{ received: true }> }", '');
+  assert.match(plain, /import type \{ RequestContext \} from '\/_102034_\/l1\/server\/layer_2_controllers\/contracts\.js';/u);
+
+  const dir = mkdtempSync(path.join(root, '.consume-proof-'));
+  const tsc = (source: string): string => {
+    writeFileSync(path.join(dir, 'route.ts'), source.replace('/_102047_/l1/conteudo/layer_2_application/usecases/updateContentFile.js', './updateContentFile.js'));
+    try {
+      execFileSync(path.join(root, 'node_modules', '.bin', 'tsc'), ['--pretty', 'false', '-p', path.join(dir, 'tsconfig.json')], { cwd: root, encoding: 'utf8' });
+      return '';
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string };
+      return `${failed.stdout ?? ''}${failed.stderr ?? ''}`;
+    }
+  };
+  try {
+    writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({ extends: '../tsconfig.base.json', compilerOptions: { noEmit: true, skipLibCheck: true }, files: ['route.ts'] }));
+    writeFileSync(path.join(dir, 'updateContentFile.ts'), "import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';\nexport async function updateContentFile(input: Record<string, unknown>, ctx: RequestContext): Promise<void> { void input; void ctx; }\n");
+    assert.equal(tsc(typed), '');
+    const doubled = typed.replace('\n', "\nimport type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';\n");
+    assert.match(tsc(doubled), /TS2440/u, 'the old normalization produced exactly this');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

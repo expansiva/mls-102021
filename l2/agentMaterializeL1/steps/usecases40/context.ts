@@ -11,7 +11,7 @@ import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, recipeDraft, rulesToEnforce, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
-import { connectionRowsOf, externalEntityIds, externalRepositoryPort, gatewayNameOf, moduleGatewayNames, repositoryPortNames, usecaseGate, type M12EventPublisher, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { connectionRowsOf, externalEntityIds, externalRepositoryPort, gatewayNameOf, moduleGatewayNames, repositoryPortNames, usecaseGate, type M12ConsumerCall, type M12EventPublisher, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -239,14 +239,32 @@ export function sessionCompanyAnchor(moduleName: string, configText: string | nu
   ].join('\n'));
 }
 
+/** The connection rows the def of the integration gives to this usecase as consumer. */
+function consumerRowsOf(ctx: M12Context, functionName: string, artifactId: string): ReturnType<typeof connectionRowsOf> {
+  return ctx.units
+    .filter(item => item.definition.artifactType === 'integrationOutbound')
+    .flatMap(item => connectionRowsOf(item.definition.data))
+    .filter(row => row.consumer === functionName || row.consumer === artifactId);
+}
+
+/** The calls the usecase must make, one per connection and operation (d1_219). */
+export function consumerCallsOf(ctx: M12Context, functionName: string, artifactId: string): M12ConsumerCall[] {
+  const seen = new Set<string>();
+  const out: M12ConsumerCall[] = [];
+  for (const row of consumerRowsOf(ctx, functionName, artifactId)) {
+    const key = `${row.connectionId}.${row.operationId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ connectionId: row.connectionId, operationId: row.operationId });
+  }
+  return out;
+}
+
 /**
  * Gateways this usecase consumes: the interface, the import, and only its operations, with the catalog types.
  */
 export async function connectionGatewaySection(ctx: M12Context, functionName: string, artifactId: string): Promise<string> {
-  const rows = ctx.units
-    .filter(item => item.definition.artifactType === 'integrationOutbound')
-    .flatMap(item => connectionRowsOf(item.definition.data))
-    .filter(row => row.consumer === functionName || row.consumer === artifactId);
+  const rows = consumerRowsOf(ctx, functionName, artifactId);
   if (rows.length === 0) return '';
   const byConnection = new Map<string, typeof rows>();
   for (const row of rows) {
@@ -261,9 +279,13 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
     'Pass `opts.idempotencyKey` only when an l4 rule asks for it. The gateway does not invent a key.',
     'Let an error from the gateway propagate. Do not catch it and replace it with a generic message.',
     'Do not write HTTP. Do not import `callConnection`. Do not redeclare the catalog types: they are imported by the gateway file.',
+    'The def names this usecase the consumer of every operation listed below: the file must call each one as `gateway.<operation>(…)`. A listed operation that is not called refuses the file.',
   ];
-  if (rows.some(row => row.entityRefs.length > 0)) {
+  const external = externalEntityIds(ctx.units);
+  if (rows.some(row => row.entityRefs.some(entity => external.has(entity)))) {
     blocks.push('The entity is kept outside this module. Read and write it only through the gateway. Do not call `resolveRepository` for the entity repository, do not use `ctx.mdm` for it, and do not use a table.');
+  } else if (rows.some(row => row.entityRefs.length > 0)) {
+    blocks.push('The entity is stored in this module and also lives in the system outside. Keep the repository for the module copy and call the gateway for the operations below, in the order the l4 rules under "Rules" say. The gateway call is not optional: it is how the change reaches the system outside.');
   }
   for (const connectionId of [...byConnection.keys()].sort()) {
     const gateway = gatewayNameOf(connectionId);
@@ -857,7 +879,7 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const transition = await transitionOf(ctx, unit);
   return [
     ...waived.problems,
-    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit) }),
+    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId) }),
   ];
 }
 

@@ -27,8 +27,27 @@ export interface M12CodeGateInput {
   externalPort?: string;
   /** The usecase writes an external entity: the system outside meets its rules through the call (d1_196). */
   externalEntity?: boolean;
+  /** Calls the def of the integration gives this usecase as consumer (`connections[].consumer`): the file must make each one (d1_219). */
+  consumerCalls?: readonly M12ConsumerCall[];
   /** Events the def lists as effects of this usecase and binds to the platform publisher (d1_216): the file must publish each one. */
   publishers?: readonly M12EventPublisher[];
+}
+
+/** One call of a connection that the usecase consumes. */
+export interface M12ConsumerCall {
+  connectionId: string;
+  operationId: string;
+}
+
+/**
+ * d1_219: the usecase the def names `consumer` of a call makes it: `gateway.<operation>(` is in the file. An import, a comment or the
+ * name of the gateway does not count (the mold of `WORKFLOW_STEP_WITHOUT_CALL`, d1_204).
+ */
+export function consumerCallProblems(code: string, calls: readonly M12ConsumerCall[]): string[] {
+  const clean = withoutComments(code);
+  return calls
+    .filter(call => !new RegExp(`\\.${call.operationId}\\s*\\(`, 'u').test(clean))
+    .map(call => `GATEWAY_CALL_MISSING: the def names this usecase the consumer of ${call.connectionId}.${call.operationId}: the file must call \`gateway.${call.operationId}(input, ctx)\` on the \`${gatewayNameOf(call.connectionId)}\`. Importing the gateway type is not a call.`);
 }
 
 /** One event a usecase publishes, and the function of the generated `outbound.ts` that does it. */
@@ -558,6 +577,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...transitionTargetProblems(code, input.transition));
   problems.push(...undeclaredInputProblems(code));
   problems.push(...eventPublishProblems(code, input.publishers ?? []));
+  problems.push(...consumerCallProblems(code, input.consumerCalls ?? []));
   // The rules of a write on an external entity are met by the external system: the call answers (or refuses) with them.
   for (const ruleId of input.externalEntity ? [] : input.ruleIds) {
     if (!code.includes(`'${ruleId}'`) && !code.includes(`"${ruleId}"`)) problems.push(`Rule ${ruleId} is not enforced: no AppError carries ruleId '${ruleId}'.`);

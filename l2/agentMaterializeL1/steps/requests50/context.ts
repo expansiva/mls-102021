@@ -1106,7 +1106,9 @@ export function normalizeRequestsTyping(code: string, contractsInterface: string
     const present = names.every(name => new RegExp(`import\\s+(?:type\\s+)?\\{[^}]*\\b${name}\\b[^}]*\\}\\s+from`, 'u').test(next) || new RegExp(`(?:^|\\n)(?:export\\s+)?(?:interface|type)\\s+${name}\\b`, 'u').test(next));
     if (names.length && !present) imports.push(`import type { ${names.join(', ')} } from '${contractSpecifier}';`);
   } else if (!new RegExp(`import\\s+(?:type\\s+)?\\{[^}]*\\b${contractsInterface}\\b[^}]*\\}\\s+from`, 'u').test(next)) imports.push(`import type { ${contractsInterface} } from '${contractSpecifier}';`);
-  if (!/import\s+(?:type\s+)?\{[^}]*\bRequestContext\b[^}]*\}\s+from/u.test(next)) imports.push("import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';");
+  // d1_219: a file that declares `RequestContext` itself (an alias of a usecase parameter) already has it: an import beside it is TS2440.
+  const declaresContext = /(?:^|\n)(?:export\s+)?(?:interface|type|class)\s+RequestContext\b/u.test(next);
+  if (!declaresContext && !/import\s+(?:type\s+)?\{[^}]*\bRequestContext\b[^}]*\}\s+from/u.test(next)) imports.push("import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';");
   if (imports.length) {
     const lines = next.split('\n');
     lines.splice(1, 0, ...imports);

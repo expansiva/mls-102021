@@ -1,0 +1,114 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_2_application/requests/repoHost.ts" enhancement="_blank"/>
+
+import { updateContentFile } from '/_102047_/l1/conteudo/layer_2_application/usecases/updateContentFile.js';
+
+type RequestContext = Parameters<typeof updateContentFile>[1];
+
+export interface RepoHostRepositorioAlteradoMessage {
+  id: string;
+  version: number;
+  changedAt: string;
+  details: {
+    commitMessage: string;
+    author?: string;
+    files: Array<{
+      path: string;
+      change: 'added' | 'modified' | 'removed';
+    }>;
+  };
+}
+
+class RepoHostMessageError extends Error {
+  code: string;
+  field: string;
+  constructor(code: string, field: string, message: string) {
+    super(message);
+    this.name = 'RepoHostMessageError';
+    this.code = code;
+    this.field = field;
+  }
+}
+
+const CONTENT_FOLDERS = ['blog', 'docs', 'site'];
+const CHANGES = ['added', 'modified', 'removed'];
+
+function requireString(value: unknown, field: string): string {
+  if (value === undefined || value === null) {
+    throw new RepoHostMessageError('MESSAGE_FIELD_MISSING', field, `repositorioAlterado: field "${field}" is missing`);
+  }
+  if (typeof value !== 'string' || value === '') {
+    throw new RepoHostMessageError('MESSAGE_FIELD_INVALID', field, `repositorioAlterado: field "${field}" must be a non-empty string`);
+  }
+  return value;
+}
+
+function validateMessage(input: RepoHostRepositorioAlteradoMessage): void {
+  requireString(input.id, 'id');
+  if (input.version === undefined || input.version === null) {
+    throw new RepoHostMessageError('MESSAGE_FIELD_MISSING', 'version', 'repositorioAlterado: field "version" is missing');
+  }
+  if (typeof input.version !== 'number' || !Number.isFinite(input.version)) {
+    throw new RepoHostMessageError('MESSAGE_FIELD_INVALID', 'version', 'repositorioAlterado: field "version" must be a number');
+  }
+  requireString(input.changedAt, 'changedAt');
+  if (input.details === undefined || input.details === null) {
+    throw new RepoHostMessageError('MESSAGE_FIELD_MISSING', 'details', 'repositorioAlterado: field "details" is missing');
+  }
+  if (typeof input.details !== 'object') {
+    throw new RepoHostMessageError('MESSAGE_FIELD_INVALID', 'details', 'repositorioAlterado: field "details" must be an object');
+  }
+  requireString(input.details.commitMessage, 'details.commitMessage');
+  if (input.details.author != null && typeof input.details.author !== 'string') {
+    throw new RepoHostMessageError('MESSAGE_FIELD_INVALID', 'details.author', 'repositorioAlterado: field "details.author" must be a string');
+  }
+  const files = input.details.files;
+  if (files === undefined || files === null) {
+    throw new RepoHostMessageError('MESSAGE_FIELD_MISSING', 'details.files', 'repositorioAlterado: field "details.files" is missing');
+  }
+  if (!Array.isArray(files)) {
+    throw new RepoHostMessageError('MESSAGE_FIELD_INVALID', 'details.files', 'repositorioAlterado: field "details.files" must be a list');
+  }
+  files.forEach((file, index) => {
+    if (file === undefined || file === null || typeof file !== 'object') {
+      throw new RepoHostMessageError('MESSAGE_FIELD_INVALID', `details.files[${index}]`, `repositorioAlterado: field "details.files[${index}]" must be an object`);
+    }
+    requireString(file.path, `details.files[${index}].path`);
+    const change = requireString(file.change, `details.files[${index}].change`);
+    if (!CHANGES.includes(change)) {
+      throw new RepoHostMessageError('MESSAGE_FIELD_INVALID', `details.files[${index}].change`, `repositorioAlterado: field "details.files[${index}].change" must be added, modified or removed`);
+    }
+  });
+}
+
+export const requests: {
+  'conteudo.repoHost.repositorioAlterado': (input: RepoHostRepositorioAlteradoMessage, ctx: RequestContext) => Promise<{ received: true }>;
+} = {
+  'conteudo.repoHost.repositorioAlterado': async function (input, ctx) {
+    validateMessage(input);
+    await ctx.data.moduleData.runInTransaction(async (tx) => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      for (const file of input.details.files) {
+        const segments = file.path.split('/').filter((s) => s !== '');
+        // only the folders blog, docs and site hold content files
+        if (segments.length < 2 || !CONTENT_FOLDERS.includes(segments[0])) continue;
+        const fileName = segments[segments.length - 1];
+        await updateContentFile(
+          {
+            folderId: segments[0],
+            path: file.path,
+            title: fileName,
+            lastChangedAt: input.changedAt,
+            details: {
+              fileName,
+              ...(input.details.author != null ? { changeOrigin: input.details.author } : {}),
+            },
+            id: input.id,
+            version: input.version,
+          },
+          bound,
+        );
+      }
+    });
+    return { received: true };
+  },
+};
