@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/agentD1Usecases.ts" enhancement="_blank"/>
 
+import { commitTrace, refusedText, stepRunOf, type D1StepRun } from '/_102021_/l2/agentDefsL1/helpers/d1RunSummary.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   displayPath,
@@ -74,14 +75,16 @@ export async function beforeD1UsecasesPromptStep(
     const approved = withUsecasesApproved(pipeline, artifact, new Date().toISOString());
     if (JSON.stringify(approved) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, approved);
     const mutationParent = findOpenParent(context, parentStep);
-    const kept = `usecases50 kept the defs for ${parsed.prompt.moduleName}. No model was called.`;
+    const keptDefs = (snapshot.files ?? []).filter(file => file.artifactType === 'usecase').map(file => file.defPath);
+    const keptRun = stepRunOf({ written: [], reported: keptDefs });
+      const kept = `${commitTrace('usecases50', keptRun)} No model was called.`;
     if (planPresent(context, 'usecases50-done')) {
       return [updateStatus(context, mutationParent, step, hookSequential, 'completed', kept)];
     }
     await openCallResume(parsed.prompt.project, parsed.prompt.moduleName);
     const calls = accountCalls(await readCallLog(parsed.prompt.project, parsed.prompt.moduleName));
     return [
-      doneAnchor(context, mutationParent, parsed.prompt.project, parsed.prompt.moduleName, artifact, calls),
+      doneAnchor(context, mutationParent, parsed.prompt.project, parsed.prompt.moduleName, artifact, calls, keptRun),
       updateStatus(context, mutationParent, step, hookSequential, 'completed', kept),
     ];
   }
@@ -125,7 +128,7 @@ async function settle(
   const build = buildFromWork(work, [], 0);
   const committed = await commitD1Usecases(prompt.project, build);
   if (!build.ok || committed.issues.length) {
-    const message = committed.issues[0] || build.problems.find(problem => problem.severity === 'error')?.message || 'usecases50 refused the plan.';
+    const message = refusedText('usecases50', committed.issues[0]) || build.problems.find(problem => problem.severity === 'error')?.message || 'usecases50 refused the plan.';
     const checkpointFile = pipelineFile(prompt.project, prompt.moduleName);
     const raw = await readText(checkpointFile);
     const pipeline = raw ? parsePipelineDocument(raw) : null;
@@ -151,8 +154,8 @@ async function settle(
   }
   const mutationParent = findOpenParent(context, parentStep);
   const calls = accountCalls(await readCallLog(prompt.project, prompt.moduleName));
-  const anchor = planPresent(context, 'usecases50-done') ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, calls)];
-  const message = `usecases50 wrote ${committed.written.length} usecase defs. No model was called.`;
+  const anchor = planPresent(context, 'usecases50-done') ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, calls, committed.run)];
+  const message = `${commitTrace('usecases50', committed.run)} No model was called.`;
   const usecases = findPlanStep(context, 'usecases50');
   return [
     ...anchor,
@@ -227,6 +230,7 @@ function doneAnchor(
   moduleName: string,
   artifact: string,
   calls: { repliesDelivered: number | null; repliesUnknown: string; invocationReplies: number | null },
+  run?: D1StepRun,
 ): mls.msg.AgentIntentAddStep {
   return addStep(context, parentStep, {
     type: 'result',
@@ -244,6 +248,7 @@ function doneAnchor(
       repliesDelivered: calls.repliesDelivered,
       repliesUnknown: calls.repliesUnknown,
       invocationReplies: calls.invocationReplies,
+      ...(run ? { run } : {}),
     }),
     planning: { planId: 'usecases50-done', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep);

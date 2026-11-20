@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/domain30/agentD1Domain.ts" enhancement="_blank"/>
 
+import { commitTrace, refusedText, type D1StepRun } from '/_102021_/l2/agentDefsL1/helpers/d1RunSummary.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   displayPath,
@@ -52,16 +53,16 @@ export async function beforeD1DomainPromptStep(
   if ('refusal' in assembled) return refuse(context, parentStep, step, hookSequential, assembled.refusal);
   const committed = await commitD1Domain(prompt.project, assembled.build);
   if (!assembled.build.ok || committed.issues.length > 0) {
-    const message = committed.issues[0] || assembled.build.problems.find(problem => problem.severity === 'error')?.message || 'domain30 refused the domain.';
+    const message = refusedText('domain30', committed.issues[0]) || assembled.build.problems.find(problem => problem.severity === 'error')?.message || 'domain30 refused the domain.';
     return refuse(context, parentStep, step, hookSequential, message);
   }
 
   const artifact = displayPath(draftFile(prompt.project, prompt.moduleName, 'domain30'));
-  const trace = `domain30 wrote ${committed.written.length} domain defs for ${prompt.moduleName} in project ${prompt.project}. No model was called.`;
+  const trace = `${commitTrace('domain30', committed.run)} No model was called.`;
   const approved = withDomainApproved(pipeline, artifact, new Date().toISOString());
   if (JSON.stringify(approved) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, approved);
   const mutationParent = findOpenParent(context, parentStep);
-  const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact)];
+  const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, committed.run)];
   return [
     ...anchor,
     updateStatus(context, mutationParent, step, hookSequential, 'completed', trace),
@@ -112,6 +113,7 @@ function doneAnchor(
   project: number,
   moduleName: string,
   artifact: string,
+  run?: D1StepRun,
 ): mls.msg.AgentIntentAddStep {
   const result = {
     project,
@@ -120,6 +122,7 @@ function doneAnchor(
     nextStep: 'persistence40' as const,
     artifact,
     llmCalls: 0,
+    ...(run ? { run } : {}),
   };
   return {
     type: 'add-step',

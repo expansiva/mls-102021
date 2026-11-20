@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/support70/agentD1Support.ts" enhancement="_blank"/>
 
+import { commitTrace, refusedText, type D1StepRun } from '/_102021_/l2/agentDefsL1/helpers/d1RunSummary.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   displayPath,
@@ -56,18 +57,18 @@ export async function beforeD1SupportPromptStep(
     const reason = blockingReason(assembled.build, committed.issues.length);
     const held = withSupportHeld(pipeline, artifact, reason, new Date().toISOString());
     if (JSON.stringify(held) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, held);
-    const message = committed.issues[0]
+    const message = refusedText('support70', committed.issues[0])
       || assembled.build.problems.find(problem => problem.severity === 'error')?.message
       || 'support70 refused the support plan.';
     return refuse(context, parentStep, step, hookSequential, message);
   }
 
   const artifact = displayPath(draftFile(prompt.project, prompt.moduleName, 'support70'));
-  const trace = `support70 wrote ${committed.written.length} support defs for ${prompt.moduleName} in project ${prompt.project}. No model was called.`;
+  const trace = `${commitTrace('support70', committed.run)} No model was called.`;
   const approved = withSupportApproved(pipeline, artifact, new Date().toISOString());
   if (JSON.stringify(approved) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, approved);
   const mutationParent = findOpenParent(context, parentStep);
-  const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact)];
+  const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, committed.run)];
   return [
     ...anchor,
     updateStatus(context, mutationParent, step, hookSequential, 'completed', trace),
@@ -159,6 +160,7 @@ function doneAnchor(
   project: number,
   moduleName: string,
   artifact: string,
+  run?: D1StepRun,
 ): mls.msg.AgentIntentAddStep {
   const result = {
     project,
@@ -167,6 +169,7 @@ function doneAnchor(
     nextStep: 'finalize80' as const,
     artifact,
     llmCalls: 0,
+    ...(run ? { run } : {}),
   };
   return {
     type: 'add-step',

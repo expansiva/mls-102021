@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/support70/io.ts" enhancement="_blank"/>
 
+import { stepRunOf, type D1StepRun } from '/_102021_/l2/agentDefsL1/helpers/d1RunSummary.js';
 import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { draftFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { D1_EXTERNAL_TRACE, commitD1Unit, logicalDefPath, readWriterReceipts, type D1UnitPart } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
@@ -139,7 +140,7 @@ export async function commitD1Support(
   project: number,
   build: D1SupportBuild,
   files: readonly D1SupportFile[],
-): Promise<{ written: string[]; issues: string[] }> {
+): Promise<{ written: string[]; run?: D1StepRun; issues: string[] }> {
   const draftInfo = draftFile(project, build.moduleName, 'support70');
   const draftText = `${JSON.stringify(build, null, 2)}\n`;
   const currentDraft = await readText(draftInfo);
@@ -155,7 +156,7 @@ export async function commitD1Support(
     draftText,
     parts: [...rendered.parts, ...removalParts(project, build, files)],
   });
-  return { written: committed.written, issues: committed.issues };
+  return { written: committed.written, run: stepRunOf(committed), issues: committed.issues };
 }
 
 /**

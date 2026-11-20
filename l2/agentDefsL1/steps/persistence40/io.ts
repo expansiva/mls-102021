@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/persistence40/io.ts" enhancement="_blank"/>
 
+import { stepRunOf, type D1StepRun } from '/_102021_/l2/agentDefsL1/helpers/d1RunSummary.js';
 import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { draftFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { commitD1Unit, type D1UnitPart } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
@@ -40,7 +41,7 @@ export async function assembleD1Persistence(
 export async function commitD1Persistence(
   project: number,
   build: D1PersistenceBuild,
-): Promise<{ written: string[]; issues: string[] }> {
+): Promise<{ written: string[]; run?: D1StepRun; issues: string[] }> {
   const draftInfo = draftFile(project, build.moduleName, 'persistence40');
   const draftText = `${JSON.stringify(build, null, 2)}\n`;
   const currentDraft = await readText(draftInfo);
@@ -56,7 +57,7 @@ export async function commitD1Persistence(
     draftText,
     parts: rendered.parts,
   });
-  return { written: committed.written, issues: committed.issues };
+  return { written: committed.written, run: stepRunOf(committed), issues: committed.issues };
 }
 
 function renderParts(
