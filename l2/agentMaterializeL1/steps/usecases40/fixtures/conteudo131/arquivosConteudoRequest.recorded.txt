@@ -1,0 +1,273 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_2_application/requests/arquivos_conteudo.ts" enhancement="_blank"/>
+import type { Arquivos_conteudoContracts } from '/_102047_/l2/conteudo/web/contracts/arquivos_conteudo.defs.js';
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { PublicationRepository } from '/_102047_/l1/conteudo/layer_2_application/ports/publicationRepository.js';
+import { listContentFile } from '/_102047_/l1/conteudo/layer_2_application/usecases/listContentFile.js';
+import { getContentFile } from '/_102047_/l1/conteudo/layer_2_application/usecases/getContentFile.js';
+import { createContentFile } from '/_102047_/l1/conteudo/layer_2_application/usecases/createContentFile.js';
+import { updateContentFile } from '/_102047_/l1/conteudo/layer_2_application/usecases/updateContentFile.js';
+
+type Folder = 'blog' | 'docs' | 'site';
+type ArquivoResumo = Arquivos_conteudoContracts['conteudo.arquivos_conteudo.listarArquivos']['output']['arquivos']['items'][number];
+type ArquivoConteudo = Arquivos_conteudoContracts['conteudo.arquivos_conteudo.abrirArquivo']['output']['arquivo'];
+
+const ALLOWED_FOLDERS: Folder[] = ['blog', 'docs', 'site'];
+
+function isFolder(value: string): value is Folder {
+  return (ALLOWED_FOLDERS as string[]).includes(value);
+}
+
+function folderOfPath(path: string): Folder {
+  const first = path.split('/')[0];
+  if (!isFolder(first)) {
+    throw new AppError(
+      'FOLDER_NOT_ALLOWED',
+      `O arquivo ${path} não está em uma das pastas blog, docs ou site.`,
+      422,
+      { ruleId: 'contentFolderAllowed', path },
+    );
+  }
+  return first;
+}
+
+function assertPathInsideFolder(path: string, folder: Folder): void {
+  const segments = path.split('/');
+  const inside = path.startsWith(folder + '/') && segments.length > 1 && segments.every((s) => s !== '' && s !== '.' && s !== '..');
+  if (!inside) {
+    throw new AppError(
+      'PATH_OUTSIDE_FOLDER',
+      `O caminho ${path} não está dentro da pasta ${folder}.`,
+      422,
+      { ruleId: 'contentFolderAllowed', path, folder },
+    );
+  }
+}
+
+function extractTitle(content: string): string | undefined {
+  const front = /^---\s*\r?\n([\s\S]*?)\r?\n---/.exec(content);
+  if (front) {
+    const m = /^title:\s*(.+)$/m.exec(front[1]);
+    if (m) {
+      const t = m[1].trim().replace(/^["']|["']$/g, '').trim();
+      if (t !== '') return t;
+    }
+  }
+  const h = /^#\s+(.+)$/m.exec(content);
+  if (h) {
+    const t = h[1].trim();
+    if (t !== '') return t;
+  }
+  return undefined;
+}
+
+function resolvePaging(page: number, pageSize: number): { page: number; pageSize: number } {
+  const p = Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
+  const s = Number.isFinite(pageSize) && pageSize >= 1 ? Math.min(Math.floor(pageSize), 200) : 20;
+  return { page: p, pageSize: s };
+}
+
+/** Lists, recursively, the markdown files of one allowed folder, straight from the repository (contentRepositoryIsSourceOfTruth). */
+async function listMarkdownFiles(
+  folder: Folder,
+  ctx: RequestContext,
+): Promise<{ path: string; name: string }[]> {
+  const files: { path: string; name: string }[] = [];
+  const pending: string[] = [folder];
+  const seen = new Set<string>();
+  while (pending.length > 0) {
+    const dir = pending.pop() as string;
+    if (seen.has(dir)) continue;
+    seen.add(dir);
+    const listed = await listContentFile({ caminho: dir }, ctx);
+    for (const item of listed.itens) {
+      if (item.tipo === 'pasta') {
+        pending.push(item.caminho);
+      } else if (item.nome.toLowerCase().endsWith('.md')) {
+        files.push({ path: item.caminho, name: item.nome });
+      }
+    }
+  }
+  return files;
+}
+
+async function readFile(path: string, fallbackTitle: string | undefined, ctx: RequestContext): Promise<ArquivoConteudo> {
+  const folder = folderOfPath(path);
+  const file = await getContentFile({ caminho: path }, ctx);
+  if (file.codificacao !== 'utf-8') {
+    throw new AppError(
+      'UNSUPPORTED_ENCODING',
+      `O arquivo ${path} veio do repositório com codificação ${file.codificacao}, que não é texto markdown.`,
+      422,
+      { path, codificacao: file.codificacao },
+    );
+  }
+  const title = extractTitle(file.conteudo) ?? fallbackTitle;
+  return {
+    path: file.caminho,
+    folder,
+    name: file.nome,
+    ...(title != null ? { title } : {}),
+    content: file.conteudo,
+    sha: file.identificador,
+  };
+}
+
+/**
+ * publicationRecordedOnSave: called only after the repository confirmed the write; records who published
+ * (the logged editor), the file, the folder, the operation, the title and the commitId.
+ * publicationKeepsNoFileText: the record carries identification data only, the markdown text is never put in it.
+ * The moment of confirmation (publishedAt) is set by the server when the record is created.
+ */
+async function recordPublication(
+  params: { filePath: string; folder: Folder; operation: 'create' | 'update'; title: string; commitId: string },
+  ctx: RequestContext,
+): Promise<void> {
+  const editorId = ctx.sessionContext.actorId;
+  if (editorId == null || editorId === '') {
+    throw new AppError(
+      'UNAUTHENTICATED',
+      'Não foi possível registrar a publicação: não há editor logado.',
+      401,
+      { ruleId: 'publicationRecordedOnSave', filePath: params.filePath },
+    );
+  }
+  const repository = resolveRepository<PublicationRepository>(ctx, 'PublicationRepository');
+  await repository.create({
+    editorId,
+    filePath: params.filePath,
+    folder: params.folder,
+    operation: params.operation,
+    details: { title: params.title, commitId: params.commitId },
+  });
+}
+
+export const requests: { [K in keyof Arquivos_conteudoContracts]: (input: Arquivos_conteudoContracts[K]['input'], ctx: RequestContext) => Promise<Arquivos_conteudoContracts[K]['output']> } = {
+  'conteudo.arquivos_conteudo.listarArquivos': async function (input, ctx) {
+    const paging = resolvePaging(input.page, input.pageSize);
+    const folders: Folder[] = input.folder != null ? [input.folder] : ALLOWED_FOLDERS; // contentFolderAllowed
+    const all: ArquivoResumo[] = [];
+    for (const folder of folders) {
+      const files = await listMarkdownFiles(folder, ctx); // contentListFollowsExternalChanges: always read live
+      for (const f of files) {
+        // The integration listing carries no modification date: it is not invented here.
+        all.push({ path: f.path, folder, name: f.name, updatedAt: '' });
+      }
+    }
+    all.sort((a, b) => {
+      if (a.folder !== b.folder) return a.folder < b.folder ? -1 : 1;
+      if (a.name !== b.name) return a.name < b.name ? -1 : 1;
+      return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+    });
+    const start = (paging.page - 1) * paging.pageSize;
+    const items = all.slice(start, start + paging.pageSize);
+    return {
+      arquivos: {
+        items,
+        page: paging.page,
+        pageSize: paging.pageSize,
+        hasMore: start + paging.pageSize < all.length,
+      },
+    };
+  },
+
+  'conteudo.arquivos_conteudo.abrirArquivo': async function (input, ctx) {
+    const arquivo = await readFile(input.path, undefined, ctx); // contentRepositoryIsSourceOfTruth
+    return { arquivo };
+  },
+
+  'conteudo.arquivos_conteudo.salvarAlteracao': async function (input, ctx) {
+    return ctx.data.moduleData.runInTransaction(async (tx) => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      const folder = folderOfPath(input.caminho);
+      if (folder !== input.folder) {
+        throw new AppError(
+          'PATH_OUTSIDE_FOLDER',
+          `O arquivo ${input.caminho} não pertence à pasta ${input.folder}.`,
+          422,
+          { ruleId: 'contentFolderAllowed', caminho: input.caminho, folder: input.folder },
+        );
+      }
+      assertPathInsideFolder(input.caminho, folder);
+      // contentSaveOverReadVersion: the file must still be at the version the editor read.
+      const current = await getContentFile({ caminho: input.caminho }, bound);
+      if (current.identificador !== input.sha) {
+        throw new AppError(
+          'VERSION_CONFLICT',
+          `O arquivo ${input.caminho} mudou no repositório depois da leitura; abra-o novamente antes de gravar.`,
+          409,
+          { ruleId: 'contentSaveOverReadVersion', caminho: input.caminho, shaLido: input.sha, shaAtual: current.identificador },
+        );
+      }
+      // contentWriteThroughIntegration: the write goes only through the integration usecase.
+      const saved = await updateContentFile(
+        {
+          caminho: input.caminho,
+          conteudo: input.conteudo,
+          mensagemRegistro: input.mensagemRegistro,
+          identificadorAnterior: input.sha,
+        },
+        bound,
+      );
+      // publicationRecordedOnSave + publicationKeepsNoFileText: record after confirmation, without the text.
+      await recordPublication(
+        { filePath: input.caminho, folder, operation: 'update', title: input.title, commitId: saved.registro },
+        bound,
+      );
+      const arquivo = await readFile(input.caminho, input.title, bound);
+      return { arquivo };
+    });
+  },
+
+  'conteudo.arquivos_conteudo.criarArquivo': async function (input, ctx) {
+    return ctx.data.moduleData.runInTransaction(async (tx) => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      // contentCreateRequiresTitleAndText
+      if (input.folder == null || String(input.folder).trim() === '' || input.title.trim() === '' || input.conteudo.trim() === '') {
+        throw new AppError(
+          'VALIDATION_ERROR',
+          'Para criar um conteúdo é preciso informar a pasta, o título e o texto.',
+          422,
+          { ruleId: 'contentCreateRequiresTitleAndText' },
+        );
+      }
+      // contentFolderAllowed
+      if (!isFolder(input.folder)) {
+        throw new AppError(
+          'FOLDER_NOT_ALLOWED',
+          `A pasta ${String(input.folder)} não é permitida; use blog, docs ou site.`,
+          422,
+          { ruleId: 'contentFolderAllowed', folder: input.folder },
+        );
+      }
+      assertPathInsideFolder(input.caminho, input.folder);
+      // contentCreateRequiresTitleAndText: no other file with the same path in the folder.
+      const existing = await listMarkdownFiles(input.folder, bound);
+      if (existing.some((f) => f.path === input.caminho)) {
+        throw new AppError(
+          'ALREADY_EXISTS',
+          `Já existe o arquivo ${input.caminho} na pasta ${input.folder}.`,
+          409,
+          { ruleId: 'contentCreateRequiresTitleAndText', caminho: input.caminho, folder: input.folder },
+        );
+      }
+      // contentWriteThroughIntegration: the write goes only through the integration usecase.
+      const created = await createContentFile(
+        {
+          caminho: input.caminho,
+          conteudo: input.conteudo,
+          mensagemRegistro: input.mensagemRegistro,
+        },
+        bound,
+      );
+      // publicationRecordedOnSave + publicationKeepsNoFileText: record after confirmation, without the text.
+      await recordPublication(
+        { filePath: input.caminho, folder: input.folder, operation: 'create', title: input.title, commitId: created.registro },
+        bound,
+      );
+      const arquivo = await readFile(input.caminho, input.title, bound);
+      return { arquivo };
+    });
+  },
+};

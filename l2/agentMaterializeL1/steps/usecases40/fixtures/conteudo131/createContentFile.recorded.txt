@@ -1,0 +1,67 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_2_application/usecases/createContentFile.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { GravarArquivoInput, GravarArquivoOutput } from '/_102047_/l1/repoHost/layer_1_external/connections/github.js';
+import type { GithubGateway } from '/_102047_/l1/conteudo/layer_1_external/adapters/integration/outbound.js';
+import type { PublicationRepository } from '/_102047_/l1/conteudo/layer_2_application/ports/publicationRepository.js';
+
+export interface CreateContentFileInput extends GravarArquivoInput {}
+export interface CreateContentFileOutput extends GravarArquivoOutput {}
+
+type PublicationRecord = Parameters<PublicationRepository['create']>[0];
+
+function textOf(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.length > 0) return value;
+  return undefined;
+}
+
+export async function createContentFile(input: CreateContentFileInput, ctx: RequestContext): Promise<CreateContentFileOutput> {
+  const rawIn: Record<string, unknown> = { ...input };
+
+  const editorId = textOf(ctx.sessionContext.person?.mdmId) ?? textOf(ctx.sessionContext.actorId);
+  if (!editorId) {
+    throw new AppError('MISSING_FIELD', 'editorId is missing: the session carries neither the person nor the actor.', 400, {
+      ruleIds: ['contentFolderAllowed', 'contentRepositoryIsSourceOfTruth', 'contentWriteThroughIntegration'],
+    });
+  }
+
+  const folder = textOf(rawIn.folder);
+  if (!folder) {
+    throw new AppError('MISSING_FIELD', 'folder is missing: it is required to record the publication.', 400, {
+      ruleIds: ['contentFolderAllowed', 'contentRepositoryIsSourceOfTruth', 'contentWriteThroughIntegration'],
+    });
+  }
+
+  const gateway = resolveRepository<GithubGateway>(ctx, 'GithubGateway');
+  const result = await gateway.gravarArquivo(input, ctx);
+
+  const rawOut: Record<string, unknown> = { ...result };
+  const filePath = textOf(rawIn.path) ?? textOf(rawOut.path);
+  if (!filePath) {
+    throw new AppError('MISSING_FIELD', 'filePath is missing: neither the input nor the answer of the repository carries the path.', 400, {
+      ruleIds: ['contentFolderAllowed', 'contentRepositoryIsSourceOfTruth', 'contentWriteThroughIntegration'],
+    });
+  }
+
+  const details: { title?: string; commitId?: string } = {};
+  const title = textOf(rawIn.title);
+  if (title) details.title = title;
+  const commitId = textOf(rawOut.commitId);
+  if (commitId) details.commitId = commitId;
+
+  const publication = {
+    id: ctx.idGenerator.newId(),
+    version: 1,
+    editorId,
+    filePath,
+    folder: folder as PublicationRecord['folder'],
+    operation: 'create' as PublicationRecord['operation'],
+    details,
+  };
+
+  const repository = resolveRepository<PublicationRepository>(ctx, 'PublicationRepository');
+  await repository.create(publication as PublicationRecord);
+
+  return result;
+}

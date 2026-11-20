@@ -19,7 +19,7 @@ import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js
 import { stepCallProblems, stepCallsOf, withUsecases, type StepCall } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/stepCalls.js';
 import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/engineImports.js';
 import { connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
-import { connectionRowsOf, emptyCastProblems, emptyRequiredProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { connectionRowsOf, emptyCastProblems, emptyRequiredProblems, recordCastProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
@@ -702,6 +702,7 @@ export function workflowGate(code: string, input: { siblingImports?: readonly st
   }
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) problems.push('No `as unknown as` and no `as any`.');
   problems.push(...emptyCastProblems(code));
+  problems.push(...recordCastProblems(code));
   problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
   problems.push(...repositoryProblems(code, input.ports, input.gateways));
   problems.push(...gatewayBypassProblems(code));
@@ -828,6 +829,7 @@ function functionTextProblems(code: string, project: number, moduleName: string,
   problems.push(...workflowTransitionProblems(code, targets));
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) problems.push('No `as unknown as` and no `as any`.');
   problems.push(...emptyCastProblems(code));
+  problems.push(...recordCastProblems(code));
   problems.push(...emptyRequiredProblems(code, usecaseInputs));
   const ownL1 = `/_${project}_/l1/${moduleName}/`;
   for (const specifier of importSpecifiers(code)) {

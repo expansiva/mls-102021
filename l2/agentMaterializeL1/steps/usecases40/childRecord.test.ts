@@ -157,18 +157,23 @@ void test('d1_224 s2: the section lists the fields of the child from the def and
   const { ctx: base, create } = setup(true);
   const entityUnit = unit('domainEntity', 'Publication', publicationDef, `_${PROJECT}_/l1/${MODULE}/layer_3_domain/entities/publication.ts`);
   const baseUnits = (base as unknown as { units: M12Unit[]; read: (ref: string) => Promise<string | null>; run: unknown }).units.filter(item => !(item.definition.artifactType === 'domainEntity' && item.definition.artifactId === 'Publication'));
-  const ctx = { ...(base as object), units: [...baseUnits, entityUnit] } as never;
+  const editorUnit = unit('domainEntity', 'Editor', { entityId: 'Editor', storageTarget: 'mdm', fields: [] }, `_${PROJECT}_/l1/${MODULE}/layer_3_domain/entities/editor.ts`);
+  const ctx = { ...(base as object), units: [...baseUnits, entityUnit, editorUnit] } as never;
   const previous = globalThis.mls;
   (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: { [keyOf(entityUnit.output as M12FileInfo)]: { getContent: async () => publicationTs } }, getKeyToFile: keyOf } };
   try {
     const [records] = [await childRecordFieldsOf(ctx, create)];
     assert.equal(records.length, 1);
     const byPath = new Map(records[0].fields.map(field => [field.path, field]));
-    // The platform's fields (id, version, the moment) and the object that only holds the members below it are not listed.
-    assert.deepEqual([...byPath.keys()].sort(), ['contentPath', 'details.operation', 'details.revision', 'details.title', 'editorId', 'folder']);
+    // The object that only holds the members below it is not listed; the identity, the version and the moment are, each with the origin of the module.
+    assert.deepEqual([...byPath.keys()].sort(), ['contentPath', 'details.operation', 'details.revision', 'details.title', 'editorId', 'folder', 'id', 'publishedAt', 'version']);
+    assert.deepEqual([byPath.get('id')?.origin, byPath.get('id')?.required], ['the identity of a new record: `ctx.idGenerator.newId()`', true]);
+    assert.equal(byPath.get('version')?.origin, 'the version of a new record: `1`');
+    assert.equal(byPath.get('publishedAt')?.origin, 'the moment of the write: `ctx.clock.nowIso()`');
     assert.deepEqual([byPath.get('contentPath')?.required, byPath.get('contentPath')?.type], [true, 'reference to ContentFile']);
     assert.match(byPath.get('contentPath')?.origin ?? '', /^the identity of the ContentFile this usecase writes$/u);
-    assert.match(byPath.get('editorId')?.origin ?? '', /Editor, who or what the step names: from `ctx` \(the session\) or from the input; if neither carries it, throw an error that names the field/u);
+    // "Who did it" has one origin: the person of the session, never the actor id.
+    assert.match(byPath.get('editorId')?.origin ?? '', /^Editor, the person of the session: `ctx\.sessionContext\.person\.mdmId` \(not `actorId`\); when the session has no person, throw an error that names the field$/u);
     assert.equal(byPath.get('folder')?.required, true);
     assert.equal(byPath.get('details.operation')?.required, true);
     assert.equal(byPath.get('details.title')?.required, false);
@@ -176,10 +181,11 @@ void test('d1_224 s2: the section lists the fields of the child from the def and
     assert.match(byPath.get('folder')?.origin ?? '', /^a value of the step: the input of this usecase or the answer of the outside call, never a default$/u);
     const text = childRecordSection(records, ['gravarArquivo']);
     assert.match(text, /Fields of Publication \(a missing one is an error that names it, not a value made up\):/u);
-    assert.match(text, /- editorId \(reference to Editor, required\): Editor, who or what the step names/u);
+    assert.match(text, /- editorId \(reference to Editor, required\): Editor, the person of the session: `ctx\.sessionContext\.person\.mdmId`/u);
     assert.match(text, /- details\.title \(string, optional\): a value of the step/u);
-    assert.equal(text.includes('- id ('), false);
-    assert.equal(text.includes('- publishedAt ('), false);
+    assert.match(text, /- id \(uuid, required\): the identity of a new record: `ctx\.idGenerator\.newId\(\)`/u);
+    assert.match(text, /- version \(integer, required\): the version of a new record: `1`/u);
+    assert.match(text, /- publishedAt \(timestamp, required\): the moment of the write/u);
   } finally {
     (globalThis as { mls: unknown }).mls = previous;
   }

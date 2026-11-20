@@ -12,6 +12,7 @@ import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { flatFieldsOf, usecaseInputsOf } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
 import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
+import { identityField, versionField } from '/_102021_/l2/agentMaterializeL1/emitters/domainOptional.js';
 import { dependencyUnits, recipeDraft, rulesToEnforce, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { connectionRowsOf, externalEntityIds, externalRepositoryPort, gatewayNameOf, moduleGatewayNames, repositoryPortNames, usecaseGate, type M12ChildRecord, type M12ConsumerCall, type M12EventPublisher, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
@@ -369,10 +370,14 @@ export interface M12ChildRecordFields extends M12ChildRecord {
 }
 
 /**
- * d1_224: the fields of each entity the usecase records, from the def of the entity (name, type, `ref`, derived) and the type the compiler sees
- * (which are optional). A derived field is the platform's, so it is not listed; an object that only holds the members listed below it is not either.
- * The origin is read from the shape of the field and from nothing else: the identity of the parent this usecase writes, who (a reference to another
- * entity), when (a timestamp), or a value of the step.
+ * d1_224/d1_227: the fields of each entity the usecase records, from the def of the entity (name, type, `ref`, derived) and the type the compiler
+ * sees (which are optional). Every field the record needs has one origin, said by code and the same in every usecase:
+ * - the identity and the version are the ones the module gives any new record (`serverAssigned`: `ctx.idGenerator.newId()` and `1`);
+ * - a derived timestamp is the moment of the write, `ctx.clock.nowIso()`;
+ * - a reference to the entity this usecase writes is its identity; a reference to an entity kept in the platform is the person of the session,
+ *   `ctx.sessionContext.person.mdmId` (and nothing else: not `actorId`); any other reference comes from the input;
+ * - the rest is a value of the step: the input or the answer of the outside call.
+ * A derived field with no such origin (a calculation), and an object that only holds the members listed below it, are not listed.
  */
 export async function childRecordFieldsOf(ctx: M12Context, unit: M12Unit): Promise<M12ChildRecordFields[]> {
   const parentId = String(unit.definition.data.entityId ?? '');
@@ -380,27 +385,31 @@ export async function childRecordFieldsOf(ctx: M12Context, unit: M12Unit): Promi
   for (const record of childRecordsOf(ctx, unit)) {
     const entity = ctx.units.find(item => item.definition.artifactType === 'domainEntity' && String(item.definition.data.entityId ?? '') === record.entityId);
     const defined = Array.isArray(entity?.definition.data.fields) ? entity.definition.data.fields as Array<Record<string, unknown>> : [];
+    const identity = entity ? identityField(entity.definition) : '';
+    const version = entity ? versionField(entity.definition, identity) : '';
     const generated = entity ? await readOptional(entity.output) : null;
     const resolved = generated ? await resolveInputType({ entry: generated, typeName: record.entityId, readImport: async () => null }) : null;
     const known = new Map(flatFieldsOf(resolved?.text ?? '').map(field => [field.path, field.optional]));
+    const storedInPlatform = (entityId: string): boolean => ctx.units.some(item => item.definition.artifactType === 'domainEntity'
+      && String(item.definition.data.entityId ?? '') === entityId && item.definition.data.storageTarget === 'mdm');
     const fields: M12ChildField[] = [];
     for (const field of defined) {
       const path = String(field.name ?? '');
       const type = String(field.type ?? '');
-      if (!path || field.derived === true || type === 'object') continue;
+      if (!path || type === 'object') continue;
       const ref = typeof field.ref === 'string' ? field.ref : '';
-      fields.push({
-        path,
-        type: ref ? `reference to ${ref}` : type,
-        required: known.has(path) ? known.get(path) === false : true,
-        origin: ref === parentId
-          ? `the identity of the ${parentId} this usecase writes`
-          : ref
-            ? `${ref}, who or what the step names: from \`ctx\` (the session) or from the input; if neither carries it, throw an error that names the field`
-            : type === 'timestamp'
-              ? 'the moment of the write: `ctx.clock.nowIso()`'
-              : 'a value of the step: the input of this usecase or the answer of the outside call, never a default',
-      });
+      const derived = field.derived === true;
+      let origin = '';
+      if (path === identity) origin = 'the identity of a new record: `ctx.idGenerator.newId()`';
+      else if (path === version) origin = 'the version of a new record: `1`';
+      else if (derived && type === 'timestamp') origin = 'the moment of the write: `ctx.clock.nowIso()`';
+      else if (derived) continue;
+      else if (ref === parentId) origin = `the identity of the ${parentId} this usecase writes`;
+      else if (ref && storedInPlatform(ref)) origin = `${ref}, the person of the session: \`ctx.sessionContext.person.mdmId\` (not \`actorId\`); when the session has no person, throw an error that names the field`;
+      else if (ref) origin = `${ref}: the id of that record, from the input; if the input does not carry it, throw an error that names the field`;
+      else if (type === 'timestamp') origin = 'the moment of the write: `ctx.clock.nowIso()`';
+      else origin = 'a value of the step: the input of this usecase or the answer of the outside call, never a default';
+      fields.push({ path, type: ref ? `reference to ${ref}` : type, required: known.has(path) ? known.get(path) === false : true, origin });
     }
     out.push({ ...record, parentId, fields });
   }

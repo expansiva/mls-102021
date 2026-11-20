@@ -1,0 +1,272 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_2_application/requests/arquivos_conteudo.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "arquivos_conteudo",
+  "moduleName": "conteudo",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/conteudo/layer_2_application/usecases/createContentFile.defs.ts",
+    "_102047_/l1/conteudo/layer_2_application/usecases/getContentFile.defs.ts",
+    "_102047_/l1/conteudo/layer_2_application/usecases/listContentFile.defs.ts",
+    "_102047_/l1/conteudo/layer_2_application/usecases/updateContentFile.defs.ts"
+  ],
+  "data": {
+    "pageId": "arquivos_conteudo",
+    "requests": [
+      {
+        "route": "conteudo.arquivos_conteudo.listarArquivos",
+        "kind": "qry",
+        "uses": [
+          "listContentFile"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "list",
+            "path": "arquivos",
+            "entity": "ContentFile",
+            "items": "items",
+            "page": "arquivos.page",
+            "pageSize": "arquivos.pageSize",
+            "hasMore": "arquivos.hasMore",
+            "fields": [
+              {
+                "field": "path",
+                "path": "path"
+              },
+              {
+                "field": "folder",
+                "path": "folder"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "updatedAt",
+                "path": "updatedAt"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "arquivos",
+            "pages": "arquivos"
+          },
+          {
+            "name": "pageSize",
+            "target": "arquivos",
+            "pages": "arquivos"
+          },
+          {
+            "name": "folder",
+            "target": "arquivos",
+            "field": "folder",
+            "optional": true
+          }
+        ],
+        "rules": [
+          "contentRepositoryIsSourceOfTruth",
+          "contentFolderAllowed",
+          "contentListFollowsExternalChanges"
+        ],
+        "doc": {
+          "raw": "Finalidade: Lista os arquivos markdown que existem hoje no repositório de conteúdo nas pastas blog, docs e site.\nEntrada: folder: pasta opcional para restringir a lista a blog, docs ou site; page e pageSize: página pedida e tamanho da página.\nProcessamento: Consulta o repositório pelo módulo de integração, sem cópia local (contentRepositoryIsSourceOfTruth), considerando apenas as pastas blog, docs e site (contentFolderAllowed). A lista sempre reflete o estado atual do repositório, inclusive mudanças feitas por fora do módulo (contentListFollowsExternalChanges). Ordena por pasta e nome e pagina conforme page e pageSize.\nSaída: Página de arquivos com caminho, pasta, nome e última alteração, no formato { items, page, pageSize, hasMore }.",
+          "purpose": "Lista os arquivos markdown que existem hoje no repositório de conteúdo nas pastas blog, docs e site.",
+          "input": "folder: pasta opcional para restringir a lista a blog, docs ou site; page e pageSize: página pedida e tamanho da página.",
+          "processing": "Consulta o repositório pelo módulo de integração, sem cópia local (contentRepositoryIsSourceOfTruth), considerando apenas as pastas blog, docs e site (contentFolderAllowed). A lista sempre reflete o estado atual do repositório, inclusive mudanças feitas por fora do módulo (contentListFollowsExternalChanges). Ordena por pasta e nome e pagina conforme page e pageSize.",
+          "output": "Página de arquivos com caminho, pasta, nome e última alteração, no formato { items, page, pageSize, hasMore }."
+        }
+      },
+      {
+        "route": "conteudo.arquivos_conteudo.abrirArquivo",
+        "kind": "qry",
+        "uses": [
+          "getContentFile"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "arquivo",
+            "entity": "ContentFile",
+            "fields": [
+              {
+                "field": "path",
+                "path": "path"
+              },
+              {
+                "field": "folder",
+                "path": "folder"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "title",
+                "path": "title"
+              },
+              {
+                "field": "content",
+                "path": "content"
+              },
+              {
+                "field": "sha",
+                "path": "sha"
+              },
+              {
+                "field": "updatedAt",
+                "path": "updatedAt"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "path",
+            "target": "arquivo",
+            "field": "path"
+          }
+        ],
+        "rules": [
+          "contentRepositoryIsSourceOfTruth"
+        ],
+        "doc": {
+          "raw": "Finalidade: Lê um arquivo do repositório de conteúdo com o texto markdown atual e a versão lida.\nEntrada: path: caminho do arquivo no repositório escolhido na lista.\nProcessamento: Busca o arquivo no repositório pelo módulo de integração sempre que é aberto, sem usar cópia guardada (contentRepositoryIsSourceOfTruth); extrai o título do próprio texto markdown e devolve o sha da versão lida.\nSaída: O arquivo com caminho, pasta, nome, título, texto atual, sha da versão lida e última alteração.",
+          "purpose": "Lê um arquivo do repositório de conteúdo com o texto markdown atual e a versão lida.",
+          "input": "path: caminho do arquivo no repositório escolhido na lista.",
+          "processing": "Busca o arquivo no repositório pelo módulo de integração sempre que é aberto, sem usar cópia guardada (contentRepositoryIsSourceOfTruth); extrai o título do próprio texto markdown e devolve o sha da versão lida.",
+          "output": "O arquivo com caminho, pasta, nome, título, texto atual, sha da versão lida e última alteração."
+        }
+      },
+      {
+        "route": "conteudo.arquivos_conteudo.salvarAlteracao",
+        "kind": "cmd",
+        "uses": [
+          "updateContentFile"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "arquivo",
+            "entity": "ContentFile",
+            "fields": [
+              {
+                "field": "path",
+                "path": "path"
+              },
+              {
+                "field": "folder",
+                "path": "folder"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "title",
+                "path": "title"
+              },
+              {
+                "field": "content",
+                "path": "content"
+              },
+              {
+                "field": "sha",
+                "path": "sha"
+              },
+              {
+                "field": "updatedAt",
+                "path": "updatedAt"
+              }
+            ]
+          }
+        ],
+        "params": [],
+        "rules": [
+          "contentSaveOverReadVersion",
+          "contentWriteThroughIntegration",
+          "contentRepositoryIsSourceOfTruth",
+          "publicationRecordedOnSave",
+          "publicationKeepsNoFileText"
+        ],
+        "doc": {
+          "raw": "Finalidade: Grava no repositório o texto alterado de um arquivo existente.\nEntrada: caminho: caminho do arquivo alterado no repositório; folder: pasta do arquivo; title: título do conteúdo; sha: versão do arquivo que o editor leu; conteudo: novo texto markdown; mensagemRegistro: mensagem da gravação enviada ao repositório pela operação de integração.\nProcessamento: Envia a gravação exclusivamente pelo módulo de integração (contentWriteThroughIntegration) com caminho, conteudo e mensagemRegistro, sobre a versão sha lida; se o arquivo mudou no repositório depois da leitura, recusa a gravação (contentSaveOverReadVersion). Não guarda cópia do texto (contentRepositoryIsSourceOfTruth). Confirmada a gravação, registra uma Publication com o editor logado, o arquivo, a pasta, operação update, o título e o commitId devolvido, no momento da confirmação (publicationRecordedOnSave), sem guardar o texto (publicationKeepsNoFileText).\nSaída: O arquivo no novo estado gravado no repositório, com o texto salvo, o novo sha e a nova data de alteração.",
+          "purpose": "Grava no repositório o texto alterado de um arquivo existente.",
+          "input": "caminho: caminho do arquivo alterado no repositório; folder: pasta do arquivo; title: título do conteúdo; sha: versão do arquivo que o editor leu; conteudo: novo texto markdown; mensagemRegistro: mensagem da gravação enviada ao repositório pela operação de integração.",
+          "processing": "Envia a gravação exclusivamente pelo módulo de integração (contentWriteThroughIntegration) com caminho, conteudo e mensagemRegistro, sobre a versão sha lida; se o arquivo mudou no repositório depois da leitura, recusa a gravação (contentSaveOverReadVersion). Não guarda cópia do texto (contentRepositoryIsSourceOfTruth). Confirmada a gravação, registra uma Publication com o editor logado, o arquivo, a pasta, operação update, o título e o commitId devolvido, no momento da confirmação (publicationRecordedOnSave), sem guardar o texto (publicationKeepsNoFileText).",
+          "output": "O arquivo no novo estado gravado no repositório, com o texto salvo, o novo sha e a nova data de alteração."
+        }
+      },
+      {
+        "route": "conteudo.arquivos_conteudo.criarArquivo",
+        "kind": "cmd",
+        "uses": [
+          "createContentFile"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "arquivo",
+            "entity": "ContentFile",
+            "fields": [
+              {
+                "field": "path",
+                "path": "path"
+              },
+              {
+                "field": "folder",
+                "path": "folder"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "title",
+                "path": "title"
+              },
+              {
+                "field": "content",
+                "path": "content"
+              },
+              {
+                "field": "sha",
+                "path": "sha"
+              },
+              {
+                "field": "updatedAt",
+                "path": "updatedAt"
+              }
+            ]
+          }
+        ],
+        "params": [],
+        "rules": [
+          "contentCreateRequiresTitleAndText",
+          "contentFolderAllowed",
+          "contentWriteThroughIntegration",
+          "contentRepositoryIsSourceOfTruth",
+          "publicationRecordedOnSave",
+          "publicationKeepsNoFileText"
+        ],
+        "doc": {
+          "raw": "Finalidade: Cria um arquivo markdown novo no repositório, na pasta escolhida.\nEntrada: folder: pasta do conteúdo novo (blog, docs ou site); title: título do conteúdo; caminho: caminho do arquivo novo no repositório, dentro da pasta; conteudo: texto markdown; mensagemRegistro: mensagem da gravação enviada ao repositório pela operação de integração.\nProcessamento: Exige pasta, título e texto e recusa se já existir arquivo com o mesmo caminho na pasta (contentCreateRequiresTitleAndText); aceita apenas blog, docs ou site e um caminho dentro da pasta escolhida (contentFolderAllowed). Grava exclusivamente pelo módulo de integração com caminho, conteudo e mensagemRegistro (contentWriteThroughIntegration), sem cópia local (contentRepositoryIsSourceOfTruth). Confirmada a gravação, registra uma Publication com o editor logado, o arquivo, a pasta, operação create, o título e o commitId (publicationRecordedOnSave), sem o texto (publicationKeepsNoFileText).\nSaída: O arquivo criado, como está no repositório, com caminho, pasta, nome, título, texto, sha e data de alteração.",
+          "purpose": "Cria um arquivo markdown novo no repositório, na pasta escolhida.",
+          "input": "folder: pasta do conteúdo novo (blog, docs ou site); title: título do conteúdo; caminho: caminho do arquivo novo no repositório, dentro da pasta; conteudo: texto markdown; mensagemRegistro: mensagem da gravação enviada ao repositório pela operação de integração.",
+          "processing": "Exige pasta, título e texto e recusa se já existir arquivo com o mesmo caminho na pasta (contentCreateRequiresTitleAndText); aceita apenas blog, docs ou site e um caminho dentro da pasta escolhida (contentFolderAllowed). Grava exclusivamente pelo módulo de integração com caminho, conteudo e mensagemRegistro (contentWriteThroughIntegration), sem cópia local (contentRepositoryIsSourceOfTruth). Confirmada a gravação, registra uma Publication com o editor logado, o arquivo, a pasta, operação create, o título e o commitId (publicationRecordedOnSave), sem o texto (publicationKeepsNoFileText).",
+          "output": "O arquivo criado, como está no repositório, com caminho, pasta, nome, título, texto, sha e data de alteração."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

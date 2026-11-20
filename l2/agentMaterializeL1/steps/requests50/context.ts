@@ -13,12 +13,13 @@ import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/conn
 import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { recordFieldFromGrant, recordFieldsFromGrant, scopeJoins } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
-import { emptyCastProblems, emptyRequiredProblems, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { emptyCastProblems, emptyRequiredProblems, gatewayBypassProblems, recordCastProblems, requestRepositoryProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, infoOfRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { moduleSpecifier, workflowFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { routeChildWrites } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
+import { childRecordsOf } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { recipeDraft, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -799,6 +800,11 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
     const shown = await usecaseSection(ctx, item, uses.has(item.unitId));
     if (shown) parts.push(shown);
   }
+  const recorded = cited.flatMap(item => childRecordsOf(ctx, item).map(record => `- \`${item.unitId}\` records ${record.entityId} with the entity it writes, after the write, with the port \`${record.port}\`.`));
+  if (recorded.length) parts.push(section('What the usecases of the routes already record', [
+    'The text of the contract describes what a route does through its usecase. These records are written by the usecase: the request service does not write them, does not resolve their port and does not repeat them. It calls the usecase and returns its output.',
+    ...recorded,
+  ].join('\n')));
   const enumPairs = await externalEnumPairs(ctx, cited);
   const unpaired = unpairedProblems(enumPairs);
   if (unpaired.length) throw new Error(unpaired.join(' | '));
@@ -1001,6 +1007,9 @@ export function requestGate(code: string, input: {
   usecaseInputs?: ReadonlyMap<string, readonly M12InputField[]>;
   /** Message types of the routes that receive an event (d1_225): each is the envelope the runtime passes, with `payload`. */
   consumeMessages?: readonly string[];
+  /** The repository ports and the usecases of the module (d1_227): a request service uses no repository and calls a usecase. */
+  ports?: readonly string[];
+  usecases?: readonly string[];
 }): string[] {
   const problems: string[] = [];
   if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
@@ -1020,6 +1029,8 @@ export function requestGate(code: string, input: {
     problems.push('No `as unknown as` and no `as any`: they hide a wrong shape from the compiler (a list returned as `{}` reached a page that way). Build the value with its type, or convert a field with String()/Number().');
   }
   problems.push(...emptyCastProblems(code));
+  problems.push(...recordCastProblems(code));
+  problems.push(...requestRepositoryProblems(code, input.ports ?? [], input.usecases ?? []));
   problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
   problems.push(...consumeMessageProblems(code, input.consumeMessages ?? [], (input.serveUses ?? []).length > 0));
   problems.push(...untypedInputProblems(code));
@@ -1091,7 +1102,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const readUsecase = (name: string): Promise<string | null> => ctx.read(`_${ctx.run.project}_/l1/${ctx.run.module}/layer_2_application/usecases/${name}.ts`);
   return [
     ...waived.problems,
-    ...requestGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, usecaseInputs: await usecaseInputsOf(ctx), consumeMessages: consumeMarks(unit.definition.data).map(item => consumeMessageTypeName(item.mark)) }),
+    ...requestGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, usecaseInputs: await usecaseInputsOf(ctx), consumeMessages: consumeMarks(unit.definition.data).map(item => consumeMessageTypeName(item.mark)), ports: repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), usecases: ctx.units.filter(item => item.definition.artifactType === 'usecase').map(item => item.unitId).sort() }),
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared

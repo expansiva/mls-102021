@@ -64,6 +64,44 @@ export function emptyCastProblems(code: string): string[] {
   return problems;
 }
 
+/**
+ * d1_227: a cast on the record the code saves. The record passed to `create`/`update` of a repository (or of the platform) is built as the type of
+ * the port and passed as it is: `x as Type`, `x as Parameters<Port['create']>[0]` hide a field that is missing or named otherwise, and `x as Type['field']`
+ * turns a free text into a closed value without checking it. A widening that checks nothing wrong (`as string[]`, `as const`) is not the class.
+ */
+export function recordCastProblems(code: string): string[] {
+  const clean = blankComments(code);
+  const problems: string[] = [];
+  const advice = 'Build the record as `const record: <Type of the port> = { … }` with every field of the type (the identity and the version included, each from its origin) and pass it as it is. A text that must be a closed value is checked (`if (value !== \'a\' && value !== \'b\') throw …`) and then has the type, or comes typed from the input.';
+  for (const match of clean.matchAll(/\bas\s+(?!const\b)[A-Za-z_$][\w$.]*(?:<[^>\n]*>)?\[\s*(?:'[^']*'|"[^"]*"|\d+)\s*\]/gu)) {
+    problems.push(`CAST_ON_RECORD (line ${lineOf(clean, match.index ?? 0)}): \`${match[0].trim()}\` casts a value to the type of a field of a record. ${advice}`);
+  }
+  for (const call of clean.matchAll(/\.(?:create|update)\s*\(/gu)) {
+    const open = (call.index ?? 0) + call[0].length - 1;
+    const first = callArguments(clean, open).args[0] ?? '';
+    const cast = /\bas\s+(?!const\b)([A-Za-z_$][\w$.]*(?:<[\s\S]*>)?(?:\[[^\]]*\])?)\s*$/u.exec(first);
+    if (cast && !/\[\s*(?:'[^']*'|"[^"]*"|\d+)\s*\]\s*$/u.test(first)) {
+      problems.push(`CAST_ON_RECORD (line ${lineOf(clean, call.index ?? 0)}): the record passed to \`${call[0].slice(0, -1).trim()}\` is cast with \`as ${cast[1]}\`. ${advice}`);
+    }
+  }
+  return problems;
+}
+
+/**
+ * d1_227: a request service never saves or reads a table: it calls the usecase of its route, which is where the module writes (and where the records
+ * the L4 says go with the entity are written too). A repository port in a request is refused, and the repair names the usecases to call.
+ */
+export function requestRepositoryProblems(code: string, ports: readonly string[], usecases: readonly string[]): string[] {
+  const clean = blankComments(code);
+  const problems: string[] = [];
+  for (const port of ports) {
+    const at = new RegExp(String.raw`\bresolveRepository\b[^;]*?\(\s*[A-Za-z_$][\w$]*\s*,\s*['"]${port}['"]`, 'u').exec(clean);
+    if (!at) continue;
+    problems.push(`REQUEST_USES_REPOSITORY (line ${lineOf(clean, at.index)}): a request service does not use \`${port}\`: it writes and reads through the usecases of the module${usecases.length ? ` (${usecases.join(', ')})` : ''}. Call the usecase of the route with its input and return its output. If the text of the contract says this route records something, the usecase it calls does it: do not record it here.`);
+  }
+  return problems;
+}
+
 const EMPTY_LITERAL = /^(?:''|""|``|\[\s*\]|\{\s*\})$/u;
 
 /**
@@ -698,6 +736,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...consumerCallProblems(code, input.consumerCalls ?? []));
   problems.push(...childRecordProblems(code, input.childRecords ?? [], (input.consumerCalls ?? []).map(call => call.operationId)));
   problems.push(...emptyCastProblems(code));
+  problems.push(...recordCastProblems(code));
   problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
   // The rules of a write on an external entity are met by the external system: the call answers (or refuses) with them.
   for (const ruleId of input.externalEntity ? [] : input.ruleIds) {

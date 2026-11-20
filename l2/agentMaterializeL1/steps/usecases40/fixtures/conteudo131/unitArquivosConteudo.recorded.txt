@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "2026-10-05-m12-unit-v1",
+  "layer": "requests",
+  "unitId": "arquivos_conteudo",
+  "defRef": "_102047_/l1/conteudo/layer_2_application/requests/arquivos_conteudo.defs.ts",
+  "status": "failed",
+  "code": "MODEL_REFUSED",
+  "attempt": 3,
+  "diagnostic": "Compile: _102047_/l1/conteudo/layer_2_application/requests/arquivos_conteudo.ts: file://server/_102047_/l1/conteudo/layer_2_application/requests/arquivos_conteudo.ts - TS2345 - Argument of type '{ editorId: string; filePath: string; folder: Folder; operation: \"create\" | \"update\"; details: { title: string; commitId: string; }; }' is not assignable to parameter of type 'Publication'. Type '{ editorId: string; filePath: string; folder: Folder; operation: \"create\" | \"update\"; details: { title: string; commitId: string; }; }' is missing the following properties from type 'Publication': id, version,…(+71)",
+  "inputHash": "sha256:0da93871c27af0a99a3aadff503a2955781e1d0ebf7b2abc2601a3430d633b54",
+  "outputs": {},
+  "updatedAt": "2026-11-20T06:02:10.727Z"
+}

@@ -1,0 +1,69 @@
+/// <mls fileReference="_102047_/l1/conteudo/layer_2_application/usecases/updateContentFile.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { GravarArquivoInput, GravarArquivoOutput } from '/_102047_/l1/repoHost/layer_1_external/connections/github.js';
+import type { GithubGateway } from '/_102047_/l1/conteudo/layer_1_external/adapters/integration/outbound.js';
+import type { PublicationRepository } from '/_102047_/l1/conteudo/layer_2_application/ports/publicationRepository.js';
+
+export interface UpdateContentFileInput extends GravarArquivoInput {}
+export interface UpdateContentFileOutput extends GravarArquivoOutput {}
+
+function pickString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return undefined;
+}
+
+export async function updateContentFile(input: UpdateContentFileInput, ctx: RequestContext): Promise<UpdateContentFileOutput> {
+  const gateway = resolveRepository<GithubGateway>(ctx, 'GithubGateway');
+
+  let output: GravarArquivoOutput;
+  try {
+    output = await gateway.gravarArquivo(input, ctx);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw new AppError(error.code, error.message, error.statusCode, {
+        ruleIds: ['contentFolderAllowed', 'contentRepositoryIsSourceOfTruth', 'contentWriteThroughIntegration'],
+      });
+    }
+    throw error;
+  }
+
+  // The write was confirmed by the repository: record the publication (never before, never when refused).
+  const sent: Record<string, unknown> = { ...input };
+  const answer: Record<string, unknown> = { ...output };
+
+  const editorId = pickString(ctx.sessionContext.actorId, ctx.sessionContext.person?.mdmId, sent.editorId);
+  if (!editorId) {
+    throw new AppError('MISSING_FIELD', 'Publication field editorId is missing: the session carries no editor.', 400, { ruleId: 'publicationRecordedOnSave' });
+  }
+  const filePath = pickString(answer.path, sent.path);
+  if (!filePath) {
+    throw new AppError('MISSING_FIELD', 'Publication field filePath is missing: neither the input nor the answer carries the path.', 400, { ruleId: 'publicationRecordedOnSave' });
+  }
+  const folder = pickString(answer.folder, sent.folder);
+  if (!folder) {
+    throw new AppError('MISSING_FIELD', 'Publication field folder is missing: neither the input nor the answer carries the folder.', 400, { ruleId: 'publicationRecordedOnSave' });
+  }
+  const operation = pickString(answer.operation, sent.operation) ?? 'update';
+  const title = pickString(answer.title, sent.title);
+  const commitId = pickString(answer.commitId, answer.commitSha, answer.sha);
+
+  const details: { title?: string; commitId?: string } = {};
+  if (title !== undefined) details.title = title;
+  if (commitId !== undefined) details.commitId = commitId;
+
+  const repository = resolveRepository<PublicationRepository>(ctx, 'PublicationRepository');
+  const record = {
+    editorId,
+    filePath,
+    folder,
+    operation,
+    details,
+  };
+  await repository.create(record as Parameters<PublicationRepository['create']>[0]);
+
+  return output;
+}
