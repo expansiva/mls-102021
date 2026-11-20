@@ -65,6 +65,8 @@ function forbiddenImportReason(spec: string): string | null {
   if (spec === '/_102035_/l2/solution/entityWriter.js' || spec === '/_102035_/l2/solution/ontologyView.js') return null;
   // d1_232: the one reading of what an arrival does to each entity (types and a pure function, no import), read by the L1, not copied.
   if (spec === '/_102035_/l2/solution/arrivalEffects.js') return null;
+  // d1_233: the versions the NS5 accepts for each artifact (a list of constants and type exports; its imports are types only).
+  if (spec === '/_102035_/l2/solution/types.js') return null;
   if (spec.startsWith('/_102035_/') || spec.startsWith('/_102020_/')) return `static import outside this agent (${spec})`;
   return null;
 }

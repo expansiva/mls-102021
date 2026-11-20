@@ -578,3 +578,25 @@ void test('d1_231: a connection with a call line before its serve line still giv
   assert.deepEqual(callFirst.route, serveFirst.route);
   assert.equal(callFirst.snapshot.sources.some(item => item.path === '/_102034_/l2/shared/contracts/connections/cm.ts' && item.state === 'present'), true);
 });
+
+void test('d1_233: the integration versions input20 accepts are the list of the NS5, v5 included; any other is refused by name', async () => {
+  const { NS5_INTEGRATION_SCHEMA_VERSIONS } = await import('/_102035_/l2/solution/types.js');
+  const { D1_SOURCE_SCHEMAS } = await import('/_102021_/l2/agentDefsL1/steps/input20/contracts.js');
+  assert.deepEqual([...D1_SOURCE_SCHEMAS.integration], [...NS5_INTEGRATION_SCHEMA_VERSIONS]);
+  assert.equal(D1_SOURCE_SCHEMAS.integration.includes('2026-11-20-ns5-integration-v5'), true);
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'controleEstoque-39a5166', PROJECT);
+  const info = fileInfoFromDisplay(PROJECT, 'l4/controleEstoque/integration.defs.ts')!;
+  const original = host.files[fileKey(info)].content;
+  const match = /(export const \w+ = )(\{[\s\S]*\})( as const[^;]*;)/u.exec(original)!;
+  const withVersion = (version: string) => `${original.slice(0, match.index)}${match[1]}${JSON.stringify({ ...JSON.parse(match[2]), schemaVersion: version }, null, 2)}${match[3]}${original.slice(match.index + match[0].length)}`;
+  const divergent = async (version: string) => {
+    seed(host, info, withVersion(version));
+    return (await assembleD1Input(PROJECT, 'controleEstoque')).problems.filter(item => item.code === 'SCHEMA_DIVERGENT' && item.path === 'l4/controleEstoque/integration.defs.ts');
+  };
+  assert.deepEqual(await divergent('2026-11-20-ns5-integration-v5'), []);
+  assert.deepEqual(await divergent(NS5_INTEGRATION_SCHEMA_VERSIONS[0]), []);
+  const unknown = await divergent('2026-12-01-ns5-integration-v6');
+  assert.equal(unknown.length, 1);
+  assert.match(unknown[0].message, /v5\. Regenerate/);
+});
