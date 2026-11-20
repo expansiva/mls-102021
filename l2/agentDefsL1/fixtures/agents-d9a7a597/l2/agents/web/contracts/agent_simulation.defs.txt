@@ -1,0 +1,125 @@
+/// <mls fileReference="_102047_/l2/agents/web/contracts/agent_simulation.defs.ts" enhancement="_blank"/>
+
+/** An active organization user a simulation is run for, identified by readable name and login e-mail. */
+export interface SimulatedPerson {
+  details: {
+    identification: {
+      name: string;
+    };
+    agents: {
+      readonly loginEmail?: string;
+    };
+  };
+}
+
+/** An active organization user with a platform login who can be chosen as the subject of a simulation. */
+export interface PersonOption {
+  id: string;
+  details: {
+    identification: {
+      name: string;
+    };
+    agents: {
+      readonly loginEmail?: string;
+    };
+  };
+}
+
+/** The verdict on one catalog tool of the agent: where it sits in the module / subject / action tree, whether it can be used and why. */
+export interface ToolVerdict {
+  tool: string;
+  moduleName: string;
+  subjectName: string;
+  actionName: string;
+  canUse: boolean;
+  reason: 'allowed' | 'restrictedForPerson' | 'notPermittedForRole' | 'removedFromRelease';
+  reasonText?: string;
+}
+
+/** The ’what it can’ simulation of one agent for a person or a role: the subject and the verdict on every tool that is on for the agent. */
+export interface WhatItCanSimulation {
+  readonly agentName: string;
+  level: 'whatItCan' | 'whatItUnderstands';
+  subjectKind: 'person' | 'role';
+  person?: SimulatedPerson;
+  roleName?: string;
+  toolVerdicts: ToolVerdict[];
+}
+
+/** One action the agent would take for the sentence, with the catalog tool it corresponds to. */
+export interface UnderstoodAction {
+  tool: string;
+  actionName: string;
+}
+
+/** How the agent reads a sentence: whether it asks for an action, the module and subject it leads to, the actions and a short explanation. */
+export interface Understanding {
+  asksForAction: boolean;
+  moduleName?: string;
+  subjectName?: string;
+  actions: UnderstoodAction[];
+  explanation?: string;
+}
+
+/** The ’what it understands’ simulation of one agent for one sentence. */
+export interface UnderstandingSimulation {
+  readonly agentName: string;
+  level: 'whatItCan' | 'whatItUnderstands';
+  sentence: string;
+  understanding: Understanding;
+}
+
+export interface Agent_simulationContracts {
+  /**
+   * Purpose: Opens the simulation of the agent from the URL with the ’what it can’ answer for the person who is logged in.
+   * Input: agentId: the cm agent (or ready draft) chosen in the URL.
+   * Processing: Asks the cm for the agent’s readable name and runs the ’what it can’ level with the caller as the person (subjectKind person). Only tools that are on for the agent are judged (onlyToolsOnAreConsidered); tools the caller may not use are marked restrictedForPerson (personRestrictionAppliesInRequest); tools removed from the release are marked removedFromRelease (removedToolNotSent). canChooseSubject is true only for the company admin (adminSimulatesByRole), false for a member (memberSimulatesOnlyAsSelf). Nothing is saved (simulationSavesNothing); only readable names are returned (noTechnicalIdsOnScreen).
+   * Output: The ’what it can’ simulation for the caller: agent name, the caller’s name and login e-mail, and every tool verdict with module, subject, action, whether it can be used, reason and explanation; plus whether the caller may choose another person or a role.
+   */
+  'agents.agent_simulation.loadAgentSimulation': {
+    kind: 'qry';
+    input: { agentId: string };
+    output: { simulation: WhatItCanSimulation; canChooseSubject: boolean };
+    rules: ['simulationSavesNothing', 'memberSimulatesOnlyAsSelf', 'adminSimulatesByRole', 'onlyToolsOnAreConsidered', 'personRestrictionAppliesInRequest', 'removedToolNotSent', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminChoosePeople', 'memberSeeAgents', 'memberSeePeopleNames', 'memberSimulateAsMyself']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Finds the people a company admin can simulate the agent for.
+   * Input: name: typed part of the person’s name; page and pageSize: the page of results wanted.
+   * Processing: Only for the company admin (adminSimulatesByRole); a member is refused. Lists organization users with a platform login whose name contains the text, keeping only active users (onlyActiveUsersRestricted), ordered by name. The id is returned only to run the simulation and is never displayed (noTechnicalIdsOnScreen).
+   * Output: A page of active people with name and login e-mail.
+   */
+  'agents.agent_simulation.searchPeopleToSimulate': {
+    kind: 'qry';
+    input: { name?: string; page: number; pageSize: number };
+    output: { people: { items: PersonOption[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['onlyActiveUsersRestricted', 'adminSimulatesByRole', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminChoosePeople', 'memberSeeAgents', 'memberSeePeopleNames', 'memberSimulateAsMyself']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Runs the ’what it can’ simulation of the agent for the chosen person or role.
+   * Input: agentId: the agent from the URL; subjectKind: person or role; person: the chosen person when subjectKind is person (empty means the caller); roleName: the chosen role when subjectKind is role.
+   * Processing: A member always simulates as themselves: any other person or a role is ignored and the caller is used (memberSimulatesOnlyAsSelf). The company admin may pick an active person (onlyActiveUsersRestricted) or a role (adminSimulatesByRole). The cm judges only the tools on for the agent (onlyToolsOnAreConsidered); tools the person may not use are restrictedForPerson (personRestrictionAppliesInRequest), tools the role lacks are notPermittedForRole, removed tools are removedFromRelease (removedToolNotSent). Nothing is saved (simulationSavesNothing); only readable names are returned (noTechnicalIdsOnScreen).
+   * Output: The ’what it can’ simulation for that subject: agent name, subject kind, the person’s name and login e-mail or the role name, and every tool verdict with reason and explanation.
+   */
+  'agents.agent_simulation.runWhatItCan': {
+    kind: 'qry';
+    input: { agentId: string; subjectKind: 'person' | 'role'; person?: string; roleName?: string };
+    output: { simulation: WhatItCanSimulation };
+    rules: ['simulationSavesNothing', 'memberSimulatesOnlyAsSelf', 'adminSimulatesByRole', 'onlyToolsOnAreConsidered', 'personRestrictionAppliesInRequest', 'onlyActiveUsersRestricted', 'removedToolNotSent', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminChoosePeople', 'memberSeeAgents', 'memberSeePeopleNames', 'memberSimulateAsMyself']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Shows how the agent reads a sample sentence.
+   * Input: agentId: the agent from the URL; sentence: the sample request typed as in a chat.
+   * Processing: Sends the sentence to the cm at the ’what it understands’ level on behalf of the caller (memberSimulatesOnlyAsSelf), considering only the tools on for the agent (onlyToolsOnAreConsidered). Nothing is saved (simulationSavesNothing); module, subject and actions come back as readable names (noTechnicalIdsOnScreen).
+   * Output: The understanding of the sentence: agent name, the sentence, whether it asks for an action, the module and subject it leads to, the actions with their tools, and a short explanation.
+   */
+  'agents.agent_simulation.runWhatItUnderstands': {
+    kind: 'qry';
+    input: { agentId: string; sentence: string };
+    output: { simulation: UnderstandingSimulation };
+    rules: ['simulationSavesNothing', 'onlyToolsOnAreConsidered', 'memberSimulatesOnlyAsSelf', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminChoosePeople', 'memberSeeAgents', 'memberSeePeopleNames', 'memberSimulateAsMyself']; scope: 'organization' };
+  };
+}

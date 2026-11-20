@@ -1,0 +1,94 @@
+/// <mls fileReference="_102047_/l2/agents/web/contracts/tool_catalog.defs.ts" enhancement="_blank"/>
+
+/** One action of the tool catalog with its readable name and whether it has left the current release. */
+export interface CatalogTool {
+  toolId: string;
+  details: CatalogToolDetails;
+}
+
+/** Readable name and removed mark of a catalog tool. */
+export interface CatalogToolDetails {
+  readonly toolName: string;
+  readonly toolRemoved: boolean;
+}
+
+/** One change of the tool catalog after a new module or release: a tool added or a tool marked removed, with when it happened. */
+export interface CatalogUpdate {
+  toolId: string;
+  details: CatalogUpdateDetails;
+}
+
+/** Name, removed mark and moment of a catalog change. */
+export interface CatalogUpdateDetails {
+  readonly toolName: string;
+  readonly toolRemoved: boolean;
+  readonly decidedAt: string;
+}
+
+/** One catalog tool with the agents that have it turned on. */
+export interface ToolUsage {
+  toolId: string;
+  details: CatalogToolDetails;
+  agents: ToolAgentUse[];
+}
+
+/** An agent’s choice for one tool, turned on. */
+export interface ToolAgentUse {
+  agentId: string;
+  enabled: boolean;
+}
+
+export interface Tool_catalogContracts {
+  /**
+   * Purpose: Loads the tool catalog page in one call: the full tool tree and the first page of recent catalog updates.
+   * Input: page and pageSize: the page of catalog updates to return.
+   * Processing: Lists every action of the app modules and cm tools of the organization’s catalog, ordered by module, subject and action, with the readable name (derived toolName, computed from the catalog) and the removed mark (derived toolRemoved, computed from the catalog; removedToolNeverSent demands removed tools be shown as removed). Lists the catalog changes (tools added and tools marked removed) newest first by decidedAt, paged.
+   * Output: tools: every catalog tool with name and removed mark; updates: one page of catalog changes, newest first, with name, removed mark and when it happened.
+   */
+  'agents.tool_catalog.getToolCatalog': {
+    kind: 'qry';
+    input: { page: number; pageSize: number };
+    output: { tools: CatalogTool[]; updates: { items: CatalogUpdate[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['removedToolNeverSent'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageTools']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Narrows the tool tree by a text search and by removed or not.
+   * Input: search: text matched against the readable tool, subject and module names; details.toolRemoved: when given, keeps only removed tools (true) or only current tools (false).
+   * Processing: Filters the catalog tools by the search text and the removed filter, keeping the module / subject / action order; toolName and toolRemoved are computed from the catalog, and removed tools stay marked as removed (removedToolNeverSent).
+   * Output: The catalog tools that match, with name and removed mark.
+   */
+  'agents.tool_catalog.searchToolTree': {
+    kind: 'qry';
+    input: { search?: string; details: { toolRemoved?: boolean } };
+    output: { tools: CatalogTool[] };
+    rules: ['removedToolNeverSent'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageTools']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Fetches a further page of catalog updates.
+   * Input: page and pageSize: the page of catalog updates to return.
+   * Processing: Lists the catalog changes (tools added and tools marked removed) newest first by decidedAt, paged.
+   * Output: One page of catalog changes with tool name, removed mark and when each change happened.
+   */
+  'agents.tool_catalog.listCatalogUpdates': {
+    kind: 'qry';
+    input: { page: number; pageSize: number };
+    output: { updates: { items: CatalogUpdate[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: [];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageTools']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Loads, for the chosen tool, the agents of the organization that have it turned on.
+   * Input: toolId: the catalog tool chosen in the tree.
+   * Processing: Reads the tool’s readable name and removed mark from the catalog (derived, computed) and lists the tool choices of all agents for that tool in one query (listByForeignKey), keeping only those with enabled true.
+   * Output: The tool with its name, removed mark and the list of agents that have it turned on.
+   */
+  'agents.tool_catalog.getToolUsage': {
+    kind: 'qry';
+    input: { toolId: string };
+    output: { usage: ToolUsage };
+    rules: [];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageTools']; scope: 'organization' };
+  };
+}

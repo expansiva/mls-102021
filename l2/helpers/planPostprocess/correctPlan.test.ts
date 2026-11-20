@@ -151,3 +151,19 @@ function withoutCorrection(doc: Record<string, unknown>, id: string): Record<str
   return copy;
 }
 
+
+test('d1_234: a derived usecase only leaves removed: no row is put back, the totals stay, the correction says derived', () => {
+  const backend = load('m1b.backend.json');
+  const effort = load('m1b.effort.json');
+  const before = { backend: rows(backend.usecases).length, effort: rows(effort.usecases).length, done: bucketDone(effort) };
+  const corrected = correctPlan({ moduleName: MODULE, backend, effort, used: [{ ...USED, derived: true }] });
+  assert.equal(stillRemoved(corrected.backend, 'getParticipante'), false);
+  assert.equal(stillRemoved(corrected.effort, 'getParticipante'), false);
+  assert.equal(rows(corrected.backend.usecases).length, before.backend);
+  assert.equal(rows(corrected.effort.usecases).length, before.effort);
+  assert.equal(rows(corrected.backend.usecases).some(row => row.usecaseId === 'getParticipante'), false);
+  assert.equal(bucketDone(corrected.effort), before.done);
+  assert.deepEqual(corrected.corrections.map(item => [item.usecase, item.from, item.to]), [['getParticipante', 'toRemove', 'derived']]);
+  // A second pass changes nothing.
+  assert.deepEqual(correctPlan({ moduleName: MODULE, backend: corrected.backend, effort: corrected.effort, used: [{ ...USED, derived: true }] }).corrections, []);
+});

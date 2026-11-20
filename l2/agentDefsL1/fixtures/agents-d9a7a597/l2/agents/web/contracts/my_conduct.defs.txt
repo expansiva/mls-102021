@@ -1,0 +1,52 @@
+/// <mls fileReference="_102047_/l2/agents/web/contracts/my_conduct.defs.ts" enhancement="_blank"/>
+
+/** The agent that acts on the member’s behalf, with its @name and on whose behalf it acts. */
+export interface MyConductAgent {
+  name: string;
+  onBehalfOf?: string;
+}
+
+/** One past change the member made to their own conduct with an agent. */
+export interface ConductChange {
+  changedAt: string;
+  changedBy: string;
+  summary: string;
+}
+
+/** How one agent behaves for the signed-in member when acting on their behalf, with the history of the member’s own changes. */
+export interface MyConduct {
+  agent: MyConductAgent;
+  summary: string;
+  version: number;
+  history: ConductChange[];
+}
+
+export interface My_conductContracts {
+  /**
+   * Purpose: Loads, in one call, how the chosen agent behaves for the signed-in member and the history of their own changes.
+   * Input: agentId: the id of the agent chosen in the URL.
+   * Processing: Reads the agent from the cm (name, onBehalfOf) and the personal conduct of the signed-in member with that agent. ownConductOnly: only the conduct of the logged-in person is read, never another person’s. conductOnlyForAgentActingOnBehalf: refuses when the agent does not act on the member’s behalf. History comes from the cm with when, who and a one-line summary of each change. The current version of the conduct is returned for the optimistic check on save.
+   * Output: The member’s conduct with the agent: the agent’s @name and on whose behalf it acts, the current conduct summary in plain language, its current version, and the list of the member’s past changes.
+   */
+  'agents.my_conduct.getMyConduct': {
+    kind: 'qry';
+    input: { agentId: string };
+    output: { conduct: MyConduct };
+    rules: ['ownConductOnly', 'conductOnlyForAgentActingOnBehalf'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminOwnConduct', 'memberSeeAgents', 'memberOwnConduct']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Sends to the cm what the member wants to change in how the agent behaves for them, updating only their own conduct.
+   * Input: agentId: the agent whose conduct with the member changes. expectVersion: the version of the conduct the member read; the update is refused if the conduct changed since. changeRequest: the plain-language text of what should be different.
+   * Processing: The person is the signed-in member, taken from the session. Checks expectVersion against the current version of the conduct and refuses on mismatch. ownConductOnly: only that member’s conduct is updated, never another person’s. conductOnlyForAgentActingOnBehalf: refuses when the agent does not act on the member’s behalf. The change request is sent to the cm, which updates the conduct and records the change in the history.
+   * Output: The member’s conduct with the agent in its new state: agent @name and on whose behalf it acts, the updated summary, the new version, and the history including the new change.
+   */
+  'agents.my_conduct.saveMyConduct': {
+    kind: 'cmd';
+    writes: 'PersonalConduct.update';
+    input: { agentId: string; expectVersion: number; changeRequest: string };
+    output: { conduct: MyConduct };
+    rules: ['ownConductOnly', 'conductOnlyForAgentActingOnBehalf'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminOwnConduct', 'memberSeeAgents', 'memberOwnConduct']; scope: 'organization' };
+  };
+}

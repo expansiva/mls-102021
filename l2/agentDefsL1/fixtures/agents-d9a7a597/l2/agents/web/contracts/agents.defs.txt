@@ -1,0 +1,111 @@
+/// <mls fileReference="_102047_/l2/agents/web/contracts/agents.defs.ts" enhancement="_blank"/>
+
+/** A company agent as the cm keeps it, with its readable responsible person. */
+export interface AgentCard {
+  ref: string;
+  name: string;
+  talksTo?: string;
+  isOn: boolean;
+  readonly responsibleName?: string;
+}
+
+/** A draft of a new agent that is not yet activated or discarded, with where it stands in the cm. */
+export interface DraftCard {
+  ref: string;
+  name: string;
+  situation: 'preparing' | 'ready' | 'refused' | 'activated' | 'discarded';
+  refusalReason?: string;
+}
+
+/** One entry of the company agents and drafts: either an agent or a draft. */
+export interface AgentListItem {
+  agent?: AgentCard;
+  draft?: DraftCard;
+}
+
+/** A draft that is being prepared by the cm or is ready for the admin’s decision, with the request that started it. */
+export interface DraftInboxItem {
+  ref: string;
+  name: string;
+  situation: 'preparing' | 'ready' | 'refused' | 'activated' | 'discarded';
+  summary?: string;
+  prompt: string;
+  requestedAt?: string;
+  readonly requestedByName?: string;
+}
+
+/** A tool the cm suggested for a draft, with its current on/off choice and who made it. */
+export interface SuggestedTool {
+  details: {
+    readonly toolName: string;
+  };
+  enabled: boolean;
+  choiceSource: 'admin' | 'automatic';
+}
+
+/** One request for a new agent and what happened to it: sent, ready with its suggested tools, or refused with the reason. */
+export interface RequestTimelineEntry {
+  ref: string;
+  name: string;
+  situation: 'preparing' | 'ready' | 'refused' | 'activated' | 'discarded';
+  requestedAt?: string;
+  refusalReason?: string;
+  readonly suggestedToolCount: number;
+  suggestedTools: SuggestedTool[];
+}
+
+export interface AgentsContracts {
+  /**
+   * Purpose: Loads the agents first screen in one call: the drafts awaiting the admin, the first page of company agents and drafts, and the first page of the request history.
+   * Input: page and pageSize: the first page and its size, applied to both the agents list and the request history.
+   * Processing: Reads agents and drafts from the cm. inbox: drafts in situation ready or preparing, ready first, then newest requestedAt; requestedByName is resolved from the platform user list. agents: active agents of the organization with talksTo, isOn and responsibleName (resolved from OrganizationUser, never an id, noTechnicalIdsOnScreen), plus drafts in preparing, ready or refused with refusalReason filled when refused (refusalReasonShownWhenRefused). requests: every draft request newest requestedAt first, with its suggested tools joined to the AgentTool choices of the draft (enabled, choiceSource, toolName read from the catalog, derived) — tools turned on automatically when ready (draftSuggestedToolsTurnedOn, agentDraftSuggestedToolsOnWhenReady); suggestedToolCount is computed from the suggested tools. Drafts and the request history are returned only to the company admin; an organization member gets an empty inbox and requests and only agent entries with the agent fields their grant allows.
+   * Output: inbox as a plain list; agents and requests as pages { items, page, pageSize, hasMore }.
+   */
+  'agents.agents.getAgentsHome': {
+    kind: 'qry';
+    input: { page: number; pageSize: number };
+    output: { inbox: DraftInboxItem[]; agents: { items: AgentListItem[]; page: number; pageSize: number; hasMore: boolean }; requests: { items: RequestTimelineEntry[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['refusalReasonShownWhenRefused', 'draftSuggestedToolsTurnedOn', 'agentDraftSuggestedToolsOnWhenReady', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminManageTools', 'adminChoosePeople', 'memberSeeAgents', 'memberSeePeopleNames']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Gives a further page of company agents and drafts.
+   * Input: page and pageSize: which page of the agents and drafts list and its size.
+   * Processing: Same composition and order as agents in getAgentsHome: agents with responsibleName resolved from the user list (noTechnicalIdsOnScreen), drafts in preparing, ready or refused with refusalReason when refused (refusalReasonShownWhenRefused); drafts only for the company admin.
+   * Output: The requested page { items, page, pageSize, hasMore } of agents and drafts.
+   */
+  'agents.agents.listAgents': {
+    kind: 'qry';
+    input: { page: number; pageSize: number };
+    output: { agents: { items: AgentListItem[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['refusalReasonShownWhenRefused', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminManageTools', 'adminChoosePeople', 'memberSeeAgents', 'memberSeePeopleNames']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Gives a further page of the history of requests for new agents.
+   * Input: page and pageSize: which page of the request history and its size.
+   * Processing: Drafts newest requestedAt first, each with refusalReason when refused (refusalReasonShownWhenRefused) and its suggested tools joined to the draft’s AgentTool choices with toolName derived from the catalog (draftSuggestedToolsTurnedOn); suggestedToolCount computed. Company admin only.
+   * Output: The requested page { items, page, pageSize, hasMore } of request history entries.
+   */
+  'agents.agents.listDraftRequests': {
+    kind: 'qry';
+    input: { page: number; pageSize: number };
+    output: { requests: { items: RequestTimelineEntry[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['refusalReasonShownWhenRefused', 'draftSuggestedToolsTurnedOn', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminManageTools', 'adminChoosePeople', 'memberSeeAgents', 'memberSeePeopleNames']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Sends the admin’s plain-words description of a new virtual employee to the cm so it prepares a draft.
+   * Input: prompt: what the admin wrote describing the new agent and its functions.
+   * Processing: Refuses an empty prompt. Creates the draft request in the cm with requestedBy set to the signed-in company admin and requestedAt to now; the cm will later report it ready or refused. Only the company admin may send it.
+   * Output: The new draft in situation preparing, with its prompt, requestedAt and requestedByName.
+   */
+  'agents.agents.sendNewAgentRequest': {
+    kind: 'cmd';
+    writes: 'AgentDraft.create';
+    input: { prompt: string };
+    output: { draft: DraftInboxItem };
+    rules: [];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminManageTools', 'adminChoosePeople', 'memberSeeAgents', 'memberSeePeopleNames']; scope: 'organization' };
+  };
+}

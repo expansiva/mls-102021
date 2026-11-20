@@ -11,6 +11,12 @@ export interface UsedRemovedUsecase {
   routes: string[];
   entity: string;
   operation: string;
+  /**
+   * d1_234: a usecase of an external entity (it names its call, d1_195) that the plan has no row of: the defs generator makes it from the L4
+   * calls, as it does for a clean plan, so it only leaves `removed`. A row put back as well was the same usecase twice (the split made it
+   * again) and left the planned id of the call without a step.
+   */
+  derived?: boolean;
 }
 
 /**
@@ -22,6 +28,7 @@ export function usedRemovedUsecases(
   artifacts: D1InputArtifacts,
 ): UsedRemovedUsecase[] {
   const removedIds = usecaseRemovedIds(artifacts);
+  const planned = plannedUsecaseIds(artifacts);
   const snapshot = buildD1InputSnapshot(identity, withoutUsecaseRemoved(artifacts), null);
   const byId = new Map<string, UsedRemovedUsecase>();
   for (const request of snapshot.selection.requests) {
@@ -38,10 +45,21 @@ export function usedRemovedUsecases(
         routes: [request.route],
         entity: selected?.entity ?? '',
         operation: selected?.operation ?? '',
+        ...(selected && selected.status === 'toCreate' && selected.call && !planned.has(id) ? { derived: true } : {}),
       });
     }
   }
   return [...byId.values()].sort((left, right) => left.id.localeCompare(right.id));
+}
+
+/** The ids of the usecase rows the plan (backend or effort) lists. */
+function plannedUsecaseIds(artifacts: D1InputArtifacts): Set<string> {
+  const ids = new Set<string>();
+  for (const doc of [artifacts.backend, artifacts.effort]) {
+    if (!isRecord(doc) || !Array.isArray(doc.usecases)) continue;
+    for (const row of doc.usecases) if (isRecord(row) && typeof row.usecaseId === 'string' && row.usecaseId) ids.add(row.usecaseId);
+  }
+  return ids;
 }
 
 function usecaseRemovedIds(artifacts: D1InputArtifacts): Set<string> {

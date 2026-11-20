@@ -6,7 +6,7 @@ One path. The caller sends each command. This agent does not call `agentDefsL1` 
 
 `@@agentNewReleaseL1 <module>`
 
-The first call runs the plan postprocess before anything is moved. A `toRemove` usecase that a contract route still calls goes back to `done` in `l4/<module>/pool/l2/web/backend.json` and `effort.json`. The run always writes `l4/<module>/pool/l1/web/postprocess.json`, including when `corrections` is empty. An unreadable or missing plan refuses with `postprocess: …` and moves nothing. `/compare` does not run the postprocess and does not write that file.
+The first call runs the plan postprocess before anything is moved. A `toRemove` usecase that a contract route still calls goes back to `done` in `l4/<module>/pool/l2/web/backend.json` and `effort.json`, except one that a call serves and the plan has no row of (d1_234): the defs generator makes it from the L4 calls, as for a clean plan, so it only leaves `removed` (`postprocess: usecase <id> left removed …`); a row put back as well was the same usecase twice. The run always writes `l4/<module>/pool/l1/web/postprocess.json`, including when `corrections` is empty. An unreadable or missing plan refuses with `postprocess: …` and moves nothing. `/compare` does not run the postprocess and does not write that file.
 
 The close starts with one line per correction (`postprocess: usecase <id> from toRemove to done …`), or `postprocess: no correction`, then `postprocess record: l4/<module>/pool/l1/web/postprocess.json`. If a used `toRemove` usecase is still in the plan after that, the close adds `postprocess missed: usecase <id> …`. That line is a defect notice. The creation copy still drops that usecase from `removed` so `/run` can continue. `/compare` repeats the same line from `prepared.json`.
 

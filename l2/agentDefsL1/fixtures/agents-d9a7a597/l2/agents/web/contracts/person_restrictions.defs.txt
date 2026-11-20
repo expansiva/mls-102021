@@ -1,0 +1,105 @@
+/// <mls fileReference="_102047_/l2/agents/web/contracts/person_restrictions.defs.ts" enhancement="_blank"/>
+
+/** An active organization user who can have tools restricted, with name and login e-mail. */
+export interface PersonOption {
+  id: string;
+  details: PersonOptionDetails;
+}
+
+/** Readable details of an organization user. */
+export interface PersonOptionDetails {
+  identification: PersonIdentification;
+  agents: PersonAgentsInfo;
+}
+
+/** Name and status of an organization user. */
+export interface PersonIdentification {
+  name: string;
+  readonly status: 'Active' | 'Inactive' | 'Merged' | 'Blocked';
+}
+
+/** Agents module data of an organization user. */
+export interface PersonAgentsInfo {
+  readonly loginEmail?: string;
+}
+
+/** A tool a person may not use through any agent, with where the tool sits, when it was marked and whether it left the release. */
+export interface BlockedTool {
+  id: string;
+  version: number;
+  personId: string;
+  toolId: string;
+  details: BlockedToolDetails;
+}
+
+/** Readable details of a person tool restriction, read from the tool catalog. */
+export interface BlockedToolDetails {
+  readonly markedAt: string;
+  readonly toolName: string;
+  readonly toolPath: string;
+  readonly toolRemoved: boolean;
+}
+
+/** One action of the tool catalog placed in the module / subject / action tree. */
+export interface CatalogTool {
+  id: string;
+  name: string;
+  status: 'available' | 'removed';
+  details: CatalogToolDetails;
+}
+
+/** Readable module, subject and description of a catalog tool. */
+export interface CatalogToolDetails {
+  moduleTitle: string;
+  subjectTitle: string;
+  description: string;
+}
+
+/** Identity and version of an existing person tool restriction. */
+export interface RestrictionRef {
+  id: string;
+  version: number;
+}
+
+export interface Person_restrictionsContracts {
+  /**
+   * Purpose: Lists the organization users the company admin can choose to restrict tools for, optionally filtered by typed name.
+   * Input: search: part of the person’s name typed by the admin (optional); page and pageSize: the page of results requested.
+   * Processing: Uses OrganizationUser locate.users / locate.byName in the organization scope, keeping only users with a platform login and status Active (onlyActiveUsersRestricted). Login e-mail and status are derived from the platform login and the record, never stored here. Only name, status and login e-mail are disclosed; the id is carried only as a selection key, never shown (noTechnicalIdsOnScreen). Ordered by name.
+   * Output: A page { items, page, pageSize, hasMore } of active people with id, name, status and login e-mail.
+   */
+  'agents.person_restrictions.searchPeople': {
+    kind: 'qry';
+    input: { search?: string; page: number; pageSize: number };
+    output: { people: { items: PersonOption[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['onlyActiveUsersRestricted', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageTools', 'adminChoosePeople']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Loads the tool checklist for the chosen person: the catalog tree and the tools already blocked for that person.
+   * Input: personId: the organization user chosen in the picker.
+   * Processing: Refuses callers who are not company admin (onlyCompanyAdminRestrictsTools) and a person who is not Active (onlyActiveUsersRestricted). Lists the person’s restrictions with PersonToolRestriction listByForeignKey by person, computing toolName, toolPath and toolRemoved from the tool catalog and returning markedAt as recorded; restrictions on removed tools are kept and returned with toolRemoved true (removedToolRestrictionKept). Loads the catalog via agents.toolTree with module and subject titles, name, description and status, ordered by module, subject and name. Only readable names are meant for the screen (noTechnicalIdsOnScreen).
+   * Output: The person id, the list of blocked tools with their details, and the catalog tools of the tree.
+   */
+  'agents.person_restrictions.getPersonRestrictions': {
+    kind: 'qry';
+    input: { personId: string };
+    output: { personId: string; blocked: BlockedTool[]; tools: CatalogTool[] };
+    rules: ['onlyCompanyAdminRestrictsTools', 'onlyActiveUsersRestricted', 'removedToolRestrictionKept', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageTools', 'adminChoosePeople']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Saves the ticks and unticks the company admin made on one person’s checklist, all or nothing.
+   * Input: personId: the person whose tools are restricted; toolId: every tool that must be blocked for that person after saving; currentRestrictions: id and version of the restrictions the checklist was loaded with, for optimistic concurrency.
+   * Processing: Refuses callers who are not company admin (onlyCompanyAdminRestrictsTools) and a person who is not Active (onlyActiveUsersRestricted). Checks the versions of currentRestrictions and refuses on conflict. In one transaction creates a restriction for each tool in toolIds not yet blocked and deletes the restrictions whose tool is no longer in toolIds; a tool already blocked is not created twice (restrictionUniquePerPersonTool). Restrictions on removed tools that stay ticked are kept (removedToolRestrictionKept). markedAt is filled by the system on creation. The blocked set applies to the person through any agent (restrictionAppliesThroughAnyAgent).
+   * Output: The person id and the full list of the person’s blocked tools in their new state, with markedAt, toolName, toolPath and toolRemoved computed from the catalog.
+   */
+  'agents.person_restrictions.saveRestrictions': {
+    kind: 'cmd';
+    writes: 'PersonToolRestriction.update';
+    input: { personId: string; toolId: string[]; currentRestrictions: RestrictionRef[] };
+    output: { personId: string; blocked: BlockedTool[] };
+    rules: ['onlyCompanyAdminRestrictsTools', 'onlyActiveUsersRestricted', 'restrictionUniquePerPersonTool', 'restrictionAppliesThroughAnyAgent', 'removedToolRestrictionKept'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageTools', 'adminChoosePeople']; scope: 'organization' };
+  };
+}

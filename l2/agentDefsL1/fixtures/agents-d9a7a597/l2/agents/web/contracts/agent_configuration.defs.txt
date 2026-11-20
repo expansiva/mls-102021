@@ -1,0 +1,74 @@
+/// <mls fileReference="_102047_/l2/agents/web/contracts/agent_configuration.defs.ts" enhancement="_blank"/>
+
+/** One limit of an agent as the cm lists it: its readable name and current value. */
+export interface AgentLimit {
+  label: string;
+  value?: string;
+}
+
+/** An organization user who can be responsible for an agent: the reference to the user, their readable name, status and login e-mail. */
+export interface ResponsiblePerson {
+  agent: {
+    responsible: string;
+  };
+  details: {
+    identification: {
+      name: string;
+      readonly status: 'Active' | 'Inactive' | 'Merged' | 'Blocked';
+    };
+    agents: {
+      readonly loginEmail?: string;
+    };
+  };
+}
+
+/** The configuration of one agent as the cm keeps it: its @name, whether it is on, the responsible person and its limits. */
+export interface AgentConfiguration {
+  name: string;
+  isOn: boolean;
+  organizationUser?: ResponsiblePerson;
+  limits: AgentLimit[];
+}
+
+export interface Agent_configurationContracts {
+  /**
+   * Purpose: Loads, in one call, the current configuration of the chosen agent from the cm together with its limits and the readable identification of its responsible person.
+   * Input: agentId: the cm identifier of the agent chosen in the page context (from the URL).
+   * Processing: Reads the agent from the cm (organization scope of the company admin). Resolves Agent.responsible to the organization user and returns only name, status and login e-mail as allowed by the grant; the login e-mail and status are derived from the platform and never stored here. Limits are returned exactly as the cm lists them, in the cm order. noTechnicalIdsOnScreen: the user reference is returned only as the value to send back, with a readable name to show.
+   * Output: The agent configuration: @name, on/off, responsible person (absent when none is set) and the list of limits with label and value.
+   */
+  'agents.agent_configuration.getAgentConfiguration': {
+    kind: 'qry';
+    input: { agentId: string };
+    output: { configuration: AgentConfiguration };
+    rules: ['noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents', 'adminChoosePeople']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Finds organization users with a platform login by typed name so the admin can choose the agent’s responsible person.
+   * Input: search: part of the person’s name typed by the admin; page and pageSize: the page of results requested.
+   * Processing: Uses OrganizationUser locate.users / locate.byName within the admin’s organization, filtering by name, ordered by name. Returns only the fields allowed by the adminChoosePeople grant (name, status, login e-mail) plus the reference that fills Agent.responsible; noTechnicalIdsOnScreen: that reference is never meant for display.
+   * Output: A page of candidate people with their reference, name, status and login e-mail, as { items, page, pageSize, hasMore }.
+   */
+  'agents.agent_configuration.searchResponsibleCandidates': {
+    kind: 'qry';
+    input: { search?: string; page: number; pageSize: number };
+    output: { candidates: { items: ResponsiblePerson[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents', 'adminChoosePeople']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Sends the admin’s changes to the agent’s @name, on/off state and responsible person to the cm.
+   * Input: agentId: the cm identifier of the agent from the page context; expectVersion: the version of the agent the admin loaded, for optimistic concurrency; name: the new @name; isOn: whether the agent is on and answers requests; responsible: the reference of the organization user chosen as responsible.
+   * Processing: Calls the cm agent update with the three values and the expected version; when the agent changed since it was loaded, the update is refused as a conflict and nothing is changed. agentNameUniqueAmongActive: when the cm refuses the @name because another active agent already uses it, the command fails with a ’nameTaken’ error carrying a clear message saying the name is already used, and nothing is changed. After success, reads the agent back from the cm and resolves the responsible person’s name, status and login e-mail.
+   * Output: The agent configuration in its new state as the cm keeps it: @name, on/off, responsible person and the current limits.
+   */
+  'agents.agent_configuration.saveAgentConfiguration': {
+    kind: 'cmd';
+    writes: 'Agent.update';
+    input: { agentId: string; expectVersion: number; name: string; isOn: boolean; responsible?: string };
+    output: { configuration: AgentConfiguration };
+    rules: ['agentNameUniqueAmongActive'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents', 'adminChoosePeople']; scope: 'organization' };
+  };
+}

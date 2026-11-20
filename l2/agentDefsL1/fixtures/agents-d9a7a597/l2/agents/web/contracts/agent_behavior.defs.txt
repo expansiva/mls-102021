@@ -1,0 +1,65 @@
+/// <mls fileReference="_102047_/l2/agents/web/contracts/agent_behavior.defs.ts" enhancement="_blank"/>
+
+/** The agent as the cm identifies it to people, by its @name. */
+export interface AgentHeader {
+  name: string;
+}
+
+/** An agent’s current behavior in plain language as the cm keeps it, with its one-line summary. */
+export interface AgentBehaviorCurrent {
+  agent: string;
+  summary: string;
+  currentBehavior: string;
+}
+
+/** One past change of an agent’s behavior: the cm reference, who made it, when, a one-line summary and whether it was undone. */
+export interface BehaviorChange {
+  changeRef: string;
+  changedBy: string;
+  changedAt: string;
+  summary: string;
+  undone?: boolean;
+}
+
+export interface Agent_behaviorContracts {
+  /**
+   * Purpose: Loads the chosen agent’s @name and its current behavior in plain language with the one-line summary.
+   * Input: agentId: the cm id of the agent chosen in the URL.
+   * Processing: Reads the agent and its behavior from the cm (role and state texts composed into plain language by the cm). Per agentBehaviorChangedOnlyThroughCm nothing is read from or stored in this module. Scoped to the caller’s organization.
+   * Output: The agent header with its @name and the agent’s current behavior: agent reference, summary and full current behavior text.
+   */
+  'agents.agent_behavior.getAgentBehavior': {
+    kind: 'qry';
+    input: { agentId: string };
+    output: { agent: AgentHeader; behavior: AgentBehaviorCurrent };
+    rules: ['agentBehaviorChangedOnlyThroughCm'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Lists the history of behavior changes of the chosen agent, newest first, one page at a time.
+   * Input: agentId: the cm id of the agent; page and pageSize: the page of the history requested.
+   * Processing: Reads the change history from the cm (agentBehaviorChangedOnlyThroughCm), ordered by changedAt descending, and resolves the author to a readable name. Each entry keeps the cm change reference used for undo, never shown on screen.
+   * Output: A page of changes { items, page, pageSize, hasMore }, each with change reference, who, when, one-line summary and whether it was undone.
+   */
+  'agents.agent_behavior.listBehaviorChanges': {
+    kind: 'qry';
+    input: { agentId: string; page: number; pageSize: number };
+    output: { changes: { items: BehaviorChange[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['agentBehaviorChangedOnlyThroughCm'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Sends the admin’s plain-language change request, or the undo of a picked past change, to the cm.
+   * Input: agentId: the cm id of the agent whose behavior changes; expectVersion: the version of the behavior the admin was looking at, so a behavior changed meanwhile is not overwritten blindly; changeRequest: the plain words of what should change (when asking for a change); undoChangeRef: the cm reference of the history change to undo (when confirming an undo). Exactly one of changeRequest or undoChangeRef is given.
+   * Processing: Refuses unless the caller is the company admin (behaviorChangeByAdminOnly). Checks expectVersion against the behavior the cm holds and refuses a stale request. Passes the request or the undo to the cm, which alone changes the behavior (agentBehaviorChangedOnlyThroughCm); nothing is stored here. An undo makes the cm restore the behavior the agent had before that change and mark the change as undone (undoRestoresPreviousBehavior). The cm records the change with the caller as author.
+   * Output: The agent’s behavior in its new state: agent reference, new summary and new current behavior text.
+   */
+  'agents.agent_behavior.sendBehaviorChange': {
+    kind: 'cmd';
+    writes: 'AgentBehavior.update';
+    input: { agentId: string; expectVersion: number; changeRequest?: string; undoChangeRef?: string };
+    output: { behavior: AgentBehaviorCurrent };
+    rules: ['agentBehaviorChangedOnlyThroughCm', 'behaviorChangeByAdminOnly', 'undoRestoresPreviousBehavior'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents']; scope: 'organization' };
+  };
+}

@@ -1,0 +1,188 @@
+/// <mls fileReference="_102047_/l2/agents/web/contracts/draft_review.defs.ts" enhancement="_blank"/>
+
+/** A draft agent prepared by the cm, with its situation, proposal and who asked for it. */
+export interface DraftReview {
+  name: string;
+  situation: 'preparing' | 'ready' | 'refused' | 'activated' | 'discarded';
+  prompt: string;
+  summary?: string;
+  audience?: string;
+  onBehalfOf?: string;
+  proposedBehavior?: string;
+  requestedBy?: string;
+  requestedAt?: string;
+}
+
+/** Details of a tool choice: when it was made, the readable tool name and whether the tool left the release. */
+export interface AgentToolDetails {
+  readonly decidedAt: string;
+  readonly toolName?: string;
+  readonly toolRemoved?: boolean;
+}
+
+/** Readable placement and description of a catalog tool. */
+export interface ToolDetails {
+  moduleTitle: string;
+  subjectTitle: string;
+  description: string;
+}
+
+/** A catalog tool with its readable name, situation and tree placement. */
+export interface ToolInfo {
+  name: string;
+  status: 'available' | 'removed';
+  details: ToolDetails;
+}
+
+/** The on/off choice of one tool for the draft’s agent, with who chose it and the catalog tool it refers to. */
+export interface DraftToolChoice {
+  id: string;
+  version: number;
+  enabled: boolean;
+  choiceSource: 'admin' | 'automatic';
+  details: AgentToolDetails;
+  tool: ToolInfo;
+}
+
+/** A new on/off value for one existing tool choice. */
+export interface ToolChoiceChange {
+  id: string;
+  version: number;
+  enabled: boolean;
+}
+
+/** Identification of an organization user. */
+export interface PersonIdentification {
+  name: string;
+}
+
+/** Agents module data of an organization user. */
+export interface PersonAgentsData {
+  readonly loginEmail?: string;
+}
+
+/** Readable details of an organization user. */
+export interface PersonDetails {
+  identification: PersonIdentification;
+  agents: PersonAgentsData;
+}
+
+/** An active organization user who can be simulated, with the reference used to run the simulation. */
+export interface SimulationPerson {
+  person: string;
+  details: PersonDetails;
+}
+
+/** Whether one tool can be used for the simulated person or role, and why. */
+export interface ToolVerdict {
+  moduleName: string;
+  subjectName: string;
+  actionName: string;
+  canUse: boolean;
+  reason: 'allowed' | 'restrictedForPerson' | 'notPermittedForRole' | 'removedFromRelease';
+  reasonText?: string;
+}
+
+/** An action of the tree a sentence points to. */
+export interface UnderstoodAction {
+  actionName: string;
+}
+
+/** How the agent reads a sample sentence: whether it asks for an action and where in the tree it points. */
+export interface SentenceUnderstanding {
+  asksForAction: boolean;
+  moduleName?: string;
+  subjectName?: string;
+  actions: UnderstoodAction[];
+  explanation?: string;
+}
+
+/** The result of a simulation of the draft at one level; nothing of it is saved. */
+export interface SimulationResult {
+  toolVerdicts?: ToolVerdict[];
+  understanding?: SentenceUnderstanding;
+}
+
+export interface Draft_reviewContracts {
+  /**
+   * Purpose: Loads the draft under review together with every tool choice of the draft’s agent, in one call.
+   * Input: draftId: the cm draft opened from the URL / notification.
+   * Processing: Reads the draft from the cm. Lists every AgentTool of the draft’s agent (listByForeignKey) and joins each to its catalog Tool, ordered by module title, subject title and tool name. toolName and toolRemoved are derived from the catalog (removedToolNeverSent: a choice on a removed tool is marked removed); decidedAt is the system timestamp of the last change. Suggested tools are already on as automatic choices (draftSuggestedToolsTurnedOn). Only readable names are returned (noTechnicalIdsOnScreen).
+   * Output: draft: the draft with its situation, proposal, requester and request date. tools: the draft’s tool choices with on/off, who chose, when, and the catalog tool’s name, status, module, subject and description.
+   */
+  'agents.draft_review.getDraftReview': {
+    kind: 'qry';
+    input: { draftId: string };
+    output: { draft: DraftReview; tools: DraftToolChoice[] };
+    rules: ['noTechnicalIdsOnScreen', 'removedToolNeverSent', 'draftSuggestedToolsTurnedOn'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents', 'adminManageTools', 'adminChoosePeople']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Finds the organization people the admin can simulate the draft for.
+   * Input: name: typed text matched against the person’s name; page, pageSize: the page requested.
+   * Processing: Uses OrganizationUser locate.users / locate.byName filtered by name, keeping only users with status Active (onlyActiveUsersRestricted), ordered by name. Returns names and login e-mails only, never technical ids on screen.
+   * Output: A page of people with the person reference for the simulation, their name and login e-mail.
+   */
+  'agents.draft_review.searchSimulationPeople': {
+    kind: 'qry';
+    input: { name?: string; page: number; pageSize: number };
+    output: { people: { items: SimulationPerson[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['onlyActiveUsersRestricted', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents', 'adminManageTools', 'adminChoosePeople']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Runs a simulation of the draft through the cm, either what it can do for a person or role, or how it reads a sentence.
+   * Input: draftId: the draft under review; level: which question; subjectKind with person or roleName for ’whatItCan’; sentence for ’whatItUnderstands’.
+   * Processing: For ’whatItCan’, considers only the draft agent’s tools that are on (onlyToolsOnAreConsidered), marks removed tools as unusable (removedToolNotSent), and for a person takes out the tools restricted for them (personRestrictionAppliesInRequest); the admin may pick a person or a role (adminSimulatesByRole). For ’whatItUnderstands’, asks the cm to read the sentence against the tree. Nothing is written (simulationSavesNothing). Only readable names are returned.
+   * Output: simulation: toolVerdicts with module, subject, action, can use, reason and explanation for ’whatItCan’; understanding with asks-for-action, module, subject, actions and explanation for ’whatItUnderstands’.
+   */
+  'agents.draft_review.simulateDraft': {
+    kind: 'qry';
+    input: { draftId: string; level: 'whatItCan' | 'whatItUnderstands'; subjectKind?: 'person' | 'role'; person?: string; roleName?: string; sentence?: string };
+    output: { simulation: SimulationResult };
+    rules: ['simulationSavesNothing', 'adminSimulatesByRole', 'onlyToolsOnAreConsidered', 'personRestrictionAppliesInRequest', 'removedToolNotSent', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents', 'adminManageTools', 'adminChoosePeople']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Saves the admin’s on/off choices on the draft’s tools.
+   * Input: draftId: the draft under review; changes: for each changed tool choice, its id, version and new on/off value.
+   * Processing: Updates each AgentTool with optimistic concurrency on version, setting enabled, choiceSource = admin and decidedBy = the logged-in admin; decidedAt is filled by the system. Choices now marked admin are never changed by automatic steps afterwards (adminChoiceNeverOverridden, adminChoiceNotOverriddenByAutomatic). Only existing choices are updated, one per agent and tool (oneChoicePerAgentAndTool).
+   * Output: tools: every tool choice of the draft’s agent in its new state, with the catalog tool data.
+   */
+  'agents.draft_review.saveDraftTools': {
+    kind: 'cmd';
+    writes: 'AgentTool.update';
+    input: { draftId: string; changes: ToolChoiceChange[] };
+    output: { tools: DraftToolChoice[] };
+    rules: ['adminChoiceNeverOverridden', 'adminChoiceNotOverriddenByAutomatic', 'oneChoicePerAgentAndTool'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents', 'adminManageTools', 'adminChoosePeople']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Asks the cm to activate the draft as a working agent with the reviewed tools.
+   * Input: draftId: the draft under review; expectVersion: the version of the draft the admin reviewed, so a draft changed meanwhile is refused.
+   * Processing: Refuses unless the draft is ready (draftDecisionOnlyWhenReady) and still at expectVersion. Calls the cm activate transition; if the cm refuses the name as already used by an active agent, returns that the name is taken (agentNameUniqueAmongActive). Only tools that are on and not removed are sent to the agent (onlyEnabledToolsSent, removedToolNeverSent).
+   * Output: draft: the draft in its new situation (activated).
+   */
+  'agents.draft_review.activateDraft': {
+    kind: 'cmd';
+    writes: 'AgentDraft.activate';
+    input: { draftId: string; expectVersion: number };
+    output: { draft: DraftReview };
+    rules: ['draftDecisionOnlyWhenReady', 'agentNameUniqueAmongActive', 'onlyEnabledToolsSent', 'removedToolNeverSent'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents', 'adminManageTools', 'adminChoosePeople']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Asks the cm to discard the draft.
+   * Input: draftId: the draft under review.
+   * Processing: Refuses unless the draft is ready (draftDecisionOnlyWhenReady), then calls the cm discard transition.
+   * Output: draft: the draft in its new situation (discarded).
+   */
+  'agents.draft_review.discardDraft': {
+    kind: 'cmd';
+    writes: 'AgentDraft.discard';
+    input: { draftId: string };
+    output: { draft: DraftReview };
+    rules: ['draftDecisionOnlyWhenReady'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents', 'adminManageTools', 'adminChoosePeople']; scope: 'organization' };
+  };
+}

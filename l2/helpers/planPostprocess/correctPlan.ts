@@ -5,7 +5,8 @@ import type { UsedRemovedUsecase } from '/_102021_/l2/helpers/planPostprocess/us
 export interface PlanCorrection {
   usecase: string;
   from: 'toRemove';
-  to: 'done';
+  /** `done`: the row is put back. `derived`: the defs generator derives the usecase, the row only leaves `removed` (d1_234). */
+  to: 'done' | 'derived';
   reason: 'exists in l1';
   routes: string[];
 }
@@ -35,7 +36,7 @@ export function correctPlan(input: {
     corrections.push({
       usecase: item.id,
       from: 'toRemove',
-      to: 'done',
+      to: item.derived ? 'derived' : 'done',
       reason: 'exists in l1',
       routes: [...item.routes],
     });
@@ -55,7 +56,7 @@ function restore(
   doc.removed = kept;
   const usecases = rows(doc.usecases);
   doc.usecases = usecases;
-  if (usecases.some(row => row.usecaseId === item.id)) return { added: 0, touched };
+  if (item.derived || usecases.some(row => row.usecaseId === item.id)) return { added: 0, touched };
   usecases.push(doneRow(usecases, moduleName, item, full));
   return { added: 1, touched: true };
 }

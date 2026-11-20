@@ -1,0 +1,59 @@
+/// <mls fileReference="_102047_/l2/agents/web/contracts/agent_activity.defs.ts" enhancement="_blank"/>
+
+/** The agent whose activity is listed, by its readable @name. */
+export interface AgentHeader {
+  name: string;
+}
+
+/** One action an agent performed during an execution, with how it ended. */
+export interface ExecutionAction {
+  toolName: string;
+  result: 'succeeded' | 'failed' | 'refused';
+  resultNote?: string;
+}
+
+/** The details of one finished execution: duration, cost, takeover, conversation link and actions. */
+export interface ExecutionDetails {
+  durationMs: number;
+  cost?: string;
+  tookOver: boolean;
+  conversationLink?: string;
+  actions: ExecutionAction[];
+}
+
+/** The summary of one finished execution of an agent, with the name of the person who called it. */
+export interface Execution {
+  id: string;
+  startedAt: string;
+  details: ExecutionDetails;
+  readonly calledByName?: string;
+}
+
+export interface Agent_activityContracts {
+  /**
+   * Purpose: Loads the activity of the chosen agent: its @name and the first page of its executions, newest first, each with its actions and the name of who called it.
+   * Input: agentId: the agent chosen in the URL (cm id). page and pageSize: the page of executions to return.
+   * Processing: Reads the agent name from the cm. Lists the ExecutionSummary records whose agentId is the agent, ordered by startedAt descending (activityNewestFirst), paged by page and pageSize. For each execution, resolves personId to the organization user’s name in one batched read, never exposing the id (noTechnicalIdsOnScreen); executionRef is never returned.
+   * Output: agent with its name, and executions as { items, page, pageSize, hasMore }: each with start time, duration, cost, takeover flag, conversation link, actions with result and note, and the caller’s name when known.
+   */
+  'agents.agent_activity.getAgentActivity': {
+    kind: 'qry';
+    input: { agentId: string; page: number; pageSize: number };
+    output: { agent: AgentHeader; executions: { items: Execution[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['activityNewestFirst', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminChoosePeople', 'adminReadActivity', 'memberSeeAgents', 'memberReadActivity', 'memberSeePeopleNames']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Returns a further page of the agent’s executions, newest first.
+   * Input: agentId: the agent in the URL. page and pageSize: the page requested.
+   * Processing: Same filter and order as getAgentActivity: executions of the agent ordered by startedAt descending (activityNewestFirst); caller names resolved in one batched read from personId, never showing ids (noTechnicalIdsOnScreen).
+   * Output: executions as { items, page, pageSize, hasMore } for the requested page, each with its details, actions and caller name.
+   */
+  'agents.agent_activity.listAgentExecutions': {
+    kind: 'qry';
+    input: { agentId: string; page: number; pageSize: number };
+    output: { executions: { items: Execution[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['activityNewestFirst', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminChoosePeople', 'adminReadActivity', 'memberSeeAgents', 'memberReadActivity', 'memberSeePeopleNames']; scope: 'organization' };
+  };
+}

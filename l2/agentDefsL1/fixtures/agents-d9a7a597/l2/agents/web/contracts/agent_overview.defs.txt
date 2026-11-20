@@ -1,0 +1,27 @@
+/// <mls fileReference="_102047_/l2/agents/web/contracts/agent_overview.defs.ts" enhancement="_blank"/>
+
+/** An agent of the organization as the cm keeps it, read only: its @name, whether it is on, what it is, who it talks to, on whose behalf it acts and the name of the person responsible for it. */
+export interface AgentOverview {
+  name: string;
+  isOn: boolean;
+  definition?: string;
+  talksTo?: string;
+  onBehalfOf?: string;
+  readonly responsibleName?: string;
+}
+
+export interface Agent_overviewContracts {
+  /**
+   * Purpose: Loads, in one call, the read-only overview of the chosen agent: its identity, purpose and the person responsible for it.
+   * Input: agentId: the cm identifier of the agent chosen in the URL; it is used only to read the agent and is never returned for display.
+   * Processing: Reads the agent from the cm (name, isOn, definition, talksTo, onBehalfOf, responsible). Resolves the responsible organization user through the platform user record and returns only that person’s readable name, never the record id (noTechnicalIdsOnScreen). Only the fields allowed by the caller’s grant are returned (members see name, definition, talksTo, onBehalfOf, isOn and responsible). Fails with not found when the cm does not know the agent.
+   * Output: The agent in its current state as the cm reports it: @name, whether it is on, the plain-language description, who it talks to, on whose behalf it acts, and the responsible person’s name when one is set.
+   */
+  'agents.agent_overview.getAgentOverview': {
+    kind: 'qry';
+    input: { agentId: string };
+    output: { agent: AgentOverview };
+    rules: ['noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageAgents', 'adminChoosePeople', 'memberSeeAgents', 'memberSeePeopleNames']; scope: 'organization' };
+  };
+}

@@ -1,0 +1,66 @@
+/// <mls fileReference="_102047_/l2/agents/web/contracts/agent_tools.defs.ts" enhancement="_blank"/>
+
+/** Readable texts of a catalog action: module title, subject title and what the action does. */
+export interface ToolDetails {
+  moduleTitle: string;
+  subjectTitle: string;
+  description: string;
+}
+
+/** The catalog action a tool choice refers to, placed in the module / subject / action tree, with its situation in the release. */
+export interface ToolInfo {
+  moduleName: string;
+  subject: string;
+  name: string;
+  status: 'available' | 'removed';
+  details: ToolDetails;
+}
+
+/** Details of a tool choice: when and by whom it was made, which automatic step made it, the readable tool name and whether the tool left the release. */
+export interface AgentToolDetails {
+  readonly decidedAt: string;
+  decidedBy?: string;
+  automaticOrigin?: 'draftSuggestion' | 'catalogRefresh';
+  readonly toolName: string;
+  readonly toolRemoved: boolean;
+}
+
+/** One tool choice of an agent: whether the action is on, who chose it, and the catalog action it refers to. */
+export interface AgentToolLine {
+  id: string;
+  version: number;
+  enabled: boolean;
+  choiceSource: 'admin' | 'automatic';
+  details: AgentToolDetails;
+  tool: ToolInfo;
+}
+
+export interface Agent_toolsContracts {
+  /**
+   * Purpose: Loads in one call everything the agent tools page shows: the agent’s @name, all its tool choices with their catalog action for the module / subject / action tree, and the choices currently held by the automatic choice.
+   * Input: agentId: the cm id of the agent taken from the URL; never shown on screen.
+   * Processing: Reads the agent name from the cm. Lists every AgentTool of the agent in one read (listByForeignKey) and joins each to its Tool (moduleName, subject, name, status, titles, description), ordered by module title, subject title and tool name. decidedBy is resolved to the admin’s readable name through read.mdmRecord, never an id (noTechnicalIdsOnScreen). toolName and toolRemoved are derived from the catalog at read time (toolRemoved true when Tool.status is removed, per removedToolNeverSent), never stored. automaticChoices are the same choices filtered by choiceSource = automatic, newest decidedAt first; admin choices never appear there because they are never overridden (adminChoiceNeverOverridden).
+   * Output: name; tools: every tool choice of the agent with its catalog action; automaticChoices: the choices made by a ready draft suggestion or a catalog refresh, with their automatic origin.
+   */
+  'agents.agent_tools.getAgentTools': {
+    kind: 'qry';
+    input: { agentId: string };
+    output: { name: string; tools: AgentToolLine[]; automaticChoices: AgentToolLine[] };
+    rules: ['noTechnicalIdsOnScreen', 'removedToolNeverSent', 'adminChoiceNeverOverridden'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents', 'adminManageTools']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Turns one action on or off for the agent as the company admin’s own choice.
+   * Input: id: the tool choice being changed; version: the version the page holds, for optimistic concurrency; enabled: the new on/off value.
+   * Processing: Reads the choice by id, refuses when the version differs. Sets enabled, sets choiceSource = admin and decidedBy = the logged-in admin, so no automatic step changes it afterwards (adminChoiceNeverOverridden). Updates the existing row only, keeping one choice per agent and tool (oneChoicePerAgentAndTool). decidedAt is filled by the system on the change. A removed tool may be toggled but stays marked removed and is never sent to the agent (removedToolNeverSent).
+   * Output: The tool choice in its new state: enabled, choiceSource admin, new version, decidedAt, decidedBy name, derived toolName and toolRemoved, and its catalog action.
+   */
+  'agents.agent_tools.toggleAgentTool': {
+    kind: 'cmd';
+    writes: 'AgentTool.update';
+    input: { id: string; version: number; enabled: boolean };
+    output: { agentTool: AgentToolLine };
+    rules: ['adminChoiceNeverOverridden', 'oneChoicePerAgentAndTool', 'removedToolNeverSent'];
+    access: { actors: ['companyAdmin']; grants: ['adminManageAgents', 'adminManageTools']; scope: 'organization' };
+  };
+}

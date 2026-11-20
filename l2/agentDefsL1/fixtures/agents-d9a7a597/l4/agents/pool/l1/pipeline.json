@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "2026-09-20-p1-pipeline-v1",
+  "flowId": "agentPlannerL1",
+  "moduleName": "agents",
+  "status": "complete",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-11-18T10:21:36.844Z",
+      "artifactPaths": [
+        "l4/agents/pool/l1/pipeline.json"
+      ]
+    },
+    "plan20": {
+      "status": "approved",
+      "updatedAt": "2026-11-18T10:21:37.024Z",
+      "artifactPaths": [
+        "l4/agents/pool/l2/web/backend.json",
+        "l4/agents/pool/l2/20261118102137_agents-20261118102107_1.json"
+      ]
+    }
+  },
+  "thread": "agents-20261118102107",
+  "round": 1,
+  "messageFile": "l4/agents/pool/l1/20261118102136_agents-20261118102107_1.json",
+  "sourceMessages": [
+    "20261118102136_agents-20261118102107_1.json"
+  ],
+  "needsFile": "l4/agents/pool/l1/web/needs.json",
+  "inventory": {
+    "routes": [],
+    "usecases": [],
+    "ports": [],
+    "tables": [],
+    "present": false
+  },
+  "updatedAt": "2026-11-18T10:21:37.024Z",
+  "pool": [
+    {
+      "at": "2026-11-18T10:21:37.024Z",
+      "file": "l4/agents/pool/l2/20261118102137_agents-20261118102107_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "agents-20261118102107",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-18T10:21:37.024Z",
+      "file": "l4/agents/pool/l1/20261118102136_agents-20261118102107_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "agents-20261118102107",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    }
+  ]
+}

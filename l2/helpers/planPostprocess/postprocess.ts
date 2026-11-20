@@ -49,7 +49,9 @@ function correctionText(corrections: readonly PlanCorrection[]): string {
   return corrections.map(item => {
     const first = item.routes[0] ?? '';
     const listed = item.routes.length > 1 ? `${first}…` : first;
-    return `postprocess: usecase ${item.usecase} from toRemove to done (reason: exists in l1; used by ${item.routes.length} routes: ${listed})`;
+    return item.to === 'derived'
+      ? `postprocess: usecase ${item.usecase} left removed (reason: used by ${item.routes.length} routes: ${listed}; the defs generator derives it, as in a clean plan)`
+      : `postprocess: usecase ${item.usecase} from toRemove to done (reason: exists in l1; used by ${item.routes.length} routes: ${listed})`;
   }).join('\n');
 }
 
