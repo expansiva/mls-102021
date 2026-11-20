@@ -61,7 +61,8 @@ void test('d1_226: the answer of the NS5 decides, with the map of what is writte
 void test('d1_226: an entity another writer owns is not recorded with its parent, whatever its class: a process, an inbound line or a serve route', () => {
   const { index, entities, journeys } = load();
   const byProcess = { workflows: { processes: [{ processId: 'p', tasks: [{ taskId: 't', kind: 'mechanical', entityRef: 'Publication', effect: 'create' }] }] } };
-  const byInbound = { integration: { inbound: [{ id: 'in', writes: ['Publication'] }] } };
+  // d1_232: the reader of the NS5 counts an inbound line as a writer when it says an effect (a line with writes and no effect writes nothing).
+  const byInbound = { integration: { inbound: [{ id: 'in', writes: ['Publication'], effect: 'create' }] } };
   const byServe = { integration: { connections: [{ connectionId: 'c', operationId: 'o', direction: 'serve', effect: 'create', entityRefs: ['Publication'] }] } };
   for (const outside of [byProcess, byInbound, byServe]) assert.deepEqual(childWritersOf(index, entities, journeys, outside as never), [], JSON.stringify(outside));
   // The class is not asked: the same entity as a supporting record is the same answer.

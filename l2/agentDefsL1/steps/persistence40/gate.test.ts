@@ -577,3 +577,22 @@ void test('d1_221: the port of an entity its parent writes can create, though on
   const other = buildD1Persistence({ ...planned(asked), recordedWithParent: ['SomethingElse'] });
   assert.deepEqual(other.ports[0].methods.map(method => method.name), ['list', 'get']);
 });
+
+void test('d1_232: the port of an entity an arrival upserts by id has get; one found by a unique key (update brings list) and any other port are as before', () => {
+  const asked = {
+    moduleName: 'sampleModule',
+    entityId: 'Note',
+    tableId: 'note',
+    portId: 'NoteRepository',
+    entities: noteEntity,
+    operations: ['create', 'update'],
+  };
+  const before = buildD1Persistence(planned(asked));
+  assert.deepEqual(before.ports[0].methods.map(method => method.name), ['create', 'list', 'update']);
+  const byId = buildD1Persistence({ ...planned(asked), findById: ['Note'] });
+  assert.equal(byId.ok, true, JSON.stringify(byId.problems));
+  assert.deepEqual(byId.ports[0].methods.map(method => method.name), ['create', 'list', 'get', 'update']);
+  assert.deepEqual(byId.adapters[0].methods.map(method => method.name), ['create', 'list', 'get', 'update']);
+  const other = buildD1Persistence({ ...planned(asked), findById: ['SomethingElse'] });
+  assert.deepEqual(other.ports[0].methods.map(method => method.name), ['create', 'list', 'update']);
+});

@@ -90,6 +90,8 @@ async function persistenceRequest(
       tables: Array<{ tableId: string; entity: string; status: string }>;
       usecases: Array<{ usecaseId: string; entity: string; operation: string; status: string }>;
       entities: string[];
+      /** d1_232: the arrivals, for the upserts they find by id. Absent in a snapshot without arrivals. */
+      requests?: Array<{ upserts?: Array<{ entityId: string; keyKind: string }> }>;
     };
     files: Array<{ artifactType: string; identity: string; defPath: string; action: string }>;
   },
@@ -152,6 +154,7 @@ async function persistenceRequest(
     catalogsRead,
     catalogRefs: resolved.refs,
     recordedWithParent: await recordedWithParentOf(moduleName, entities, project),
+    findById: [...new Set((snapshot.selection.requests ?? []).flatMap(request => (request.upserts ?? []).filter(upsert => upsert.keyKind === 'id').map(upsert => upsert.entityId)))].sort(),
   };
 }
 

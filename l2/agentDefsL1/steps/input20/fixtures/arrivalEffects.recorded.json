@@ -1,0 +1,65 @@
+{
+  "source": "d1_232 s0: the 7 cases of l4_p4_133 (and the conteudo case) written in the new form. `today` is the line of the 102047 L4 (read from its integration.defs.ts on 20/11/2026); `entityEffects` is the new form the l4Supervisor proposed; `expect` is what the L1 must derive from it.",
+  "cases": [
+    {
+      "name": "agents serve cm.describe",
+      "kind": "serve",
+      "today": { "connectionId": "cm", "operationId": "describe", "direction": "serve", "entityRefs": ["AgentTool", "PersonToolRestriction"], "effect": "list" },
+      "entityEffects": [{ "entityId": "AgentTool", "effects": ["list"] }, { "entityId": "PersonToolRestriction", "effects": ["list"] }],
+      "expect": { "usecases": ["listAgentTool", "listPersonToolRestriction"], "portOperations": { "AgentTool": ["list"], "PersonToolRestriction": ["list"] }, "upserts": [] }
+    },
+    {
+      "name": "agents serve platform.releaseCatalogChanged (starts the process toolCatalogRefresh)",
+      "kind": "serve",
+      "processTrigger": true,
+      "today": { "connectionId": "platform", "operationId": "releaseCatalogChanged", "direction": "serve", "entityRefs": ["Tool"], "effect": "update" },
+      "entityEffects": [{ "entityId": "Tool", "effects": ["create", "update"] }],
+      "entity": { "Tool": { "uniqueKeys": [["toolKey"]] } },
+      "expect": { "usecases": ["createTool", "updateTool"], "routeUses": [], "portOperations": { "Tool": ["create", "update", "list"] }, "upserts": [{ "entityId": "Tool", "key": ["toolKey"], "keyKind": "unique" }] }
+    },
+    {
+      "name": "compras inbound produtoCadastrado",
+      "kind": "inbound",
+      "today": { "id": "produtoCadastrado", "kind": "event", "from": "controleEstoque", "event": "produtoCadastrado", "writes": ["Produto"], "effect": "create", "entityRefs": [] },
+      "entityEffects": [{ "entityId": "Produto", "effects": ["create", "update"] }],
+      "entity": { "Produto": { "uniqueKeys": [], "idField": "id" } },
+      "expect": { "usecases": ["createProduto", "updateProduto"], "portOperations": { "Produto": ["create", "update", "list", "get"] }, "upserts": [{ "entityId": "Produto", "key": ["id"], "keyKind": "id" }] }
+    },
+    {
+      "name": "financeiro inbound comandaFechada",
+      "kind": "inbound",
+      "today": { "id": "comandaFechada", "kind": "event", "from": "comandaRestaurante", "event": "comandaFechada", "writes": ["TituloReceber", "Pagador"], "effect": "create", "entityRefs": [] },
+      "entityEffects": [{ "entityId": "TituloReceber", "effects": ["create"] }, { "entityId": "Pagador", "effects": ["create"] }],
+      "expect": { "usecases": ["createTituloReceber", "createPagador"], "portOperations": { "TituloReceber": ["create"], "Pagador": ["create"] }, "upserts": [] }
+    },
+    {
+      "name": "financeiro inbound mensalidadeGerada",
+      "kind": "inbound",
+      "today": { "id": "mensalidadeGerada", "kind": "event", "from": "mensalidadesAcademia", "event": "mensalidadeGerada", "writes": ["TituloReceber", "Pagador"], "effect": "create", "entityRefs": [] },
+      "entityEffects": [{ "entityId": "TituloReceber", "effects": ["create"] }, { "entityId": "Pagador", "effects": ["create"] }],
+      "expect": { "usecases": ["createTituloReceber", "createPagador"], "portOperations": { "TituloReceber": ["create"], "Pagador": ["create"] }, "upserts": [] }
+    },
+    {
+      "name": "financeiro inbound ordenServicioFinalizada",
+      "kind": "inbound",
+      "today": { "id": "ordenServicioFinalizada", "kind": "event", "from": "ordenServicio", "event": "ordenServicioFinalizada", "writes": ["TituloReceber", "Pagador"], "effect": "create", "entityRefs": [] },
+      "entityEffects": [{ "entityId": "TituloReceber", "effects": ["create"] }, { "entityId": "Pagador", "effects": ["create"] }],
+      "expect": { "usecases": ["createTituloReceber", "createPagador"], "portOperations": { "TituloReceber": ["create"], "Pagador": ["create"] }, "upserts": [] }
+    },
+    {
+      "name": "repoHost serve github.repositorioMudou",
+      "kind": "serve",
+      "today": { "connectionId": "github", "operationId": "repositorioMudou", "direction": "serve", "entityRefs": ["RepositoryChange", "RepositoryEntry"], "effect": "create" },
+      "entityEffects": [{ "entityId": "RepositoryChange", "effects": ["create"] }, { "entityId": "RepositoryEntry", "effects": ["create", "update"] }],
+      "entity": { "RepositoryChange": { "uniqueKeys": [] }, "RepositoryEntry": { "uniqueKeys": [["path"]] } },
+      "expect": { "usecases": ["createRepositoryChange", "createRepositoryEntry", "updateRepositoryEntry"], "portOperations": { "RepositoryChange": ["create"], "RepositoryEntry": ["create", "update", "list"] }, "upserts": [{ "entityId": "RepositoryEntry", "key": ["path"], "keyKind": "unique" }] }
+    },
+    {
+      "name": "conteudo inbound repositorioAlterado (outside the 7: writes nothing)",
+      "kind": "inbound",
+      "today": { "id": "repositorioAlterado", "kind": "event", "from": "repoHost", "event": "repositorioAlterado", "writes": [], "effect": "update", "entityRefs": [] },
+      "entityEffects": [],
+      "expect": { "usecases": [], "portOperations": {}, "upserts": [] }
+    }
+  ]
+}

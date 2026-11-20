@@ -12,18 +12,19 @@ import {
   type D1SelectedRequest,
   type D1SelectedUsecase,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
+import { L1_OPERATIONS } from '/_102021_/l2/helpers/l1Defs/operations.js';
+import { INBOUND_OPERATION_OF_EFFECT } from '/_102021_/l2/agentDefsL1/steps/input20/arrivalPairs.js';
+import { isUpsert, upsertKeyOf, type ArrivalUpsert } from '/_102021_/l2/helpers/l1Defs/arrivalUpsert.js';
+import { ns5ArrivalEffects, type Ns5ArrivalEntityEffects } from '/_102035_/l2/solution/arrivalEffects.js';
 
 /** One `inbound` line with `kind: 'event'`. The platform's own events (`from: organization`) have no module publisher: no route. */
 export interface D1ConsumeLine {
   from: string;
   eventId: string;
-  writes: readonly string[];
-  effect: string;
+  /** What the line does to each entity, from the one reader of the NS5 (d1_232). */
+  entries: readonly Ns5ArrivalEntityEffects[];
   transitionRef: string;
 }
-
-const OPERATION_OF_EFFECT: Record<string, L1Operation> = { create: 'create', update: 'update' };
 const CREATED = new Set<string>(L1_OPERATIONS.filter(operation => operation !== 'custom' && operation !== 'transition'));
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -45,8 +46,7 @@ export function consumeLinesOf(integration: Readonly<Record<string, unknown>>): 
     lines.push({
       from,
       eventId,
-      writes: (Array.isArray(row.writes) ? row.writes : []).filter((item): item is string => typeof item === 'string' && item !== ''),
-      effect: text(row.effect),
+      entries: ns5ArrivalEffects(row, 'inbound').filter(entry => entry.entityId),
       transitionRef: text(row.transitionRef),
     });
   }
@@ -101,37 +101,51 @@ export function deriveConsumeRequests(input: DeriveConsumeInput): D1SelectedRequ
       continue;
     }
     const uses: string[] = [];
-    const entities = line.writes;
-    const operation = OPERATION_OF_EFFECT[line.effect] ?? '';
-    const transition = line.effect === 'transition' && line.transitionRef !== '';
+    const upserts: ArrivalUpsert[] = [];
+    const { entries } = line;
     // d1_225: a line that writes nothing is a route that only confirms the receipt: no usecase, so no effect to name (and none is asked for).
-    if (!operation && !transition && entities.length > 0) {
-      input.problems.push({ severity: 'error', code: 'CONSUMES_EFFECT_UNKNOWN', path, message: `Event ${consumes} has an effect (${line.effect || 'none'}) that is not create, update or a transition with a transitionRef: no usecase can be named.`, ownerRef: route } as D1InputProblem);
+    // d1_232: an effect that is not create, update or a transition with a transitionRef names no usecase: the line is refused, whole.
+    const unusable = entries.flatMap(entry => entry.effects.length === 0
+      ? ['none']
+      : entry.effects.filter(effect => !INBOUND_OPERATION_OF_EFFECT[effect] && !(effect === 'transition' && line.transitionRef !== '')));
+    if (unusable.length > 0) {
+      input.problems.push({ severity: 'error', code: 'CONSUMES_EFFECT_UNKNOWN', path, message: `Event ${consumes} has an effect (${[...new Set(unusable)].join(', ')}) that is not create, update or a transition with a transitionRef: no usecase can be named.`, ownerRef: route } as D1InputProblem);
       continue;
     }
-    for (const entity of entities) {
-      takeUsecase({
-        problems: input.problems,
-        path,
-        routeName: route,
-        entity,
-        operation: transition ? 'transition' : operation,
-        transitionKey: transition ? line.transitionRef : '',
-        usecases: input.usecases,
-        uses,
-        colliding: new Set(),
-        refusalOf: usecaseId => usecaseRefusal(entity, transition ? 'transition' : operation, usecaseId, input.entities, input.plannedIds, input.removedIds),
-      });
+    for (const entry of entries) {
+      for (const effect of entry.effects) {
+        const transition = effect === 'transition';
+        const operation = transition ? 'transition' : INBOUND_OPERATION_OF_EFFECT[effect] ?? '';
+        takeUsecase({
+          problems: input.problems,
+          path,
+          routeName: route,
+          entity: entry.entityId,
+          operation,
+          transitionKey: transition ? line.transitionRef : '',
+          usecases: input.usecases,
+          uses,
+          colliding: new Set(),
+          refusalOf: usecaseId => usecaseRefusal(entry.entityId, operation, usecaseId, input.entities, input.plannedIds, input.removedIds),
+        });
+      }
+      if (isUpsert(entry)) {
+        const key = upsertKeyOf(input.entities[entry.entityId]);
+        if (key) upserts.push({ entityId: entry.entityId, ...key });
+        else input.problems.push({ severity: 'error', code: 'ARRIVAL_UPSERT_WITHOUT_KEY', path, message: `Route ${route} creates or updates ${entry.entityId}, which has no uniqueKeys and no id field to find the record by. The L4 must give the entity a key.`, ownerRef: route } as D1InputProblem);
+      }
     }
+    const single = entries.length === 1 && entries[0].effects.length === 1 ? `${entries[0].entityId}.${entries[0].effects[0]}` : '';
     requests.push({
       route,
       pageId: line.from,
       kind: 'cmd',
-      writes: entities.length === 1 ? `${entities[0]}.${line.effect}` : '',
+      writes: single,
       outputs: [],
       params: [],
       uses,
       consumes,
+      ...(upserts.length ? { upserts } : {}),
     });
   }
   return requests;

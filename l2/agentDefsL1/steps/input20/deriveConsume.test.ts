@@ -37,7 +37,7 @@ function run(lines: D1ConsumeLine[], usecases: D1SelectedUsecase[] = [], takenPa
 
 void test('d1_217: an inbound event line is a request; the platform event and the external line are not', () => {
   const lines = consumeLinesOf(INBOUND);
-  assert.deepEqual(lines.map(line => [line.from, line.eventId, line.effect]), [['purchasing', 'goodsReceived', 'create'], ['sales', 'orderClosed', 'transition']]);
+  assert.deepEqual(lines.map(line => [line.from, line.eventId, line.entries.map(entry => `${entry.entityId}:${entry.effects.join('+')}`)]), [['purchasing', 'goodsReceived', ['StockMove:create']], ['sales', 'orderClosed', ['Reservation:transition']]]);
   assert.deepEqual(consumeLinesOf({}), []);
 });
 
@@ -64,12 +64,12 @@ void test('d1_217: the usecase already in the plan is the one used, for a create
 });
 
 void test('d1_217: two lines for one event, a publisher that shares a page id and an effect no usecase can answer are errors with a name', () => {
-  const line: D1ConsumeLine = { from: 'purchasing', eventId: 'goodsReceived', writes: ['StockMove'], effect: 'create', transitionRef: '' };
+  const line: D1ConsumeLine = { from: 'purchasing', eventId: 'goodsReceived', entries: [{ entityId: 'StockMove', effects: ['create'] }], transitionRef: '' };
   assert.deepEqual(run([line, line]).problems.filter(item => item.severity === 'error').map(item => item.code), ['CONSUMES_DUPLICATE']);
   const taken = run([line], [], ['purchasing']);
   assert.deepEqual(taken.problems.map(item => item.code), ['CONSUMES_PAGE_COLLISION']);
   assert.deepEqual(taken.requests, []);
-  const odd = run([{ ...line, effect: 'remove' }]);
+  const odd = run([{ ...line, entries: [{ entityId: 'StockMove', effects: ['remove'] }] }]);
   assert.deepEqual(odd.problems.map(item => item.code), ['CONSUMES_EFFECT_UNKNOWN']);
 });
 
@@ -93,4 +93,27 @@ void test('d1_217: the request service row of a consumes route carries the mark 
   const both = { ...rows[0], serves: 'repoHost.x' };
   assert.equal(requestServiceIssues({ pageId: 'purchasing', requests: [both] }).some(issue => issue.includes('not both')), true);
   assert.equal(requestServiceIssues({ pageId: 'purchasing', requests: [{ ...rows[0], consumes: 'bad mark' }] }).some(issue => issue.includes('consumes')), true);
+});
+
+void test('d1_232: an inbound line says its effects per entity: [create, update] is an upsert; an entity with no key is refused by name', () => {
+  const entities = { Product: { record: { fields: { id: {}, details: {} } } }, Blank: { record: { fields: { name: {} } } }, Invoice: {}, Payer: {} };
+  const go = (item: Record<string, unknown>) => {
+    const problems: D1InputProblem[] = [];
+    const requests = deriveConsumeRequests({ moduleName: MODULE, lines: consumeLinesOf({ inbound: [{ id: 'e1', kind: 'event', from: 'other', ...item }] }), usecases: [], problems, entities, plannedIds: new Map(), removedIds: new Set(), takenPages: new Set() });
+    return { requests, problems };
+  };
+  const upsert = go({ entityEffects: [{ entityId: 'Product', effects: ['create', 'update'] }] });
+  assert.deepEqual(upsert.requests[0]?.uses, ['createProduct', 'updateProduct']);
+  assert.deepEqual(upsert.requests[0]?.upserts, [{ entityId: 'Product', key: ['id'], keyKind: 'id' }]);
+  assert.equal(upsert.requests[0]?.writes, '', 'two effects: no single pair');
+  const none = go({ entityEffects: [{ entityId: 'Blank', effects: ['create', 'update'] }] });
+  assert.deepEqual(none.problems.filter(item => item.severity === 'error').map(item => item.code), ['ARRIVAL_UPSERT_WITHOUT_KEY']);
+  const two = go({ entityEffects: [{ entityId: 'Invoice', effects: ['create'] }, { entityId: 'Payer', effects: ['create'] }] });
+  assert.deepEqual(two.requests[0]?.uses, ['createInvoice', 'createPayer']);
+  const old = go({ writes: ['Invoice', 'Payer'], effect: 'create' });
+  assert.deepEqual(old.requests[0]?.uses, two.requests[0]?.uses, 'the old line reads as the same effect for each entity');
+  const confirm = go({ entityEffects: [] });
+  assert.deepEqual([confirm.requests[0]?.uses, confirm.problems.filter(item => item.severity === 'error')], [[], []]);
+  const odd = go({ entityEffects: [{ entityId: 'Invoice', effects: ['list'] }] });
+  assert.deepEqual(odd.problems.map(item => item.code), ['CONSUMES_EFFECT_UNKNOWN']);
 });

@@ -4,6 +4,7 @@
 // repair prompt can act on.
 
 import { isCatalogImport } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
+import { maskCode } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
 import type { M12InputField } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
 
 export interface M12CodeGateInput {
@@ -820,6 +821,33 @@ export function testsGate(cases: readonly M12TestCase[], input: M12TestsGateInpu
   }
   for (const route of input.routes) {
     if (!cases.some(item => item.routine === route.route && item.expect.ok)) problems.push(`Route ${route.route} has no positive case (expect.ok: true).`);
+  }
+  return problems;
+}
+
+/**
+ * d1_232: the code of an upsert (an arrival that creates and updates an entity by its key) finds the record first, through the port. A route
+ * calls the create and the update usecase (the "each usecase" gate), so it is checked for the lookup; a process writes through the port, so its
+ * file must also call `create` (a record that is not there is created, not written by `update`).
+ */
+export function arrivalUpsertProblems(
+  code: string,
+  upserts: ReadonlyArray<{ entityId: string; key: readonly string[]; keyKind: string }>,
+  mode: 'route' | 'process',
+  where: string,
+): string[] {
+  if (!upserts.length) return [];
+  const masked = maskCode(code);
+  // The calls are the ones on the port of the entity (`const x = resolveRepository<<Entity>Repository>(...)`); a file that names no port variable is read loosely.
+  const called = (entityId: string, methods: string): boolean => {
+    const names = [...masked.matchAll(new RegExp(`([A-Za-z_$][\\w$]*)\\s*=\\s*(?:await\\s+)?resolveRepository\\s*<\\s*${entityId}Repository\\s*>`, 'gu'))].map(match => match[1]);
+    return (names.length ? names : ['[A-Za-z_$][\\w$]*']).some(name => new RegExp(`(?<![\\w$])${name}\\.(?:${methods})\\s*\\(`, 'u').test(masked));
+  };
+  const problems: string[] = [];
+  for (const upsert of upserts) {
+    const key = upsert.keyKind === 'id' ? `its id (${upsert.key[0]})` : `its unique key (${upsert.key.join(', ')})`;
+    if (!called(upsert.entityId, 'list|get')) problems.push(`ARRIVAL_UPSERT_WITHOUT_LOOKUP: ${where} creates or updates ${upsert.entityId} found by ${key}, and does not look the record up: call the port \`${upsert.keyKind === 'id' ? 'get' : 'list'}\` first, update it when it is there and create it when it is not.`);
+    if (mode === 'process' && !called(upsert.entityId, 'create')) problems.push(`ARRIVAL_UPSERT_NEVER_CREATES: ${where} creates or updates ${upsert.entityId}, and the file never calls \`create\` on its port: a record that is not there is created, not written by \`update\`.`);
   }
   return problems;
 }

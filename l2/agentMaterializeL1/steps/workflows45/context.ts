@@ -7,6 +7,8 @@
 
 import { connectionCatalogSource, isCatalogImport, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { upsertKeyOf, type ArrivalUpsert } from '/_102021_/l2/helpers/l1Defs/arrivalUpsert.js';
+import { ontologyEntityOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/arrivalUpsert.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { bindHumanPages, moduleSpecifier, transitionDestinations, workflowEngineFile, workflowEngineSource, workflowTablesFromL4, type HumanPageSource, type WorkflowStepEmit } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
@@ -19,7 +21,7 @@ import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js
 import { stepCallProblems, stepCallsOf, withUsecases, type StepCall } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/stepCalls.js';
 import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/engineImports.js';
 import { connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
-import { connectionRowsOf, emptyCastProblems, emptyRequiredProblems, recordCastProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { arrivalUpsertProblems, connectionRowsOf, emptyCastProblems, emptyRequiredProblems, recordCastProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
@@ -292,6 +294,21 @@ export function l4Process(source: string | null, processId: string): string {
   }
 }
 
+/**
+ * d1_232: the entities the arrival that starts this process creates and updates (the plan put `create` and `update` of the entity in the process
+ * operations, on a step `arrival:<event>`), each with its key. The process writes them through the port: find, then update or create.
+ */
+export async function processUpserts(ctx: M12Context, facts: M12WorkflowFacts): Promise<ArrivalUpsert[]> {
+  const arrival = (operation: string) => facts.operations.some(row => row.operation === operation && row.steps.some(step => step.startsWith('arrival:')));
+  const out: ArrivalUpsert[] = [];
+  for (const entityId of [...new Set(facts.operations.map(row => row.operation.split('.')[0] ?? '').filter(Boolean))]) {
+    if (!arrival(`${entityId}.create`) || !arrival(`${entityId}.update`)) continue;
+    const key = upsertKeyOf(ontologyEntityOf(await ctx.read(`_${ctx.run.project}_/l4/${ctx.run.module}/ontology/${entityId}.defs.ts`)));
+    if (key) out.push({ entityId, ...key });
+  }
+  return out;
+}
+
 /** The usecase that runs one operation (`Entidade.<op>` or `Entidade.<transição>`), among the units of the module. */
 export function operationUsecase(units: readonly M12Unit[], operation: string): M12Unit | undefined {
   const [entityId, op] = operation.split('.');
@@ -503,6 +520,14 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     lines.push(`- ${row.operation} (${row.steps.join(', ')}): ${usecase ? `usecase \`${usecase.unitId}\`` : external ? 'no usecase: the function applies it through the gateway of the connection (the entity is external: it has no port)' : 'no usecase: the function applies it through the entity port (POOL_ABSENT)'}`);
   }
   if (lines.length) parts.push(section('Operations of the process', lines.join('\n')));
+  const upserts = await processUpserts(ctx, facts);
+  if (upserts.length) {
+    parts.push(section('Upserts of the process (the arrival that starts it creates and updates the entity)', [
+      ...upserts.map(item => `- ${item.entityId}: found by ${item.keyKind === 'id' ? `its id (\`${item.key[0]}\`)` : `its unique key (${item.key.map(field => `\`${field}\``).join(', ')})`}`),
+      '',
+      'The arrival says it creates and updates the entity: the function looks the record up first through the entity port (`get` by the id, or `list` with a filter on the key fields), calls `update` when the record is there and `create` when it is not. A record that is not there is never written by `update`, and the not-found error of `update` is never the sign that it is missing.',
+    ].join('\n')));
+  }
   const mdmUsecase = facts.operations.map(row => operationUsecase(ctx.units, row.operation)).find(usecase => usecase && usesMdm(usecase));
   if (mdmUsecase) {
     parts.push(section('The platform MDM (source: how the engine stores and returns this entity today)', mdmContextSection(moduleName, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), [], await ctx.read(MDM_MODULE_REF))));
@@ -755,6 +780,7 @@ export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, cod
     ...workflowGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, project, moduleName), header, facts, project, moduleName, ports, gateways, targets: transitionTargets(ctx.units), llmExports, usecaseInputs: await usecaseInputsOf(ctx) }),
     ...await missingImports(ctx, code),
     ...stepCallProblems(code, await stepCallsFor(ctx, facts.processId)),
+    ...arrivalUpsertProblems(code, await processUpserts(ctx, facts), 'process', `the process ${facts.processId}`),
   ];
 }
 

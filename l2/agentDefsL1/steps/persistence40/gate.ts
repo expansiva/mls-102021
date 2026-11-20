@@ -595,6 +595,8 @@ function methodsFor(
   }
   // d1_221: the usecase of the parent records this entity, so its port creates even though no usecase of its own is selected.
   if ((request.recordedWithParent ?? []).includes(entityId)) selected.add('create');
+  // d1_232: an upsert by id finds the record with `get`, so the port has it though no usecase of the entity asks for a read.
+  if ((request.findById ?? []).includes(entityId) && selected.size > 0) selected.add('get');
   if (selected.size === 0) {
     error(problems, 'METHODS_EMPTY', entityId, `Entity ${entityId} has no selected operation. No repository method was invented.`);
     blocked.add(entityId);

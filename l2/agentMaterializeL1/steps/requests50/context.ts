@@ -13,7 +13,7 @@ import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/conn
 import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { recordFieldFromGrant, recordFieldsFromGrant, scopeJoins } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
-import { emptyCastProblems, emptyRequiredProblems, gatewayBypassProblems, recordCastProblems, requestRepositoryProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { arrivalUpsertProblems, emptyCastProblems, emptyRequiredProblems, gatewayBypassProblems, recordCastProblems, requestRepositoryProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, infoOfRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -25,9 +25,11 @@ import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterialize
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { MDM_FACADE_REF, MDM_MODULE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdmContextSection, mdmPlatformApiSection, ruleTexts, sessionCompanyAnchor } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { contractRoutes, type M12ContractRoute } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
-import { serveSourceOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/serveSource.js';
+import { routeUpsertsOf, upsertSection, type RouteUpsert } from '/_102021_/l2/agentMaterializeL1/steps/requests50/arrivalUpsert.js';
+import { serveRowOf, serveSourceOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/serveSource.js';
 import { REGISTRATION_REF, onboardingModuleId, registrationAccessSection } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { consumeMessageTypeName } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
+import { ns5ArrivalEffects } from '/_102035_/l2/solution/arrivalEffects.js';
 import { integrationLogicalPath, integrationOf } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import { enumMapProblems, enumMapSection, externalEnumPairs, unpairedProblems, type ExternalEnumPair } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
@@ -158,6 +160,8 @@ export interface M12RequestContext {
   externalEnums: ExternalEnumPair[];
   /** Serve routes that name usecases (`uses`): the body must call every one of them (d1_201, d1_230). */
   serveUses: Array<{ route: string; uses: string[] }>;
+  /** Routes of an arrival that creates and updates an entity by its key (d1_232): the body must look the record up first. */
+  arrivalUpserts: RouteUpsert[];
   human: string;
 }
 
@@ -470,13 +474,9 @@ function citedTypes(source: string, roots: readonly string[]): string {
 }
 
 function entityOfServe(row: Record<string, unknown>): { entityId: string; effect: string } {
-  const refs = Array.isArray(row.entityRefs) ? row.entityRefs.map(String).filter(Boolean) : [];
-  const writes = String(row.writes ?? '');
-  const wrote = /^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/u.exec(writes);
-  return {
-    entityId: refs[0] || wrote?.[1] || '',
-    effect: typeof row.effect === 'string' && row.effect ? row.effect : (wrote?.[2] ?? ''),
-  };
+  // d1_232: what the line does to its entities is read by the one reader of the NS5, not from `entityRefs`, `writes` and `effect`.
+  const first = ns5ArrivalEffects(row, 'serve')[0];
+  return { entityId: first?.entityId || '', effect: first?.effects[0] || '' };
 }
 
 function identityField(entity: M12Unit | undefined): string {
@@ -609,6 +609,13 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
       generated ? fence('ts', exportSignatures(generated)) : '(the workflow service was not generated: the phase before this one failed for it)',
     ].join('\n')));
   }
+  // d1_232: a route of an arrival that creates and updates an entity looks the record up by its key (a route a process owns leaves it to the process).
+  const arrivalUpserts = (await Promise.all(marks.map(async mark => {
+    const route = String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`);
+    if (flows.some(flow => flow.route === route)) return [];
+    return routeUpsertsOf(route, serveRowOf(l4Source, mark.connectionId, mark.operationId), 'serve', entityId => ctx.read(`_${project}_/l4/${moduleName}/ontology/${entityId}.defs.ts`));
+  }))).flat();
+  if (arrivalUpserts.length) parts.push(section('Upserts of the routes (the arrival creates and updates the entity)', upsertSection(arrivalUpserts)));
   for (const mark of marks) {
     const target = entityOfServe(mark.row);
     if (target.effect !== 'create' || !target.entityId) continue;
@@ -648,6 +655,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     workflowRoutes: flows,
     externalEnums: [],
     serveUses,
+    arrivalUpserts,
     human: parts.join('\n'),
   };
 }
@@ -728,6 +736,13 @@ async function loadConsumeRequestContext(ctx: M12Context, unit: M12Unit, repair?
       if (shown) parts.push(shown);
     }
   }
+  const arrivalUpserts = (await Promise.all(marks.map(item => routeUpsertsOf(
+    String(item.row.route ?? `${moduleName}.${item.mark}`),
+    inbound.find(row => row.kind === 'event' && row.from === item.from && (row.event === item.eventId || row.id === item.eventId)) ?? null,
+    'inbound',
+    entityId => ctx.read(`_${project}_/l4/${moduleName}/ontology/${entityId}.defs.ts`),
+  )))).flat();
+  if (arrivalUpserts.length) parts.push(section('Upserts of the routes (the arrival creates and updates the entity)', upsertSection(arrivalUpserts)));
   if (repair) {
     parts.push(section('Repair', [
       'The previous answer was refused. Fix exactly these problems and return the whole file again:',
@@ -746,6 +761,7 @@ async function loadConsumeRequestContext(ctx: M12Context, unit: M12Unit, repair?
     workflowRoutes: [],
     externalEnums: [],
     serveUses,
+    arrivalUpserts,
     human: parts.join('\n'),
   };
 }
@@ -887,7 +903,7 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
     ].join('\n')));
   }
   const mdmInputs = mdmInputRoutes(routes, unowned);
-  return { pageId, contractsInterface, contractSpecifier, header, routes, contractRef, mdmInputs, workflowRoutes: flows, externalEnums, serveUses: [], human: parts.join('\n') };
+  return { pageId, contractsInterface, contractSpecifier, header, routes, contractRef, mdmInputs, workflowRoutes: flows, externalEnums, serveUses: [], arrivalUpserts: [], human: parts.join('\n') };
 }
 
 /**
@@ -1004,6 +1020,8 @@ export function requestGate(code: string, input: {
   externalEnums?: readonly ExternalEnumPair[];
   /** Serve and consume routes with `uses`: the body of each must call every one of them (d1_230). */
   serveUses?: ReadonlyArray<{ route: string; uses: readonly string[] }>;
+  /** Routes that create and update an entity by its key (d1_232): each body looks the record up. */
+  arrivalUpserts?: readonly RouteUpsert[];
   /** The input fields of the usecases of the module (d1_224): a call may not fill a required one with an empty literal. */
   usecaseInputs?: ReadonlyMap<string, readonly M12InputField[]>;
   /** Message types of the routes that receive an event (d1_225): each is the envelope the runtime passes, with `payload`. */
@@ -1064,6 +1082,12 @@ export function requestGate(code: string, input: {
   problems.push(...gatewayBypassProblems(code));
   if (input.externalEnums?.length) problems.push(...enumMapProblems(code, input.externalEnums));
   if (input.serveUses?.length) problems.push(...serveUsecaseProblems(code, input.serveUses));
+  if (input.arrivalUpserts?.length) {
+    const bodies = requestsObjectBodies(code);
+    for (const route of [...new Set(input.arrivalUpserts.map(item => item.route))]) {
+      problems.push(...arrivalUpsertProblems(bodies.get(route) ?? '', input.arrivalUpserts.filter(item => item.route === route), 'route', `route ${route}`));
+    }
+  }
   if (/\blocalStorage\b|\bsessionStorage\b/u.test(code)) problems.push('No browser storage.');
   if (/catch\s*(\([^)]*\))?\s*\{\s*\}/u.test(code)) problems.push('No empty catch: an error names its cause.');
   return problems;
@@ -1103,7 +1127,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const readUsecase = (name: string): Promise<string | null> => ctx.read(`_${ctx.run.project}_/l1/${ctx.run.module}/layer_2_application/usecases/${name}.ts`);
   return [
     ...waived.problems,
-    ...requestGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, usecaseInputs: await usecaseInputsOf(ctx), consumeMessages: consumeMarks(unit.definition.data).map(item => consumeMessageTypeName(item.mark)), ports: repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), usecases: ctx.units.filter(item => item.definition.artifactType === 'usecase').map(item => item.unitId).sort() }),
+    ...requestGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, arrivalUpserts: data.arrivalUpserts, usecaseInputs: await usecaseInputsOf(ctx), consumeMessages: consumeMarks(unit.definition.data).map(item => consumeMessageTypeName(item.mark)), ports: repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), usecases: ctx.units.filter(item => item.definition.artifactType === 'usecase').map(item => item.unitId).sort() }),
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared

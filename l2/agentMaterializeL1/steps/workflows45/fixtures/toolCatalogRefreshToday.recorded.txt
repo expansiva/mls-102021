@@ -1,0 +1,704 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/workflows/toolCatalogRefresh.ts" enhancement="_blank"/>
+
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import {
+  createOccurrenceContext,
+  occurrenceRecordId,
+  registerWorkflowWakeHandler,
+  workflowWakeCommandId,
+} from '/_102034_/l1/workflow/index.js';
+import type {
+  ModuleWakeEvent,
+  OccurrenceKey,
+  TaskOccurrenceLlmResult,
+  WorkflowExecutor,
+} from '/_102034_/l1/workflow/index.js';
+import {
+  workflowEngine,
+  workflowPlans,
+  transitionTo,
+  noticeState,
+} from '/_102047_/l1/agents/layer_1_external/adapters/workflow/engine.js';
+import type { CmGateway } from '/_102047_/l1/agents/layer_1_external/adapters/integration/outbound.js';
+import { updateAgentTool } from '/_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.js';
+import type { AgentToolRepository } from '/_102047_/l1/agents/layer_2_application/ports/agentToolRepository.js';
+import type { ToolRepository } from '/_102047_/l1/agents/layer_2_application/ports/toolRepository.js';
+import type { AgentTool } from '/_102047_/l1/agents/layer_3_domain/entities/agentTool.js';
+import type { Tool } from '/_102047_/l1/agents/layer_3_domain/entities/tool.js';
+
+const PROJECT_ID = '102047';
+const MODULE_NAME = 'agents';
+const PROCESS_ID = 'toolCatalogRefresh';
+const ENTITY_ID = 'AgentTool';
+const STEP_REBUILD_CATALOG = 'rebuildCatalog';
+const STEP_CHOOSE_NEW_TOOLS = 'chooseNewToolsPerAgent';
+const ROUTINE_PREFIX = `${MODULE_NAME}.${PROCESS_ID}`;
+/** Minimum age (ms) of a half-finished step before the tick recovery redoes it: one tick of 60s. */
+const RECOVERY_MIN_AGE_MS = 60_000;
+
+/** Key of the occurrence of this process for one record id. */
+function occurrenceKeyOf(recordId: string): OccurrenceKey {
+  return {
+    project: PROJECT_ID,
+    module: MODULE_NAME,
+    processId: PROCESS_ID,
+    entity: ENTITY_ID,
+    recordId,
+  };
+}
+
+/** Executor of a routine of this process (`agents.toolCatalogRefresh.<function>`). */
+function routineExecutor(functionId: string): WorkflowExecutor {
+  return { kind: 'routine', name: `${ROUTINE_PREFIX}.${functionId}` };
+}
+
+/** One action of the catalog delivered by the release. */
+export interface ReleaseCatalogAction {
+  toolKey: string;
+  moduleName: string;
+  subject: string;
+  name: string;
+  moduleTitle: string;
+  subjectTitle: string;
+  description: string;
+}
+
+export interface ApplyReleaseCatalogInput {
+  releaseLabel?: string;
+  catalog: ReleaseCatalogAction[];
+}
+
+export interface ApplyReleaseCatalogOutput {
+  recordId: string;
+  newTools: number;
+  removedTools: number;
+}
+
+export interface ChooseToolsForAgentsInput {
+  recordId: string;
+}
+
+export interface ChooseToolsForAgentsOutput {
+  recordId: string;
+  turnedOn: { agentId: string; toolId: string }[];
+}
+
+/** Validates the catalog delivered by the release: not empty, every field filled, one action per toolKey. */
+function validateReleaseCatalog(input: ApplyReleaseCatalogInput): ReleaseCatalogAction[] {
+  const catalog = input === null || input === undefined ? undefined : input.catalog;
+  if (!Array.isArray(catalog) || catalog.length === 0) {
+    throw new AppError('RELEASE_CATALOG_INVALID', 'The release catalog must list at least one action.', 400, { ruleId: 'catalogRebuiltOnRelease' });
+  }
+  const seen = new Set<string>();
+  for (const action of catalog) {
+    const fields: string[] = [action.toolKey, action.moduleName, action.subject, action.name, action.moduleTitle, action.subjectTitle];
+    for (const value of fields) {
+      if (typeof value !== 'string' || value.trim() === '') {
+        throw new AppError('RELEASE_CATALOG_INVALID', 'Every action of the release catalog needs a toolKey, module, subject, name and titles.', 400, { ruleId: 'catalogRebuiltOnRelease' });
+      }
+    }
+    if (typeof action.description !== 'string') {
+      throw new AppError('RELEASE_CATALOG_INVALID', 'Every action of the release catalog needs a description.', 400, { ruleId: 'catalogRebuiltOnRelease' });
+    }
+    if (seen.has(action.toolKey)) {
+      throw new AppError('RELEASE_CATALOG_DUPLICATE_TOOL_KEY', 'The release catalog lists the same toolKey twice.', 400, { ruleId: 'toolKeyUnique' });
+    }
+    seen.add(action.toolKey);
+  }
+  return catalog;
+}
+
+/** Small stable hash of the sorted toolKeys of a catalog: the same actions give the same text. */
+function hashCatalogKeys(catalog: ReleaseCatalogAction[]): string {
+  const text = catalog.map((action) => action.toolKey).sort().join('|');
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+const CHOOSE_TOOLS_OUTPUT_FORMAT: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    suggestions: {
+      type: 'array',
+      description: 'One entry per agent with the tools that should be turned on for it.',
+      items: {
+        type: 'object',
+        properties: {
+          agentId: { type: 'string', description: 'The agentId exactly as given.' },
+          toolIds: { type: 'array', items: { type: 'string' }, description: 'The toolIds to turn on for this agent.' },
+        },
+        required: ['agentId', 'toolIds'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['suggestions'],
+  additionalProperties: false,
+};
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Looks for the `suggestions` list in the answer of the cm, which may come as an object or as a JSON text. */
+function findSuggestionList(value: unknown, depth: number): unknown[] | undefined {
+  if (depth > 4) return undefined;
+  if (typeof value === 'string') {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+    return findSuggestionList(parsed, depth + 1);
+  }
+  if (!isPlainRecord(value)) return undefined;
+  const direct = value['suggestions'];
+  if (Array.isArray(direct)) return direct;
+  for (const key of ['result', 'answer', 'output', 'text', 'content', 'data']) {
+    if (key in value) {
+      const found = findSuggestionList(value[key], depth + 1);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
+}
+
+/** Parses the answer of the cm into agent/tool suggestions; refuses anything outside the schema. */
+function parseToolSuggestions(raw: unknown): { agentId: string; toolIds: string[] }[] {
+  const list = findSuggestionList(raw, 0);
+  if (list === undefined) {
+    throw new AppError('TOOL_CHOICE_ANSWER_INVALID', 'The answer of the cm has no list of suggestions.', 400, { ruleId: 'newToolsChosenFromDescription' });
+  }
+  const result: { agentId: string; toolIds: string[] }[] = [];
+  for (const entry of list) {
+    if (!isPlainRecord(entry) || typeof entry['agentId'] !== 'string' || !Array.isArray(entry['toolIds'])) {
+      throw new AppError('TOOL_CHOICE_ANSWER_INVALID', 'A suggestion of the cm does not match the expected format.', 400, { ruleId: 'newToolsChosenFromDescription' });
+    }
+    const toolIds: string[] = [];
+    for (const toolId of entry['toolIds']) {
+      if (typeof toolId !== 'string') {
+        throw new AppError('TOOL_CHOICE_ANSWER_INVALID', 'A toolId suggested by the cm is not a text.', 400, { ruleId: 'newToolsChosenFromDescription' });
+      }
+      toolIds.push(toolId);
+    }
+    result.push({ agentId: entry['agentId'], toolIds });
+  }
+  return result;
+}
+
+const TEMPORARY_PORT_CODES: readonly string[] = [
+  'WORKFLOW_CM_BUSY',
+  'WORKFLOW_CM_TASK_INCOMPLETE',
+  'WORKFLOW_CM_ROOM_UNAVAILABLE',
+  'WORKFLOW_IDENTITY_INCOMPLETE',
+];
+
+/** True for a port error that the next tick may retry (temporary codes or HTTP 503). */
+function isTemporaryPortError(error: unknown): boolean {
+  if (!isPlainRecord(error)) return false;
+  const code = error['code'];
+  const status = error['status'];
+  const statusCode = error['statusCode'];
+  if (typeof code === 'string' && TEMPORARY_PORT_CODES.includes(code)) return true;
+  return status === 503 || statusCode === 503;
+}
+
+/** A tool of the catalog table seen as an action of the release (only the toolKey counts for the record id). */
+function toolAsCatalogAction(tool: Tool): ReleaseCatalogAction {
+  return {
+    toolKey: tool.toolKey,
+    moduleName: tool.moduleName,
+    subject: tool.subject,
+    name: tool.name,
+    moduleTitle: tool.details.moduleTitle,
+    subjectTitle: tool.details.subjectTitle,
+    description: tool.details.description,
+  };
+}
+
+/** Turns on the suggested tools as automatic choices; an admin choice is never touched. Returns how many were turned on. */
+async function applyChosenTools(
+  ctx: RequestContext,
+  suggestions: { agentId: string; toolIds: string[] }[],
+  availableTools: Tool[],
+  knownAgentIds: string[],
+): Promise<number> {
+  const agentToolRepository = resolveRepository<AgentToolRepository>(ctx, 'AgentToolRepository');
+  const toolsById = new Map<string, Tool>();
+  for (const tool of availableTools) toolsById.set(tool.id, tool);
+  let turnedOn = 0;
+  for (const suggestion of suggestions) {
+    if (!knownAgentIds.includes(suggestion.agentId)) continue;
+    for (const toolId of Array.from(new Set(suggestion.toolIds))) {
+      const tool = toolsById.get(toolId);
+      if (tool === undefined) continue;
+      const rows = await agentToolRepository.list({ agentId: suggestion.agentId, toolId });
+      const row = rows.length > 0 ? rows[0] : undefined;
+      if (row === undefined) {
+        const created: AgentTool = {
+          id: ctx.idGenerator.newId(),
+          version: 1,
+          agentId: suggestion.agentId,
+          toolId,
+          enabled: true,
+          choiceSource: 'automatic',
+          details: {
+            decidedAt: ctx.clock.nowIso(),
+            automaticOrigin: 'catalogRefresh',
+            toolName: tool.name,
+            toolRemoved: false,
+          },
+        };
+        await agentToolRepository.create(created);
+        turnedOn += 1;
+        continue;
+      }
+      if (row.choiceSource === 'admin') continue;
+      if (row.enabled) continue;
+      await updateAgentTool(
+        {
+          id: row.id,
+          version: row.version,
+          agentId: row.agentId,
+          toolId: row.toolId,
+          enabled: true,
+          choiceSource: 'automatic',
+          details: { automaticOrigin: 'catalogRefresh' },
+        },
+        ctx,
+      );
+      turnedOn += 1;
+    }
+  }
+  return turnedOn;
+}
+
+/** Receives the release catalog; validates it, adds new actions, marks missing ones removed, opens the occurrence and returns the counts of new and removed tools. The same release again changes nothing. */
+export async function applyReleaseCatalog(input: ApplyReleaseCatalogInput, ctx: RequestContext): Promise<ApplyReleaseCatalogOutput> {
+  const catalog = validateReleaseCatalog(input);
+
+  // rebuildCatalog: the catalog of the cm side is read through the gateway; an error of the gateway propagates.
+  const cmGateway = resolveRepository<CmGateway>(ctx, 'CmGateway');
+  const cmTools = await cmGateway.listCmTools({}, ctx);
+  ctx.log.info('toolCatalogRefresh: cm tools read', { cmTools });
+
+  // The same release (same label and same actions) gives the same record id, so the same occurrence.
+  const seed = `${input.releaseLabel ?? ''}:${hashCatalogKeys(catalog)}`;
+  const recordId = occurrenceRecordId(ctx, PROCESS_ID, seed);
+  const key = occurrenceKeyOf(recordId);
+  const executor = routineExecutor('applyReleaseCatalog');
+
+  const opened = await workflowEngine.open(ctx, {
+    key,
+    plan: workflowPlans.toolCatalogRefresh,
+    title: input.releaseLabel !== undefined && input.releaseLabel !== ''
+      ? `Tool catalog ${input.releaseLabel}`
+      : 'Tool catalog of the release',
+    firstStep: STEP_REBUILD_CATALOG,
+    actorNow: null,
+    owner: null,
+    origin: { kind: 'event' },
+    executor,
+    room: { mode: 'exclusive' },
+  });
+
+  const toolRepository = resolveRepository<ToolRepository>(ctx, 'ToolRepository');
+  const now = ctx.clock.nowIso();
+  const existing = await toolRepository.list({});
+  const ownTools = existing.filter((tool: Tool) => tool.origin === 'appModule');
+  const byKey = new Map<string, Tool>();
+  for (const tool of ownTools) {
+    if (!byKey.has(tool.toolKey)) byKey.set(tool.toolKey, tool);
+  }
+  const releaseKeys = new Set<string>(catalog.map((action) => action.toolKey));
+
+  let newTools = 0;
+  let removedTools = 0;
+
+  // New actions are added; actions that came back are made available again.
+  for (const action of catalog) {
+    const found = byKey.get(action.toolKey);
+    if (found === undefined) {
+      const created: Tool = {
+        id: ctx.idGenerator.newId(),
+        version: 1,
+        toolKey: action.toolKey,
+        origin: 'appModule',
+        moduleName: action.moduleName,
+        subject: action.subject,
+        name: action.name,
+        status: 'available',
+        details: {
+          moduleTitle: action.moduleTitle,
+          subjectTitle: action.subjectTitle,
+          description: action.description,
+          ...(input.releaseLabel !== undefined && input.releaseLabel !== '' ? { releaseLabel: input.releaseLabel } : {}),
+          addedAt: now,
+        },
+      };
+      await toolRepository.update(created);
+      newTools += 1;
+    } else if (found.status === 'removed') {
+      // transition restoreToRelease: removed -> available, keeping the version read.
+      const { removedAt, ...keptDetails } = found.details;
+      const restored: Tool = {
+        ...found,
+        status: 'available',
+        details: {
+          ...keptDetails,
+          ...(input.releaseLabel !== undefined && input.releaseLabel !== '' ? { releaseLabel: input.releaseLabel } : {}),
+        },
+      };
+      await toolRepository.update(restored);
+    }
+  }
+
+  // Actions that left the release are marked removed, never deleted.
+  for (const tool of byKey.values()) {
+    if (tool.status === 'available' && !releaseKeys.has(tool.toolKey)) {
+      // transition removeFromRelease: available -> removed, keeping the version read.
+      const removed: Tool = {
+        ...tool,
+        status: 'removed',
+        details: { ...tool.details, removedAt: now },
+      };
+      await toolRepository.update(removed);
+      removedTools += 1;
+    }
+  }
+
+  // The occurrence moves to the llm step only when it is still on the step it left.
+  const snapshot = opened.occurrence;
+  if (snapshot.step === STEP_REBUILD_CATALOG && !snapshot.done) {
+    const advanced = await workflowEngine.advance(ctx, key, {
+      commandId: `${recordId}:${STEP_CHOOSE_NEW_TOOLS}`,
+      expectedRevision: snapshot.revision,
+      from: STEP_REBUILD_CATALOG,
+      to: STEP_CHOOSE_NEW_TOOLS,
+      actorNow: null,
+      executor,
+    });
+    if (advanced.outcome === 'conflict') {
+      ctx.log.info('toolCatalogRefresh: occurrence already advanced by another call', { recordId });
+    }
+  }
+
+  return { recordId, newTools, removedTools };
+}
+
+
+/** Called by the llm stage; for each agent read from the cm turns on suggested new tools only where the admin made no choice, records them as automatic and returns the tools turned on. Repeating it keeps the same result. */
+export async function chooseToolsForAgents(input: ChooseToolsForAgentsInput, ctx: RequestContext): Promise<ChooseToolsForAgentsOutput> {
+  const recordId = input === null || input === undefined ? undefined : input.recordId;
+  if (typeof recordId !== 'string' || recordId.trim() === '') {
+    throw new AppError('TOOL_CHOICE_RECORD_ID_REQUIRED', 'The recordId of the catalog refresh occurrence is required.', 400, { ruleId: 'newToolsChosenFromDescription' });
+  }
+  const snapshot = await workflowEngine.find(ctx, occurrenceKeyOf(recordId));
+  if (snapshot === null) {
+    throw new AppError('TOOL_CATALOG_REFRESH_NOT_FOUND', 'The catalog refresh occurrence was not found.', 404, { ruleId: 'newToolsChosenFromDescription' });
+  }
+
+  const toolRepository = resolveRepository<ToolRepository>(ctx, 'ToolRepository');
+  const agentToolRepository = resolveRepository<AgentToolRepository>(ctx, 'AgentToolRepository');
+  const gateway = resolveRepository<CmGateway>(ctx, 'CmGateway');
+
+  const availableTools: Tool[] = await toolRepository.list({ status: 'available' });
+  const rows: AgentTool[] = await agentToolRepository.list({});
+
+  const rowByKey = new Map<string, AgentTool>();
+  const agentIds: string[] = [];
+  for (const row of rows) {
+    rowByKey.set(`${row.agentId}|${row.toolId}`, row);
+    if (!agentIds.includes(row.agentId)) agentIds.push(row.agentId);
+  }
+
+  // Candidates per agent: available tools with no choice, or with an automatic choice still off. Never an admin choice.
+  const candidatesByAgent = new Map<string, Tool[]>();
+  for (const agentId of agentIds) {
+    const candidates: Tool[] = [];
+    for (const tool of availableTools) {
+      const row = rowByKey.get(`${agentId}|${tool.id}`);
+      if (row === undefined || row.choiceSource === 'automatic') candidates.push(tool);
+    }
+    if (candidates.length > 0) candidatesByAgent.set(agentId, candidates);
+  }
+
+  if (candidatesByAgent.size === 0) {
+    return { recordId, turnedOn: [] };
+  }
+
+  const promptPayload = Array.from(candidatesByAgent.entries()).map(([agentId, candidates]) => ({
+    agentId,
+    tools: candidates.map((tool) => ({
+      toolId: tool.id,
+      name: tool.name,
+      subject: tool.details.subjectTitle,
+      description: tool.details.description,
+    })),
+  }));
+  const prompt = [
+    'For each agent below, decide from the description of the agent which of the listed tools should be turned on.',
+    'Answer only with tools listed for that same agent, using the toolId and the agentId exactly as given.',
+    'Leave an agent with an empty toolIds list when none of its tools fits.',
+    JSON.stringify(promptPayload),
+  ].join('\n');
+
+  const answer = await gateway.runAiPrompt({ prompt, outputFormat: CHOOSE_TOOLS_OUTPUT_FORMAT }, ctx);
+  const raw: unknown = answer;
+  const suggestions = parseToolSuggestions(raw);
+
+  const turnedOn: { agentId: string; toolId: string }[] = [];
+  const handled = new Set<string>();
+  for (const suggestion of suggestions) {
+    const candidates = candidatesByAgent.get(suggestion.agentId);
+    if (candidates === undefined) {
+      ctx.log.info('toolCatalogRefresh: suggestion for an agent with no candidate tools ignored', { agentId: suggestion.agentId });
+      continue;
+    }
+    for (const toolId of suggestion.toolIds) {
+      const key = `${suggestion.agentId}|${toolId}`;
+      if (handled.has(key)) continue;
+      if (!candidates.some((tool) => tool.id === toolId)) {
+        ctx.log.info('toolCatalogRefresh: suggestion of a tool that is not a candidate ignored', { agentId: suggestion.agentId, toolId });
+        continue;
+      }
+      handled.add(key);
+      const row = rowByKey.get(key);
+      if (row === undefined) {
+        await agentToolRepository.create({
+          id: ctx.idGenerator.newId(),
+          version: 1,
+          agentId: suggestion.agentId,
+          toolId,
+          enabled: true,
+          choiceSource: 'automatic',
+          details: { decidedAt: ctx.clock.nowIso(), automaticOrigin: 'catalogRefresh' },
+        });
+      } else if (row.choiceSource === 'admin') {
+        continue;
+      } else if (!row.enabled) {
+        await updateAgentTool({
+          id: row.id,
+          version: row.version,
+          agentId: row.agentId,
+          toolId: row.toolId,
+          enabled: true,
+          choiceSource: 'automatic',
+          details: { automaticOrigin: 'catalogRefresh' },
+        }, ctx);
+      }
+      turnedOn.push({ agentId: suggestion.agentId, toolId });
+    }
+  }
+
+  return { recordId, turnedOn };
+}
+
+
+/** Wake handler of the llm step chooseNewToolsPerAgent: accepts only `llm-step-finished` of the current pass, rereads the result with the same commandId and advances the Task to the end. */
+export async function entregarChooseNewToolsPerAgent(ctx: RequestContext, event: ModuleWakeEvent): Promise<void> {
+  if (event.kind !== 'llm-step-finished') return;
+  if (event.stepKey !== STEP_CHOOSE_NEW_TOOLS) return;
+
+  const commandId = event.commandId;
+  const suffix = `:${STEP_CHOOSE_NEW_TOOLS}:${event.pass}`;
+  if (typeof commandId !== 'string' || !commandId.endsWith(suffix) || commandId.length === suffix.length) {
+    throw new AppError('LLM_STEP_COMMAND_INVALID', 'The llm step notice carries a command that does not belong to this process step.', 400, { ruleId: 'newToolsChosenFromDescription' });
+  }
+  const recordId = commandId.slice(0, commandId.length - suffix.length);
+  const key = occurrenceKeyOf(recordId);
+
+  const occurrence = await workflowEngine.find(ctx, key);
+  if (occurrence === null) {
+    throw new AppError('OCCURRENCE_NOT_FOUND', 'The occurrence of the llm step notice was not found.', 404, { ruleId: 'newToolsChosenFromDescription' });
+  }
+  if (occurrence.taskId !== event.taskId) return;
+  if (occurrence.done || occurrence.step !== STEP_CHOOSE_NEW_TOOLS) return;
+  if (occurrence.pass !== event.pass) return;
+
+  const llm: TaskOccurrenceLlmResult = await workflowEngine.requestLlmStep(ctx, {
+    key,
+    commandId,
+    stepKey: STEP_CHOOSE_NEW_TOOLS,
+    maxPasses: 2,
+    system:
+      'You choose, for each agent, which new tools of the catalog should be turned on, from the description of the agent. Never change a choice the admin made. Answer only with the requested schema.',
+    user: `Choose the new tools per agent for the catalog refresh ${recordId}. Return one entry per agent with its agentId and the toolIds to turn on.`,
+    outputSchema: {
+      name: 'chooseNewToolsPerAgent',
+      description: 'Tools to turn on for each agent.',
+      parameters: CHOOSE_TOOLS_OUTPUT_FORMAT,
+    },
+  });
+
+  if (llm.state === 'pending' || llm.state === 'in_progress') return;
+
+  const wakeCommandId = workflowWakeCommandId(`${event.taskId}:${STEP_CHOOSE_NEW_TOOLS}:llm:${commandId}`);
+  const executor = routineExecutor('entregarChooseNewToolsPerAgent');
+
+  let failureReason: string | undefined;
+  if (llm.state === 'failed') {
+    failureReason = llm.failure !== undefined ? llm.failure.code : 'LLM_STEP_FAILED';
+  } else {
+    if (llm.result === undefined) {
+      failureReason = 'TOOL_CHOICE_ANSWER_INVALID';
+    } else {
+      try {
+        parseToolSuggestions(llm.result);
+      } catch (error) {
+        if (error instanceof AppError) {
+          failureReason = error.code;
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+
+  if (failureReason !== undefined) {
+    ctx.log.error('toolCatalogRefresh: llm step did not give a valid choice', { recordId, reason: failureReason });
+    const back = await workflowEngine.advance(ctx, key, {
+      commandId: wakeCommandId,
+      expectedRevision: occurrence.revision,
+      from: STEP_CHOOSE_NEW_TOOLS,
+      to: STEP_REBUILD_CATALOG,
+      actorNow: null,
+      executor,
+      note: `llm step refused: ${failureReason}`,
+    });
+    if (back.outcome === 'conflict') return;
+    return;
+  }
+
+  const result = await workflowEngine.advance(ctx, key, {
+    commandId: wakeCommandId,
+    expectedRevision: occurrence.revision,
+    from: STEP_CHOOSE_NEW_TOOLS,
+    to: 'end',
+    actorNow: null,
+    executor,
+  });
+  if (result.outcome === 'conflict') return;
+}
+
+
+/** Tick recovery of this process: finishes the three gaps (record saved with the Task on the previous step, Task on the llm step with no request stored, request done with result ready) without a second LLM call. */
+export async function recuperarToolCatalogRefresh(ctx: RequestContext): Promise<void> {
+  const toolRepository = resolveRepository<ToolRepository>(ctx, 'ToolRepository');
+  const tools = await toolRepository.list({});
+  const availableTools = tools.filter((tool) => tool.status === 'available');
+  if (availableTools.length === 0) return;
+
+  // The record id of the occurrence comes from the catalog now in the table (the one the last release applied).
+  const recordId = occurrenceRecordId(ctx, PROCESS_ID, hashCatalogKeys(availableTools.map(toolAsCatalogAction)));
+  const key = occurrenceKeyOf(recordId);
+  const executor = routineExecutor('recuperarToolCatalogRefresh');
+
+  try {
+    let snapshot = await workflowEngine.find(ctx, key);
+    if (snapshot === null || snapshot.done) return;
+
+    // Gap 1: the catalog is already saved and the Task is still on the previous step.
+    if (snapshot.step === STEP_REBUILD_CATALOG) {
+      const lastEntry = snapshot.history.length > 0 ? snapshot.history[snapshot.history.length - 1] : undefined;
+      if (lastEntry !== undefined) {
+        const ageMs = Date.parse(ctx.clock.nowIso()) - Date.parse(lastEntry.at);
+        if (Number.isNaN(ageMs) || ageMs < RECOVERY_MIN_AGE_MS) return;
+      }
+      const advanced = await workflowEngine.advance(ctx, key, {
+        commandId: `${recordId}:applyReleaseCatalog:r${snapshot.revision}`,
+        expectedRevision: snapshot.revision,
+        from: STEP_REBUILD_CATALOG,
+        to: STEP_CHOOSE_NEW_TOOLS,
+        actorNow: null,
+        executor,
+      });
+      if (advanced.outcome === 'conflict' || advanced.outcome === 'paused') return;
+      snapshot = advanced.occurrence;
+    }
+
+    if (snapshot.step !== STEP_CHOOSE_NEW_TOOLS) return;
+
+    // Gaps 2 and 3: the Task is on the llm step. The same commandId returns the step the runtime already has,
+    // so this is a request when none was stored and a read when one was.
+    const llmCommandId = `${recordId}:${STEP_CHOOSE_NEW_TOOLS}:${snapshot.pass}`;
+    const agentToolRepository = resolveRepository<AgentToolRepository>(ctx, 'AgentToolRepository');
+    const existingRows = await agentToolRepository.list({});
+    const knownAgentIds = Array.from(new Set(existingRows.map((row) => row.agentId)));
+
+    const llmResult: TaskOccurrenceLlmResult = await workflowEngine.requestLlmStep(ctx, {
+      key,
+      commandId: llmCommandId,
+      stepKey: STEP_CHOOSE_NEW_TOOLS,
+      maxPasses: 2,
+      system: [
+        'You choose, for each agent, which new tools of the catalog should be turned on.',
+        'Decide from what each tool does and what the agent is for. Choose only tools that clearly fit the agent.',
+        'Use the agentId and the toolId exactly as given. Never invent an id. Answer only with the requested schema.',
+      ].join(' '),
+      user: JSON.stringify({
+        agents: knownAgentIds.map((agentId) => ({ agentId })),
+        tools: availableTools.map((tool) => ({
+          toolId: tool.id,
+          module: tool.details.moduleTitle,
+          subject: tool.details.subjectTitle,
+          name: tool.name,
+          description: tool.details.description,
+        })),
+      }),
+      webSearch: false,
+      outputSchema: {
+        name: STEP_CHOOSE_NEW_TOOLS,
+        description: 'The tools to turn on for each agent.',
+        parameters: CHOOSE_TOOLS_OUTPUT_FORMAT,
+      },
+    });
+
+    if (llmResult.state === 'pending' || llmResult.state === 'in_progress') return;
+
+    if (llmResult.state === 'failed') {
+      ctx.log.error('toolCatalogRefresh: the llm step failed', {
+        recordId,
+        code: llmResult.failure === undefined ? undefined : llmResult.failure.code,
+      });
+      return;
+    }
+
+    let suggestions: { agentId: string; toolIds: string[] }[];
+    try {
+      suggestions = parseToolSuggestions(llmResult.result);
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'TOOL_CHOICE_ANSWER_INVALID') {
+        ctx.log.error('toolCatalogRefresh: the llm answer is invalid', { recordId, code: error.code });
+        return;
+      }
+      throw error;
+    }
+
+    await applyChosenTools(ctx, suggestions, availableTools, knownAgentIds);
+
+    const current = await workflowEngine.find(ctx, key);
+    if (current === null || current.done || current.step !== STEP_CHOOSE_NEW_TOOLS) return;
+    await workflowEngine.advance(ctx, key, {
+      commandId: workflowWakeCommandId(`${current.taskId}:${STEP_CHOOSE_NEW_TOOLS}:llm:${llmCommandId}`),
+      expectedRevision: current.revision,
+      from: STEP_CHOOSE_NEW_TOOLS,
+      to: 'end',
+      actorNow: null,
+      executor,
+    });
+  } catch (error) {
+    if (isTemporaryPortError(error)) {
+      ctx.log.info('toolCatalogRefresh: temporary port error, the next tick tries again', { recordId });
+      return;
+    }
+    throw error;
+  }
+}
+

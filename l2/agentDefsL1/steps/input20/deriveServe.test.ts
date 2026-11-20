@@ -287,18 +287,50 @@ void test('d1_230: an entity of a read serve that has no possible usecase is an 
   assert.match(refused[0].message, /Entity Ghost is not in the module ontology/);
 });
 
-void test('d1_230: a write serve with several entities keeps the first usecase and names the others in a review', () => {
+void test('d1_232: an old write serve that lists several entities has the one effect for each: one usecase per entity, no review', () => {
   const { requests, problems } = runMany([
     { connectionId: 'cm', operationId: 'record', entityRefs: ['AgentTool', 'PersonToolRestriction'], effect: 'create' },
   ], ['AgentTool', 'PersonToolRestriction']);
-  assert.deepEqual(requests[0]?.uses, ['createAgentTool']);
-  const extra = problems.filter(item => item.code === 'SERVE_WRITE_EXTRA_ENTITYREFS');
-  assert.equal(extra.length, 1);
-  assert.equal(extra[0].severity, 'review');
-  assert.match(extra[0].message, /PersonToolRestriction/);
-  assert.equal(extra[0].message.includes('Only AgentTool has a usecase'), true);
+  assert.deepEqual(requests[0]?.uses, ['createAgentTool', 'createPersonToolRestriction']);
+  assert.equal(problems.some(item => item.code === 'SERVE_WRITE_EXTRA_ENTITYREFS'), false, 'the effect of each entity is known now');
   assert.equal(problems.some(item => item.severity === 'error'), false);
-  // One entity: no review.
-  const single = runMany([{ connectionId: 'cm', operationId: 'record', entityRefs: ['AgentTool'], effect: 'create' }], ['AgentTool']);
-  assert.equal(single.problems.some(item => item.code === 'SERVE_WRITE_EXTRA_ENTITYREFS'), false);
+});
+
+void test('d1_232: a serve says its effects per entity: [create, update] on one entity is an upsert with its key', () => {
+  const entities = { Item: { uniqueKeys: [['itemKey']] }, Plain: { record: { fields: { id: {}, name: {} } } }, Bare: { record: { fields: { name: {} } } }, Other: {} };
+  const line = (effects: Array<{ entityId: string; effects: string[] }>): D1ServeLine => ({ connectionId: 'cm', operationId: 'record', entityEffects: effects });
+  const run1 = (effects: Array<{ entityId: string; effects: string[] }>) => {
+    const problems: D1InputProblem[] = [];
+    const requests = deriveServeRequests({ moduleName: MODULE, lines: [line(effects)], catalogTexts: { cm: catalogText }, usecases: [], problems, entities, plannedIds: new Map(), removedIds: new Set() });
+    return { requests, problems };
+  };
+  const unique = run1([{ entityId: 'Item', effects: ['create', 'update'] }, { entityId: 'Other', effects: ['create'] }]);
+  assert.deepEqual(unique.requests[0]?.uses, ['createItem', 'updateItem', 'createOther']);
+  assert.deepEqual(unique.requests[0]?.upserts, [{ entityId: 'Item', key: ['itemKey'], keyKind: 'unique' }]);
+  const byId = run1([{ entityId: 'Plain', effects: ['create', 'update'] }]);
+  assert.deepEqual(byId.requests[0]?.upserts, [{ entityId: 'Plain', key: ['id'], keyKind: 'id' }]);
+  assert.equal(unique.requests[0]?.writes, 'Item.create', 'the first pair, as before');
+  const none = run1([{ entityId: 'Bare', effects: ['create', 'update'] }]);
+  const refusal = none.problems.find(item => item.code === 'ARRIVAL_UPSERT_WITHOUT_KEY');
+  assert.ok(refusal);
+  assert.equal(refusal.severity, 'error');
+  assert.match(refusal.message, /desk\.cm\.record creates or updates Bare/);
+  assert.equal(none.requests[0]?.upserts, undefined);
+  const single = run1([{ entityId: 'Item', effects: ['create'] }]);
+  assert.equal(single.requests[0]?.upserts, undefined, 'one effect is not an upsert');
+  const confirm = run1([]);
+  assert.deepEqual([confirm.requests[0]?.uses, confirm.requests[0]?.writes], [[], '']);
+});
+
+void test('d1_232: a serve that starts a process keeps d1_206 for one effect, and plans the usecases of an upsert (its port needs both) with the route still calling the process', () => {
+  const entities = { Item: { uniqueKeys: [['itemKey']] } };
+  const problems: D1InputProblem[] = [];
+  const usecases: D1SelectedUsecase[] = [];
+  const base = { moduleName: MODULE, catalogTexts: { cm: catalogText }, usecases, problems, entities, plannedIds: new Map<string, string>(), removedIds: new Set<string>(), processTriggers: new Set(['cm.record']) };
+  const single = deriveServeRequests({ ...base, lines: [{ connectionId: 'cm', operationId: 'record', entityRefs: ['Item'], effect: 'update' }] });
+  assert.deepEqual([single[0]?.uses, usecases.length], [[], 0]);
+  const upsert = deriveServeRequests({ ...base, lines: [{ connectionId: 'cm', operationId: 'record', entityEffects: [{ entityId: 'Item', effects: ['create', 'update'] }] }] });
+  assert.deepEqual(upsert[0]?.uses, [], 'the route calls the process');
+  assert.deepEqual(usecases.map(item => `${item.entity}.${item.operation}`), ['Item.create', 'Item.update']);
+  assert.deepEqual(upsert[0]?.upserts, [{ entityId: 'Item', key: ['itemKey'], keyKind: 'unique' }]);
 });

@@ -193,6 +193,8 @@ export interface D1SelectedRequest {
   serves?: string;
   /** `<publisherModule>.<eventId>` when the request comes from an `inbound` event line (d1_217). The platform delivers the event to it. */
   consumes?: string;
+  /** The entities this arrival creates or updates by key (d1_232). Present only when there is one. */
+  upserts?: Array<{ entityId: string; key: string[]; keyKind: 'unique' | 'id' }>;
   /** Readonly values tied to a route rule by a resolve25 answer (d1_62). Present only when there is one. */
   computedBy?: D1RequestComputedBy[];
   /** Present only when something was left unresolved (d1_60). */

@@ -10,27 +10,16 @@ import {
   type D1SelectedUsecase,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/source.js';
+import { SERVE_OPERATION_OF_EFFECT } from '/_102021_/l2/agentDefsL1/steps/input20/arrivalPairs.js';
+import { isUpsert, upsertKeyOf, type ArrivalUpsert } from '/_102021_/l2/helpers/l1Defs/arrivalUpsert.js';
+import { ns5ArrivalEffects, type Ns5ArrivalEffectsItem } from '/_102035_/l2/solution/arrivalEffects.js';
 import { L1_OPERATIONS, transitionUsecaseId, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 
 /** One `integration.connections` line with `direction: 'serve'`. */
-export interface D1ServeLine {
+export interface D1ServeLine extends Ns5ArrivalEffectsItem {
   connectionId: string;
   operationId: string;
-  entityRefs?: readonly string[];
-  effect?: string;
 }
-
-/** Connection effect to the usecase operation. Serve lines have no step; the call side is `externalCallsOf`. */
-const OPERATION_OF_EFFECT: Record<string, L1Operation> = {
-  list: 'list',
-  read: 'get',
-  create: 'create',
-  update: 'update',
-  remove: 'delete',
-};
-
-/** Effects that read: a serve with them uses one usecase per entity of the line (d1_230). */
-const READ_EFFECTS = new Set<string>(['list', 'read']);
 
 const CREATED = new Set<string>(L1_OPERATIONS.filter(operation => operation !== 'custom' && operation !== 'transition'));
 
@@ -202,32 +191,42 @@ function oneServe(input: DeriveServeInput, line: D1ServeLine): D1SelectedRequest
     }
     params = topParams(source, operation.inputType);
   }
-  const refs = (line.entityRefs ?? []).filter(Boolean);
-  const entity = refs[0] || '';
-  const effect = line.effect || '';
+  // d1_232: what the line does to each entity comes from the one reader of the NS5 (the new `entityEffects`, or the old line translated).
+  const entries = ns5ArrivalEffects(line, 'serve').filter(entry => entry.entityId);
+  const first = entries[0];
+  const entity = first?.entityId || '';
+  const effect = first?.effects[0] || '';
   const writes = entity && effect ? `${entity}.${effect}` : '';
   const uses: string[] = [];
-  const operationName = entity && effect ? OPERATION_OF_EFFECT[effect] : '';
-  if (entity && effect && operationName && !input.processTriggers?.has(serves)) {
-    // d1_230: a read serve reads every entity the line lists, one usecase each, in the order of the L4. A write serve states one effect,
-    // which the L4 does not say for the others: the first keeps the usecase and the rest are named in a review, never dropped silently.
-    const reads = READ_EFFECTS.has(effect);
-    for (const name of reads ? refs : [entity]) {
+  const upserts: ArrivalUpsert[] = [];
+  const owned = Boolean(input.processTriggers?.has(serves));
+  for (const entry of entries) {
+    const upsert = isUpsert(entry);
+    // d1_206: a serve that starts a process takes no usecase from its effect, the process owns the write. A line that says create and update on
+    // one entity (d1_232) is the exception: its port needs both, so the usecases are planned and the route still calls the process.
+    if (owned && !upsert) continue;
+    const kept = owned ? [] : uses;
+    // d1_230/d1_232: one usecase per entity and effect the line names, in the order of the L4.
+    for (const name of entry.effects) {
+      const operationName = SERVE_OPERATION_OF_EFFECT[name];
+      if (!operationName) continue;
       takeUsecase({
         problems: input.problems,
         path,
         routeName: route,
-        entity: name,
+        entity: entry.entityId,
         operation: operationName,
         transitionKey: '',
         usecases: input.usecases,
-        uses,
+        uses: kept,
         colliding: new Set(),
-        refusalOf: usecaseId => usecaseRefusal(name, operationName, usecaseId, input.entities, input.plannedIds, input.removedIds),
+        refusalOf: usecaseId => usecaseRefusal(entry.entityId, operationName, usecaseId, input.entities, input.plannedIds, input.removedIds),
       });
     }
-    if (!reads && refs.length > 1) {
-      problem(input.problems, 'review', 'SERVE_WRITE_EXTRA_ENTITYREFS', path, `Route ${route} writes with effect ${effect} and lists ${refs.length} entities. Only ${entity} has a usecase; the L4 does not say which effect applies to ${refs.slice(1).join(', ')}.`, route);
+    if (upsert) {
+      const key = upsertKeyOf(input.entities[entry.entityId]);
+      if (key) upserts.push({ entityId: entry.entityId, ...key });
+      else problem(input.problems, 'error', 'ARRIVAL_UPSERT_WITHOUT_KEY', path, `Route ${route} creates or updates ${entry.entityId}, which has no uniqueKeys and no id field to find the record by. The L4 must give the entity a key.`, route);
     }
   }
   return {
@@ -239,6 +238,7 @@ function oneServe(input: DeriveServeInput, line: D1ServeLine): D1SelectedRequest
     params,
     uses,
     serves,
+    ...(upserts.length ? { upserts } : {}),
   };
 }
 

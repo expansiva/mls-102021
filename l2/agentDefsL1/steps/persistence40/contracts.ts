@@ -137,6 +137,8 @@ export interface D1PersistenceRequest {
   catalogRefs?: Record<string, string>;
   /** d1_221: entities the L4 says their parent writes. Their port has `create`, though no usecase of their own asks for it. */
   recordedWithParent?: string[];
+  /** d1_232: entities an arrival creates or updates and finds by their id (no unique key). Their port has `get`, the lookup of that upsert. */
+  findById?: string[];
 }
 
 /** Logical field encoded by one column string. `json:` marks the details envelope. */

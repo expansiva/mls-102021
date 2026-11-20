@@ -9,6 +9,7 @@ import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers
 import { entityCatalogSource, entityPath, inputPaths, journeyPath, type D1InputSnapshot, type D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { resolveAllowedFields } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
+import { ns5ArrivalEffects } from '/_102035_/l2/solution/arrivalEffects.js';
 import { externalCallsOf, processConsumersOf, type D1ExternalCallMatch } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo, readCatalogRef } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
@@ -93,7 +94,7 @@ export async function assembleD1Support(
   const operationUsecases = operationUsecasesOf(selected);
   const linked = await effectsOf(project, moduleName, selected);
   const serves = new Set((snapshot.selection.requests || []).flatMap(request => request.serves ? [request.serves] : []));
-  const processes = await processesOf(project, moduleName, selected, serves);
+  const processes = await processesOf(project, moduleName, selected, serves, arrivalUpserts((snapshot.selection.requests || [])));
   const request: D1SupportRequest = {
     project,
     moduleName,
@@ -712,20 +713,20 @@ export function inboundOperation(
   selected: readonly D1SelectedUsecase[],
 ): D1EffectOperation | null {
   if (typeof row.id !== 'string' || !row.id) return null;
-  const effect = typeof row.effect === 'string' ? row.effect : '';
+  // d1_232: what the line does to each entity comes from the one reader of the NS5; an effect other than these names no operation.
+  const transitionRef = typeof row.transitionRef === 'string' ? row.transitionRef : '';
   const operations: string[] = [];
-  if (effect === 'transition') {
-    const transitionRef = typeof row.transitionRef === 'string' ? row.transitionRef : '';
-    const transitions = transitionUsecasesOf(selected);
-    for (const entity of transitionRef ? stringList(row.writes) : []) {
-      // Unselected: the entity transition stays named, and the pool check reports it.
-      const operation = transitionUsecaseFor(transitions, entity, transitionRef) || `${entity}.${transitionRef}`;
-      if (!operations.includes(operation)) operations.push(operation);
-    }
-  } else if (effect === 'create' || effect === 'update') {
-    for (const entity of stringList(row.writes)) {
-      const match = selected.find(item => item.entity === entity && item.operation === effect);
-      if (match?.usecaseId && !operations.includes(match.usecaseId)) operations.push(match.usecaseId);
+  for (const entry of ns5ArrivalEffects(row, 'inbound')) {
+    for (const effect of entry.effects) {
+      if (effect === 'transition') {
+        if (!transitionRef) continue;
+        // Unselected: the entity transition stays named, and the pool check reports it.
+        const operation = transitionUsecaseFor(transitionUsecasesOf(selected), entry.entityId, transitionRef) || `${entry.entityId}.${transitionRef}`;
+        if (!operations.includes(operation)) operations.push(operation);
+      } else if (effect === 'create' || effect === 'update') {
+        const match = selected.find(item => item.entity === entry.entityId && item.operation === effect);
+        if (match?.usecaseId && !operations.includes(match.usecaseId)) operations.push(match.usecaseId);
+      }
     }
   }
   const known = new Set(selected.flatMap(item => [item.usecaseId, item.identity]).filter(Boolean));
@@ -1001,12 +1002,23 @@ interface D1ProcessAct {
   transitionRef: string;
 }
 
+/** The entities each arrival (`serves` or `consumes` id) creates or updates by key, from the requests input20 derived (d1_232). */
+export function arrivalUpserts(requests: readonly { serves?: string; consumes?: string; upserts?: ReadonlyArray<{ entityId: string }> }[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const request of requests) {
+    const id = request.serves || request.consumes;
+    if (id && request.upserts?.length) out.set(id, request.upserts.map(upsert => upsert.entityId));
+  }
+  return out;
+}
+
 /** L4 processes as plans. Occurrence and operations follow the workflowProcess rule. No def is written. */
 export async function processesOf(
   project: number,
   moduleName: string,
   selected: readonly D1SelectedUsecase[],
   serves: ReadonlySet<string> = new Set(),
+  arrivals: ReadonlyMap<string, readonly string[]> = new Map(),
 ): Promise<D1ProcessPlan[]> {
   const text = await readLogical(project, inputPaths(moduleName).workflows);
   const workflows = text ? parseD1Source(text, 'defs') : null;
@@ -1058,6 +1070,12 @@ export async function processesOf(
         typeof task.transitionRef === 'string' ? task.transitionRef : '',
         `task:${taskId}`,
       );
+    }
+    // d1_232: the arrival that starts the process says create and update on an entity: the process writes both, whatever its tasks say.
+    const started = isRecord(row.trigger) && row.trigger.kind === 'event' && typeof row.trigger.event === 'string' ? row.trigger.event : '';
+    for (const entity of arrivals.get(started) ?? []) {
+      add(entity, 'create', '', `arrival:${started}`);
+      add(entity, 'update', '', `arrival:${started}`);
     }
     const functions = arrayOf(row.functions).flatMap(item => (
       isRecord(item) && typeof item.functionId === 'string' && item.functionId ? [item.functionId] : []

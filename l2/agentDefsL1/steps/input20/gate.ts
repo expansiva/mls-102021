@@ -1316,13 +1316,13 @@ function serveLinesOf(integration: Record<string, unknown>): D1ServeLine[] {
     const connectionId = text(row.connectionId);
     const operationId = text(row.operationId);
     if (!isSafeToken(connectionId) || !isSafeToken(operationId)) continue;
-    const entityRefs = strings(row.entityRefs);
-    const effect = text(row.effect);
+    // d1_232: the line goes to the derivation as the L4 wrote it; the one reader of the NS5 says what it does to each entity.
     lines.push({
       connectionId,
       operationId,
-      ...(entityRefs.length ? { entityRefs } : {}),
-      ...(effect ? { effect } : {}),
+      entityEffects: Array.isArray(row.entityEffects) ? row.entityEffects : undefined,
+      entityRefs: strings(row.entityRefs),
+      effect: text(row.effect),
     });
   }
   return lines;
