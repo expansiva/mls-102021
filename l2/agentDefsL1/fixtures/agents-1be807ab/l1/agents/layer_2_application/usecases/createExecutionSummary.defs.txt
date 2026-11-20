@@ -1,0 +1,28 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "createExecutionSummary",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/executionSummary.defs.ts",
+    "_102047_/l4/agents/rules.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "createExecutionSummary",
+    "entityId": "ExecutionSummary",
+    "operation": "create",
+    "rulesApplied": [
+      "activityNewestFirst",
+      "executionNeverEdited",
+      "executionRecordedOnce",
+      "onlyInboundWritesExecution"
+    ],
+    "effects": []
+  }
+} as const;
+
+export default definition;

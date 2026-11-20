@@ -1,0 +1,40 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/platform.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "platform",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [],
+  "data": {
+    "pageId": "platform",
+    "requests": [
+      {
+        "route": "agents.platform.releaseCatalogChanged",
+        "kind": "cmd",
+        "uses": [],
+        "transaction": "single",
+        "output": [],
+        "params": [
+          {
+            "name": "releaseId",
+            "target": ""
+          },
+          {
+            "name": "hash",
+            "target": ""
+          },
+          {
+            "name": "catalogs",
+            "target": ""
+          }
+        ],
+        "rules": [],
+        "serves": "platform.releaseCatalogChanged"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

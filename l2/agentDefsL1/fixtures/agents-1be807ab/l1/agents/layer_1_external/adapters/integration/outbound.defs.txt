@@ -1,0 +1,179 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/integration/outbound.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "integrationOutbound",
+  "artifactId": "outbound",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [],
+  "data": {
+    "integrationId": "outbound",
+    "events": [],
+    "connections": [
+      {
+        "connectionId": "cm",
+        "operationId": "activateAgent",
+        "consumer": "activate",
+        "entityRefs": [
+          "AgentDraft"
+        ],
+        "effect": "update"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "createAgent",
+        "consumer": "createAgentDraft",
+        "entityRefs": [
+          "AgentDraft"
+        ],
+        "effect": "create"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "discardAgentDraft",
+        "consumer": "discard",
+        "entityRefs": [
+          "AgentDraft"
+        ],
+        "effect": "remove"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "listAgentHistory",
+        "consumer": "listAgentBehavior",
+        "entityRefs": [
+          "AgentBehavior"
+        ],
+        "effect": "list"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "listAgents",
+        "consumer": "listAgent",
+        "entityRefs": [
+          "Agent",
+          "AgentDraft"
+        ],
+        "effect": "list"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "listAgents",
+        "consumer": "listAgentDraft",
+        "entityRefs": [
+          "Agent",
+          "AgentDraft"
+        ],
+        "effect": "list"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "listAgents",
+        "consumer": "toolCatalogRefresh",
+        "entityRefs": [
+          "Agent",
+          "AgentDraft"
+        ],
+        "effect": "list"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "listCmTools",
+        "consumer": "toolCatalogRefresh",
+        "entityRefs": [
+          "Tool"
+        ],
+        "effect": "list"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "readAgent",
+        "consumer": "getAgent",
+        "entityRefs": [
+          "Agent"
+        ],
+        "effect": "read"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "readAgent",
+        "consumer": "getAgentBehavior",
+        "entityRefs": [
+          "Agent"
+        ],
+        "effect": "read"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "readAgent",
+        "consumer": "getAgentDraft",
+        "entityRefs": [
+          "Agent"
+        ],
+        "effect": "read"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "readAgent",
+        "consumer": "listPersonalConduct",
+        "entityRefs": [
+          "Agent"
+        ],
+        "effect": "read"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "runAiPrompt",
+        "consumer": "toolCatalogRefresh",
+        "entityRefs": [
+          "AgentTool"
+        ],
+        "effect": "create"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "simulateAgent",
+        "consumer": "listAgentSimulation"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "undoAgentChange",
+        "consumer": "undoAgentChange",
+        "entityRefs": [
+          "AgentBehavior"
+        ],
+        "effect": "update"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "updateAgent",
+        "consumer": "updateAgent",
+        "entityRefs": [
+          "Agent"
+        ],
+        "effect": "update"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "updateAgent",
+        "consumer": "updateAgentAgentBehavior",
+        "entityRefs": [
+          "Agent"
+        ],
+        "effect": "update"
+      },
+      {
+        "connectionId": "cm",
+        "operationId": "updateAgent",
+        "consumer": "updatePersonalConduct",
+        "entityRefs": [
+          "Agent"
+        ],
+        "effect": "update"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

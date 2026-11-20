@@ -1,0 +1,23 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/activate.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "activate",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+    "_102047_/l4/agents/ontology/AgentDraft.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "activate",
+    "entityId": "AgentDraft",
+    "operation": "transition",
+    "rulesApplied": [],
+    "effects": [],
+    "transitionRef": "activate"
+  }
+} as const;
+
+export default definition;

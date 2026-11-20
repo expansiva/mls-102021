@@ -1,0 +1,80 @@
+/// <mls fileReference="_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "AgentDraft",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+  ],
+  "data": {
+    "entityId": "AgentDraft",
+    "storageTarget": "external",
+    "fields": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "prompt",
+        "type": "text"
+      },
+      {
+        "name": "situation",
+        "type": "enum"
+      },
+      {
+        "name": "refusalReason",
+        "type": "text"
+      },
+      {
+        "name": "summary",
+        "type": "text"
+      },
+      {
+        "name": "audience",
+        "type": "text"
+      },
+      {
+        "name": "onBehalfOf",
+        "type": "text"
+      },
+      {
+        "name": "proposedBehavior",
+        "type": "text"
+      },
+      {
+        "name": "suggestedTools",
+        "type": "record",
+        "ref": "Tool"
+      },
+      {
+        "name": "requestedBy",
+        "type": "record",
+        "ref": "OrganizationUser"
+      },
+      {
+        "name": "requestedAt",
+        "type": "timestamp"
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [
+      "agentDraftSuggestedToolsOnWhenReady",
+      "agentDraftNoticeIdempotent",
+      "agentNameUniqueAmongActive",
+      "adminChoiceNotOverriddenByAutomatic",
+      "draftDecisionOnlyWhenReady",
+      "refusalReasonShownWhenRefused"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

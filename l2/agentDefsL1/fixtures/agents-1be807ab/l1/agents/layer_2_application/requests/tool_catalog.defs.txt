@@ -1,0 +1,194 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/tool_catalog.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "tool_catalog",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/usecases/listTool.defs.ts"
+  ],
+  "data": {
+    "pageId": "tool_catalog",
+    "requests": [
+      {
+        "route": "agents.tool_catalog.getToolCatalog",
+        "kind": "qry",
+        "uses": [
+          "listTool"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "list",
+            "path": "modules",
+            "entity": "Tool",
+            "items": "",
+            "fields": [
+              {
+                "field": "moduleName",
+                "path": "moduleName"
+              },
+              {
+                "field": "details.moduleTitle",
+                "path": "details.moduleTitle"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "modules.subjects",
+            "entity": "Tool",
+            "fields": [
+              {
+                "field": "subject",
+                "path": "subject"
+              },
+              {
+                "field": "details.subjectTitle",
+                "path": "details.subjectTitle"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "modules.subjects.tools",
+            "entity": "Tool",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "details.description",
+                "path": "details.description"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "path": "toolUsage",
+            "entity": "Tool",
+            "items": "",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "details.moduleTitle",
+                "path": "details.moduleTitle"
+              },
+              {
+                "field": "details.subjectTitle",
+                "path": "details.subjectTitle"
+              },
+              {
+                "field": "usedByAgents",
+                "path": "details.usedByAgents"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "modules.subjects",
+            "reason": "Tool inside Tool needs one L4 relationship between them; found 0."
+          },
+          {
+            "kind": "unresolved",
+            "path": "modules.subjects.tools",
+            "reason": "Tool inside Tool needs one L4 relationship between them; found 0."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "noTechnicalIdsOnScreen",
+          "toolNeverDeleted"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads the whole tool catalog of the organization as a module / subject / action tree, together with how many agents use each tool.\nInput: None. The organization comes from the logged-in person.\nProcessing: Reads every Tool of the catalog, including removed ones (toolNeverDeleted: a tool that left the release is kept and returned with status removed), and groups them by moduleName then subject, ordered by moduleTitle, subjectTitle and name. Returns readable names only, never ids, toolKey or catalogItem (noTechnicalIdsOnScreen). toolUsage is computed only for callers whose grant allows Tool.details.usedByAgents (companyAdmin): usedByAgents is derived per tool by counting the distinct agents with an AgentTool for that tool whose enabled is true, in one grouped query; it is computed, never stored. The list is ordered by usedByAgents descending, then name. For organizationMember toolUsage is omitted.\nOutput: modules: every module with its subjects and their actions (name, description, status). toolUsage: every tool with its module and subject titles and the number of agents that have it on, most used first; absent when the caller may not see it.",
+          "purpose": "Loads the whole tool catalog of the organization as a module / subject / action tree, together with how many agents use each tool.",
+          "input": "None. The organization comes from the logged-in person.",
+          "processing": "Reads every Tool of the catalog, including removed ones (toolNeverDeleted: a tool that left the release is kept and returned with status removed), and groups them by moduleName then subject, ordered by moduleTitle, subjectTitle and name. Returns readable names only, never ids, toolKey or catalogItem (noTechnicalIdsOnScreen). toolUsage is computed only for callers whose grant allows Tool.details.usedByAgents (companyAdmin): usedByAgents is derived per tool by counting the distinct agents with an AgentTool for that tool whose enabled is true, in one grouped query; it is computed, never stored. The list is ordered by usedByAgents descending, then name. For organizationMember toolUsage is omitted.",
+          "output": "modules: every module with its subjects and their actions (name, description, status). toolUsage: every tool with its module and subject titles and the number of agents that have it on, most used first; absent when the caller may not see it."
+        }
+      },
+      {
+        "route": "agents.tool_catalog.listCatalogUpdates",
+        "kind": "qry",
+        "uses": [
+          "listTool"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "list",
+            "path": "updates",
+            "entity": "Tool",
+            "items": "items",
+            "page": "updates.page",
+            "pageSize": "updates.pageSize",
+            "hasMore": "updates.hasMore",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              },
+              {
+                "field": "details.moduleTitle",
+                "path": "details.moduleTitle"
+              },
+              {
+                "field": "details.subjectTitle",
+                "path": "details.subjectTitle"
+              },
+              {
+                "field": "details.addedAt",
+                "path": "details.addedAt"
+              },
+              {
+                "field": "details.removedAt",
+                "path": "details.removedAt"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "updates",
+            "pages": "updates"
+          },
+          {
+            "name": "pageSize",
+            "target": "updates",
+            "pages": "updates"
+          }
+        ],
+        "rules": [
+          "catalogRebuiltOnRelease",
+          "toolNeverDeleted",
+          "noTechnicalIdsOnScreen"
+        ],
+        "doc": {
+          "raw": "Purpose: Lists the changes of the tool catalog made by the rebuilds after a new module or release: tools added and tools marked removed, newest first, page by page.\nInput: page and pageSize: the page of changes requested and its size.\nProcessing: Reads the Tools of the organization’s catalog, which the rebuild creates, updates and marks removed (catalogRebuiltOnRelease; removed tools are kept, toolNeverDeleted). Orders them by the latest of removedAt and addedAt, newest first, and pages the result. addedAt and removedAt are returned only to callers whose grant allows them (companyAdmin). No ids are returned (noTechnicalIdsOnScreen).\nOutput: updates: a page { items, page, pageSize, hasMore } of tools with name, status, module and subject titles, the date they were added and, when removed, the date they were marked removed.",
+          "purpose": "Lists the changes of the tool catalog made by the rebuilds after a new module or release: tools added and tools marked removed, newest first, page by page.",
+          "input": "page and pageSize: the page of changes requested and its size.",
+          "processing": "Reads the Tools of the organization’s catalog, which the rebuild creates, updates and marks removed (catalogRebuiltOnRelease; removed tools are kept, toolNeverDeleted). Orders them by the latest of removedAt and addedAt, newest first, and pages the result. addedAt and removedAt are returned only to callers whose grant allows them (companyAdmin). No ids are returned (noTechnicalIdsOnScreen).",
+          "output": "updates: a page { items, page, pageSize, hasMore } of tools with name, status, module and subject titles, the date they were added and, when removed, the date they were marked removed."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

@@ -81,7 +81,8 @@ export async function assembleD1Input(
   const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope, [], []);
   const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous, answers));
   const writerReceipts = await readWriterReceipts(project, moduleName);
-  const present = await readPresent(project, defPathsToRead(draft, previous), writerReceipts);
+  const unplannedUsecases = writerReceipts.map(item => item.defPath).filter(path => /\/layer_2_application\/usecases\/[^/]+\.defs\.ts$/u.test(path));
+  const present = await readPresent(project, [...new Set([...defPathsToRead(draft, previous), ...unplannedUsecases])], writerReceipts);
   const marker = await readRederive(project, moduleName);
   const sealed = seal(buildD1InputSnapshot(
     { project, moduleName },

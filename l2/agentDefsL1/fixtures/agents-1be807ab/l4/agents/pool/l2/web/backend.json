@@ -1,0 +1,1610 @@
+{
+  "schemaVersion": "2026-09-21-p1-backend-v1.2",
+  "moduleName": "agents",
+  "device": "web",
+  "sourceNeeds": "pool/l1/web/needs.json",
+  "inventoryPresent": true,
+  "endpoints": [
+    {
+      "route": "agents.agent_activity.qryListAgent",
+      "page": "agent_activity",
+      "kind": "qry",
+      "usecaseRef": "listAgent",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agent_activity.qryListAgentTool",
+      "page": "agent_activity",
+      "kind": "qry",
+      "usecaseRef": "listAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_activity.qryListExecutionSummary",
+      "page": "agent_activity",
+      "kind": "qry",
+      "usecaseRef": "listExecutionSummary",
+      "status": "toCreate",
+      "tableRefs": [
+        "executionSummary"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_activity.qryListOrganizationUser",
+      "page": "agent_activity",
+      "kind": "qry",
+      "usecaseRef": "listOrganizationUser",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agents.agent_activity.qryListPersonToolRestriction",
+      "page": "agent_activity",
+      "kind": "qry",
+      "usecaseRef": "listPersonToolRestriction",
+      "status": "toCreate",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_activity.qryListTool",
+      "page": "agent_activity",
+      "kind": "qry",
+      "usecaseRef": "listTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "tool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_behavior.cmdUpdateAgentBehavior",
+      "page": "agent_behavior",
+      "kind": "cmd",
+      "usecaseRef": "updateAgentBehavior",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agent_behavior.qryListAgent",
+      "page": "agent_behavior",
+      "kind": "qry",
+      "usecaseRef": "listAgent",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agent_behavior.qryListAgentBehavior",
+      "page": "agent_behavior",
+      "kind": "qry",
+      "usecaseRef": "listAgentBehavior",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agent_behavior.qryListAgentTool",
+      "page": "agent_behavior",
+      "kind": "qry",
+      "usecaseRef": "listAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_behavior.qryListExecutionSummary",
+      "page": "agent_behavior",
+      "kind": "qry",
+      "usecaseRef": "listExecutionSummary",
+      "status": "toCreate",
+      "tableRefs": [
+        "executionSummary"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_configuration.cmdUpdateAgent",
+      "page": "agent_configuration",
+      "kind": "cmd",
+      "usecaseRef": "updateAgent",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agent_configuration.qryListAgent",
+      "page": "agent_configuration",
+      "kind": "qry",
+      "usecaseRef": "listAgent",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agent_configuration.qryListAgentTool",
+      "page": "agent_configuration",
+      "kind": "qry",
+      "usecaseRef": "listAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_configuration.qryListExecutionSummary",
+      "page": "agent_configuration",
+      "kind": "qry",
+      "usecaseRef": "listExecutionSummary",
+      "status": "toCreate",
+      "tableRefs": [
+        "executionSummary"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_configuration.qryListOrganizationUser",
+      "page": "agent_configuration",
+      "kind": "qry",
+      "usecaseRef": "listOrganizationUser",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agents.agent_configuration.qryListPersonToolRestriction",
+      "page": "agent_configuration",
+      "kind": "qry",
+      "usecaseRef": "listPersonToolRestriction",
+      "status": "toCreate",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_overview.qryListAgent",
+      "page": "agent_overview",
+      "kind": "qry",
+      "usecaseRef": "listAgent",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agent_overview.qryListAgentTool",
+      "page": "agent_overview",
+      "kind": "qry",
+      "usecaseRef": "listAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_overview.qryListExecutionSummary",
+      "page": "agent_overview",
+      "kind": "qry",
+      "usecaseRef": "listExecutionSummary",
+      "status": "toCreate",
+      "tableRefs": [
+        "executionSummary"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_overview.qryListOrganizationUser",
+      "page": "agent_overview",
+      "kind": "qry",
+      "usecaseRef": "listOrganizationUser",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agents.agent_overview.qryListPersonToolRestriction",
+      "page": "agent_overview",
+      "kind": "qry",
+      "usecaseRef": "listPersonToolRestriction",
+      "status": "toCreate",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_overview.qryListTool",
+      "page": "agent_overview",
+      "kind": "qry",
+      "usecaseRef": "listTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "tool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_simulation.qryListAgent",
+      "page": "agent_simulation",
+      "kind": "qry",
+      "usecaseRef": "listAgent",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agent_simulation.qryListAgentSimulation",
+      "page": "agent_simulation",
+      "kind": "qry",
+      "usecaseRef": "listAgentSimulation",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agent_simulation.qryListAgentTool",
+      "page": "agent_simulation",
+      "kind": "qry",
+      "usecaseRef": "listAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_simulation.qryListExecutionSummary",
+      "page": "agent_simulation",
+      "kind": "qry",
+      "usecaseRef": "listExecutionSummary",
+      "status": "toCreate",
+      "tableRefs": [
+        "executionSummary"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_simulation.qryListOrganizationUser",
+      "page": "agent_simulation",
+      "kind": "qry",
+      "usecaseRef": "listOrganizationUser",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agents.agent_simulation.qryListPersonToolRestriction",
+      "page": "agent_simulation",
+      "kind": "qry",
+      "usecaseRef": "listPersonToolRestriction",
+      "status": "toCreate",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_simulation.qryListTool",
+      "page": "agent_simulation",
+      "kind": "qry",
+      "usecaseRef": "listTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "tool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_tools.cmdCreateAgentTool",
+      "page": "agent_tools",
+      "kind": "cmd",
+      "usecaseRef": "createAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_tools.cmdUpdateAgentTool",
+      "page": "agent_tools",
+      "kind": "cmd",
+      "usecaseRef": "updateAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_tools.qryListAgent",
+      "page": "agent_tools",
+      "kind": "qry",
+      "usecaseRef": "listAgent",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agent_tools.qryListAgentTool",
+      "page": "agent_tools",
+      "kind": "qry",
+      "usecaseRef": "listAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_tools.qryListExecutionSummary",
+      "page": "agent_tools",
+      "kind": "qry",
+      "usecaseRef": "listExecutionSummary",
+      "status": "toCreate",
+      "tableRefs": [
+        "executionSummary"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_tools.qryListOrganizationUser",
+      "page": "agent_tools",
+      "kind": "qry",
+      "usecaseRef": "listOrganizationUser",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agents.agent_tools.qryListPersonToolRestriction",
+      "page": "agent_tools",
+      "kind": "qry",
+      "usecaseRef": "listPersonToolRestriction",
+      "status": "toCreate",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agent_tools.qryListTool",
+      "page": "agent_tools",
+      "kind": "qry",
+      "usecaseRef": "listTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "tool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agents.cmdActivate",
+      "page": "agents",
+      "kind": "cmd",
+      "usecaseRef": "activate",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agents.cmdCreateAgentDraft",
+      "page": "agents",
+      "kind": "cmd",
+      "usecaseRef": "createAgentDraft",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agents.cmdCreateAgentTool",
+      "page": "agents",
+      "kind": "cmd",
+      "usecaseRef": "createAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agents.cmdDiscard",
+      "page": "agents",
+      "kind": "cmd",
+      "usecaseRef": "discard",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agents.cmdUpdateAgent",
+      "page": "agents",
+      "kind": "cmd",
+      "usecaseRef": "updateAgent",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agents.cmdUpdateAgentBehavior",
+      "page": "agents",
+      "kind": "cmd",
+      "usecaseRef": "updateAgentBehavior",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agents.cmdUpdateAgentTool",
+      "page": "agents",
+      "kind": "cmd",
+      "usecaseRef": "updateAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agents.cmdUpdatePersonalConduct",
+      "page": "agents",
+      "kind": "cmd",
+      "usecaseRef": "updatePersonalConduct",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agents.qryListAgent",
+      "page": "agents",
+      "kind": "qry",
+      "usecaseRef": "listAgent",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agents.qryListAgentBehavior",
+      "page": "agents",
+      "kind": "qry",
+      "usecaseRef": "listAgentBehavior",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agents.qryListAgentDraft",
+      "page": "agents",
+      "kind": "qry",
+      "usecaseRef": "listAgentDraft",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agents.qryListAgentSimulation",
+      "page": "agents",
+      "kind": "qry",
+      "usecaseRef": "listAgentSimulation",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.agents.qryListAgentTool",
+      "page": "agents",
+      "kind": "qry",
+      "usecaseRef": "listAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agents.qryListExecutionSummary",
+      "page": "agents",
+      "kind": "qry",
+      "usecaseRef": "listExecutionSummary",
+      "status": "toCreate",
+      "tableRefs": [
+        "executionSummary"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agents.qryListOrganizationUser",
+      "page": "agents",
+      "kind": "qry",
+      "usecaseRef": "listOrganizationUser",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agents.agents.qryListPersonToolRestriction",
+      "page": "agents",
+      "kind": "qry",
+      "usecaseRef": "listPersonToolRestriction",
+      "status": "toCreate",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.agents.qryListTool",
+      "page": "agents",
+      "kind": "qry",
+      "usecaseRef": "listTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "tool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.draft_review.cmdActivate",
+      "page": "draft_review",
+      "kind": "cmd",
+      "usecaseRef": "activate",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.draft_review.cmdDiscard",
+      "page": "draft_review",
+      "kind": "cmd",
+      "usecaseRef": "discard",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.draft_review.cmdUpdateAgentTool",
+      "page": "draft_review",
+      "kind": "cmd",
+      "usecaseRef": "updateAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.draft_review.qryListAgent",
+      "page": "draft_review",
+      "kind": "qry",
+      "usecaseRef": "listAgent",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.draft_review.qryListAgentDraft",
+      "page": "draft_review",
+      "kind": "qry",
+      "usecaseRef": "listAgentDraft",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.draft_review.qryListAgentSimulation",
+      "page": "draft_review",
+      "kind": "qry",
+      "usecaseRef": "listAgentSimulation",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.draft_review.qryListAgentTool",
+      "page": "draft_review",
+      "kind": "qry",
+      "usecaseRef": "listAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.draft_review.qryListExecutionSummary",
+      "page": "draft_review",
+      "kind": "qry",
+      "usecaseRef": "listExecutionSummary",
+      "status": "toCreate",
+      "tableRefs": [
+        "executionSummary"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.draft_review.qryListOrganizationUser",
+      "page": "draft_review",
+      "kind": "qry",
+      "usecaseRef": "listOrganizationUser",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agents.draft_review.qryListPersonToolRestriction",
+      "page": "draft_review",
+      "kind": "qry",
+      "usecaseRef": "listPersonToolRestriction",
+      "status": "toCreate",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.draft_review.qryListTool",
+      "page": "draft_review",
+      "kind": "qry",
+      "usecaseRef": "listTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "tool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.my_conduct.cmdUpdatePersonalConduct",
+      "page": "my_conduct",
+      "kind": "cmd",
+      "usecaseRef": "updatePersonalConduct",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.my_conduct.qryListAgent",
+      "page": "my_conduct",
+      "kind": "qry",
+      "usecaseRef": "listAgent",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.my_conduct.qryListAgentTool",
+      "page": "my_conduct",
+      "kind": "qry",
+      "usecaseRef": "listAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.person_restrictions.cmdUpdatePersonToolRestriction",
+      "page": "person_restrictions",
+      "kind": "cmd",
+      "usecaseRef": "updatePersonToolRestriction",
+      "status": "toCreate",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.person_restrictions.qryListAgent",
+      "page": "person_restrictions",
+      "kind": "qry",
+      "usecaseRef": "listAgent",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "route": "agents.person_restrictions.qryListAgentTool",
+      "page": "person_restrictions",
+      "kind": "qry",
+      "usecaseRef": "listAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.person_restrictions.qryListExecutionSummary",
+      "page": "person_restrictions",
+      "kind": "qry",
+      "usecaseRef": "listExecutionSummary",
+      "status": "toCreate",
+      "tableRefs": [
+        "executionSummary"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.person_restrictions.qryListOrganizationUser",
+      "page": "person_restrictions",
+      "kind": "qry",
+      "usecaseRef": "listOrganizationUser",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agents.person_restrictions.qryListPersonToolRestriction",
+      "page": "person_restrictions",
+      "kind": "qry",
+      "usecaseRef": "listPersonToolRestriction",
+      "status": "toCreate",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.person_restrictions.qryListTool",
+      "page": "person_restrictions",
+      "kind": "qry",
+      "usecaseRef": "listTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "tool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.tool_catalog.qryListAgentTool",
+      "page": "tool_catalog",
+      "kind": "qry",
+      "usecaseRef": "listAgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agents.tool_catalog.qryListTool",
+      "page": "tool_catalog",
+      "kind": "qry",
+      "usecaseRef": "listTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "tool"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "activate",
+      "entity": "AgentDraft",
+      "operation": "transition",
+      "transitionRef": "activate",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for AgentDraft.transition",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "usecaseId": "createAgentDraft",
+      "entity": "AgentDraft",
+      "operation": "create",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for AgentDraft.create",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "usecaseId": "createAgentTool",
+      "entity": "AgentTool",
+      "operation": "create",
+      "ports": [
+        "AgentTool"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for AgentTool.create",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "discard",
+      "entity": "AgentDraft",
+      "operation": "transition",
+      "transitionRef": "discard",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for AgentDraft.transition",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "usecaseId": "listAgent",
+      "entity": "Agent",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Agent.list",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "usecaseId": "listAgentBehavior",
+      "entity": "AgentBehavior",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for AgentBehavior.list",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "usecaseId": "listAgentDraft",
+      "entity": "AgentDraft",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for AgentDraft.list",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "usecaseId": "listAgentSimulation",
+      "entity": "AgentSimulation",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for AgentSimulation.list",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "usecaseId": "listAgentTool",
+      "entity": "AgentTool",
+      "operation": "list",
+      "ports": [
+        "AgentTool"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for AgentTool.list",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listExecutionSummary",
+      "entity": "ExecutionSummary",
+      "operation": "list",
+      "ports": [
+        "ExecutionSummary"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for ExecutionSummary.list",
+      "tableRefs": [
+        "executionSummary"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listOrganizationUser",
+      "entity": "OrganizationUser",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for OrganizationUser.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listPersonToolRestriction",
+      "entity": "PersonToolRestriction",
+      "operation": "list",
+      "ports": [
+        "PersonToolRestriction"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for PersonToolRestriction.list",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listTool",
+      "entity": "Tool",
+      "operation": "list",
+      "ports": [
+        "Tool"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Tool.list",
+      "tableRefs": [
+        "tool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "updateAgent",
+      "entity": "Agent",
+      "operation": "update",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Agent.update",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "usecaseId": "updateAgentBehavior",
+      "entity": "AgentBehavior",
+      "operation": "update",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for AgentBehavior.update",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "usecaseId": "updateAgentTool",
+      "entity": "AgentTool",
+      "operation": "update",
+      "ports": [
+        "AgentTool"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for AgentTool.update",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "updatePersonalConduct",
+      "entity": "PersonalConduct",
+      "operation": "update",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for PersonalConduct.update",
+      "tableRefs": [],
+      "noTable": "none"
+    },
+    {
+      "usecaseId": "updatePersonToolRestriction",
+      "entity": "PersonToolRestriction",
+      "operation": "update",
+      "ports": [
+        "PersonToolRestriction"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for PersonToolRestriction.update",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "AgentToolRepository",
+      "entity": "AgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "portId": "ExecutionSummaryRepository",
+      "entity": "ExecutionSummary",
+      "status": "toCreate",
+      "tableRefs": [
+        "executionSummary"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "portId": "PersonToolRestrictionRepository",
+      "entity": "PersonToolRestriction",
+      "status": "toCreate",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "portId": "ToolRepository",
+      "entity": "Tool",
+      "status": "toCreate",
+      "tableRefs": [
+        "tool"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "agentTool",
+      "entity": "AgentTool",
+      "status": "toCreate",
+      "tableRefs": [
+        "agentTool"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "tableId": "executionSummary",
+      "entity": "ExecutionSummary",
+      "status": "toCreate",
+      "tableRefs": [
+        "executionSummary"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "tableId": "personToolRestriction",
+      "entity": "PersonToolRestriction",
+      "status": "toCreate",
+      "tableRefs": [
+        "personToolRestriction"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "tableId": "tool",
+      "entity": "Tool",
+      "status": "toCreate",
+      "tableRefs": [
+        "tool"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "removed": [],
+  "changes": [],
+  "testSupport": [
+    {
+      "id": "data:AgentTool",
+      "actorRefs": [
+        "companyAdmin",
+        "organizationMember"
+      ],
+      "entityRefs": [
+        "Agent",
+        "AgentTool",
+        "Tool"
+      ],
+      "sourceRefs": [
+        "grant:adminManageTools",
+        "journey:adjustAgentTools/browseToolTree",
+        "journey:adjustAgentTools/enableUnchosenTool",
+        "journey:adjustAgentTools/findAgentForTools",
+        "journey:adjustAgentTools/toggleTools",
+        "journey:changeAgentBehavior/findAgentForBehavior",
+        "journey:changeAgentBehavior/readBehavior",
+        "journey:changeAgentBehavior/requestBehaviorChange",
+        "journey:changeAgentBehavior/undoBehaviorChange",
+        "journey:changeMyConduct/changeConduct",
+        "journey:changeMyConduct/findMyAgent",
+        "journey:changeMyConduct/readMyConduct",
+        "journey:configureAgent/findAgentForConfig",
+        "journey:configureAgent/readConfiguration",
+        "journey:configureAgent/saveConfiguration",
+        "journey:createVirtualEmployee/describeAgent",
+        "journey:createVirtualEmployee/followDraftSituation",
+        "journey:createVirtualEmployee/openAgentList",
+        "journey:followAgentActivity/browseAgents",
+        "journey:followAgentActivity/readActivity",
+        "journey:followAgentActivity/readOverview",
+        "journey:restrictPersonTools/choosePerson",
+        "journey:restrictPersonTools/markRestrictions",
+        "journey:restrictPersonTools/reviewRestrictions",
+        "journey:reviewAndActivateDraft/activateDraft",
+        "journey:reviewAndActivateDraft/adjustDraftTools",
+        "journey:reviewAndActivateDraft/discardDraft",
+        "journey:reviewAndActivateDraft/openReadyDraft",
+        "journey:reviewAndActivateDraft/reviewDraft",
+        "journey:reviewAndActivateDraft/simulateDraft",
+        "journey:simulateAgentByRole/findAgentToSimulate",
+        "journey:simulateAgentByRole/simulateWhatItCan",
+        "journey:simulateAgentByRole/simulateWhatItUnderstands",
+        "journey:simulateAsMyself/findAgentForMe",
+        "journey:simulateAsMyself/seeWhatItCanForMe",
+        "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+        "process:toolCatalogRefresh",
+        "process:virtualEmployeeCreation",
+        "relationship:Agent/agentToolAgent",
+        "relationship:AgentTool/agentToolAgent",
+        "relationship:AgentTool/agentToolTool",
+        "relationship:Tool/agentToolTool",
+        "relationship:Tool/restrictionTool"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes agentTool rows by execution id"
+    },
+    {
+      "id": "data:ExecutionSummary",
+      "actorRefs": [
+        "companyAdmin",
+        "organizationMember"
+      ],
+      "entityRefs": [
+        "Agent",
+        "ExecutionSummary",
+        "OrganizationUser"
+      ],
+      "sourceRefs": [
+        "grant:adminReadActivity",
+        "grant:memberReadActivity",
+        "journey:adjustAgentTools/browseToolTree",
+        "journey:adjustAgentTools/enableUnchosenTool",
+        "journey:adjustAgentTools/findAgentForTools",
+        "journey:adjustAgentTools/toggleTools",
+        "journey:changeAgentBehavior/findAgentForBehavior",
+        "journey:changeAgentBehavior/readBehavior",
+        "journey:changeAgentBehavior/requestBehaviorChange",
+        "journey:changeAgentBehavior/undoBehaviorChange",
+        "journey:changeMyConduct/changeConduct",
+        "journey:changeMyConduct/findMyAgent",
+        "journey:changeMyConduct/readMyConduct",
+        "journey:configureAgent/findAgentForConfig",
+        "journey:configureAgent/readConfiguration",
+        "journey:configureAgent/saveConfiguration",
+        "journey:createVirtualEmployee/describeAgent",
+        "journey:createVirtualEmployee/followDraftSituation",
+        "journey:createVirtualEmployee/openAgentList",
+        "journey:followAgentActivity/browseAgents",
+        "journey:followAgentActivity/readActivity",
+        "journey:followAgentActivity/readOverview",
+        "journey:restrictPersonTools/choosePerson",
+        "journey:restrictPersonTools/markRestrictions",
+        "journey:restrictPersonTools/reviewRestrictions",
+        "journey:reviewAndActivateDraft/activateDraft",
+        "journey:reviewAndActivateDraft/adjustDraftTools",
+        "journey:reviewAndActivateDraft/discardDraft",
+        "journey:reviewAndActivateDraft/openReadyDraft",
+        "journey:reviewAndActivateDraft/reviewDraft",
+        "journey:reviewAndActivateDraft/simulateDraft",
+        "journey:simulateAgentByRole/findAgentToSimulate",
+        "journey:simulateAgentByRole/simulateWhatItCan",
+        "journey:simulateAgentByRole/simulateWhatItUnderstands",
+        "journey:simulateAsMyself/findAgentForMe",
+        "journey:simulateAsMyself/seeWhatItCanForMe",
+        "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+        "process:executionRecording",
+        "relationship:Agent/agentToolAgent",
+        "relationship:Agent/executionAgent",
+        "relationship:ExecutionSummary/executionAgent",
+        "relationship:ExecutionSummary/executionRequester",
+        "relationship:OrganizationUser/executionRequester",
+        "relationship:PersonToolRestriction/restrictionPerson",
+        "relationship:Tool/agentToolTool",
+        "relationship:Tool/restrictionTool"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes executionSummary rows by execution id"
+    },
+    {
+      "id": "data:PersonToolRestriction",
+      "actorRefs": [
+        "companyAdmin",
+        "organizationMember"
+      ],
+      "entityRefs": [
+        "OrganizationUser",
+        "PersonToolRestriction",
+        "Tool"
+      ],
+      "sourceRefs": [
+        "grant:adminManageTools",
+        "journey:adjustAgentTools/browseToolTree",
+        "journey:adjustAgentTools/enableUnchosenTool",
+        "journey:adjustAgentTools/findAgentForTools",
+        "journey:adjustAgentTools/toggleTools",
+        "journey:changeAgentBehavior/findAgentForBehavior",
+        "journey:changeAgentBehavior/readBehavior",
+        "journey:changeAgentBehavior/requestBehaviorChange",
+        "journey:changeAgentBehavior/undoBehaviorChange",
+        "journey:changeMyConduct/changeConduct",
+        "journey:changeMyConduct/findMyAgent",
+        "journey:changeMyConduct/readMyConduct",
+        "journey:configureAgent/findAgentForConfig",
+        "journey:configureAgent/readConfiguration",
+        "journey:configureAgent/saveConfiguration",
+        "journey:createVirtualEmployee/describeAgent",
+        "journey:createVirtualEmployee/followDraftSituation",
+        "journey:createVirtualEmployee/openAgentList",
+        "journey:followAgentActivity/browseAgents",
+        "journey:followAgentActivity/readActivity",
+        "journey:followAgentActivity/readOverview",
+        "journey:restrictPersonTools/choosePerson",
+        "journey:restrictPersonTools/markRestrictions",
+        "journey:restrictPersonTools/reviewRestrictions",
+        "journey:reviewAndActivateDraft/activateDraft",
+        "journey:reviewAndActivateDraft/adjustDraftTools",
+        "journey:reviewAndActivateDraft/discardDraft",
+        "journey:reviewAndActivateDraft/openReadyDraft",
+        "journey:reviewAndActivateDraft/reviewDraft",
+        "journey:reviewAndActivateDraft/simulateDraft",
+        "journey:simulateAgentByRole/findAgentToSimulate",
+        "journey:simulateAgentByRole/simulateWhatItCan",
+        "journey:simulateAgentByRole/simulateWhatItUnderstands",
+        "journey:simulateAsMyself/findAgentForMe",
+        "journey:simulateAsMyself/seeWhatItCanForMe",
+        "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+        "relationship:Agent/agentToolAgent",
+        "relationship:Agent/executionAgent",
+        "relationship:ExecutionSummary/executionRequester",
+        "relationship:OrganizationUser/restrictionPerson",
+        "relationship:PersonToolRestriction/restrictionPerson",
+        "relationship:PersonToolRestriction/restrictionTool",
+        "relationship:Tool/agentToolTool",
+        "relationship:Tool/restrictionTool"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes personToolRestriction rows by execution id"
+    },
+    {
+      "id": "data:Tool",
+      "actorRefs": [
+        "companyAdmin",
+        "organizationMember"
+      ],
+      "entityRefs": [
+        "Tool"
+      ],
+      "sourceRefs": [
+        "grant:adminManageTools",
+        "grant:memberReadToolCatalog",
+        "journey:adjustAgentTools/browseToolTree",
+        "journey:adjustAgentTools/enableUnchosenTool",
+        "journey:adjustAgentTools/findAgentForTools",
+        "journey:adjustAgentTools/toggleTools",
+        "journey:changeAgentBehavior/findAgentForBehavior",
+        "journey:changeAgentBehavior/readBehavior",
+        "journey:changeAgentBehavior/requestBehaviorChange",
+        "journey:changeAgentBehavior/undoBehaviorChange",
+        "journey:changeMyConduct/changeConduct",
+        "journey:changeMyConduct/findMyAgent",
+        "journey:changeMyConduct/readMyConduct",
+        "journey:configureAgent/findAgentForConfig",
+        "journey:configureAgent/readConfiguration",
+        "journey:configureAgent/saveConfiguration",
+        "journey:createVirtualEmployee/describeAgent",
+        "journey:createVirtualEmployee/followDraftSituation",
+        "journey:createVirtualEmployee/openAgentList",
+        "journey:followAgentActivity/browseAgents",
+        "journey:followAgentActivity/readActivity",
+        "journey:followAgentActivity/readOverview",
+        "journey:restrictPersonTools/choosePerson",
+        "journey:restrictPersonTools/markRestrictions",
+        "journey:restrictPersonTools/reviewRestrictions",
+        "journey:reviewAndActivateDraft/activateDraft",
+        "journey:reviewAndActivateDraft/adjustDraftTools",
+        "journey:reviewAndActivateDraft/discardDraft",
+        "journey:reviewAndActivateDraft/openReadyDraft",
+        "journey:reviewAndActivateDraft/reviewDraft",
+        "journey:reviewAndActivateDraft/simulateDraft",
+        "journey:simulateAgentByRole/findAgentToSimulate",
+        "journey:simulateAgentByRole/simulateWhatItCan",
+        "journey:simulateAgentByRole/simulateWhatItUnderstands",
+        "journey:simulateAsMyself/findAgentForMe",
+        "journey:simulateAsMyself/seeWhatItCanForMe",
+        "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+        "process:toolCatalogRefresh",
+        "relationship:Agent/agentToolAgent",
+        "relationship:AgentTool/agentToolTool",
+        "relationship:PersonToolRestriction/restrictionTool",
+        "relationship:Tool/agentToolTool",
+        "relationship:Tool/restrictionTool"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes tool rows by execution id"
+    },
+    {
+      "id": "identity:companyAdmin",
+      "actorRefs": [
+        "companyAdmin"
+      ],
+      "entityRefs": [
+        "OrganizationUser"
+      ],
+      "sourceRefs": [
+        "access:actors/companyAdmin",
+        "grant:adminChoosePeople",
+        "grant:adminManageAgents",
+        "grant:adminManageTools",
+        "grant:adminReadActivity",
+        "grant:memberReadActivity",
+        "grant:memberReadToolCatalog",
+        "grant:memberSeeAgents",
+        "grant:memberSeePeopleNames",
+        "grant:memberSimulateAsMyself",
+        "journey:adjustAgentTools/browseToolTree",
+        "journey:adjustAgentTools/enableUnchosenTool",
+        "journey:adjustAgentTools/findAgentForTools",
+        "journey:adjustAgentTools/toggleTools",
+        "journey:changeAgentBehavior/findAgentForBehavior",
+        "journey:changeAgentBehavior/readBehavior",
+        "journey:changeAgentBehavior/requestBehaviorChange",
+        "journey:changeAgentBehavior/undoBehaviorChange",
+        "journey:changeMyConduct/changeConduct",
+        "journey:changeMyConduct/findMyAgent",
+        "journey:changeMyConduct/readMyConduct",
+        "journey:configureAgent/findAgentForConfig",
+        "journey:configureAgent/readConfiguration",
+        "journey:configureAgent/saveConfiguration",
+        "journey:createVirtualEmployee/describeAgent",
+        "journey:createVirtualEmployee/followDraftSituation",
+        "journey:createVirtualEmployee/openAgentList",
+        "journey:followAgentActivity/browseAgents",
+        "journey:followAgentActivity/readActivity",
+        "journey:followAgentActivity/readOverview",
+        "journey:restrictPersonTools/choosePerson",
+        "journey:restrictPersonTools/markRestrictions",
+        "journey:restrictPersonTools/reviewRestrictions",
+        "journey:reviewAndActivateDraft/activateDraft",
+        "journey:reviewAndActivateDraft/adjustDraftTools",
+        "journey:reviewAndActivateDraft/discardDraft",
+        "journey:reviewAndActivateDraft/openReadyDraft",
+        "journey:reviewAndActivateDraft/reviewDraft",
+        "journey:reviewAndActivateDraft/simulateDraft",
+        "journey:simulateAgentByRole/findAgentToSimulate",
+        "journey:simulateAgentByRole/simulateWhatItCan",
+        "journey:simulateAgentByRole/simulateWhatItUnderstands",
+        "journey:simulateAsMyself/findAgentForMe",
+        "journey:simulateAsMyself/seeWhatItCanForMe",
+        "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+        "process:executionRecording",
+        "process:toolCatalogRefresh",
+        "process:virtualEmployeeCreation",
+        "relationship:Agent/agentToolAgent",
+        "relationship:Agent/executionAgent",
+        "relationship:AgentTool/agentToolAgent",
+        "relationship:AgentTool/agentToolTool",
+        "relationship:ExecutionSummary/executionAgent",
+        "relationship:ExecutionSummary/executionRequester",
+        "relationship:OrganizationUser/executionRequester",
+        "relationship:OrganizationUser/restrictionPerson",
+        "relationship:PersonToolRestriction/restrictionPerson",
+        "relationship:PersonToolRestriction/restrictionTool",
+        "relationship:Tool/agentToolTool",
+        "relationship:Tool/restrictionTool"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for companyAdmin bound to OrganizationUser"
+    },
+    {
+      "id": "identity:organizationMember",
+      "actorRefs": [
+        "organizationMember"
+      ],
+      "entityRefs": [
+        "OrganizationUser"
+      ],
+      "sourceRefs": [
+        "access:actors/organizationMember",
+        "grant:adminChoosePeople",
+        "grant:adminManageAgents",
+        "grant:adminManageTools",
+        "grant:adminReadActivity",
+        "grant:memberReadActivity",
+        "grant:memberReadToolCatalog",
+        "grant:memberSeeAgents",
+        "grant:memberSeePeopleNames",
+        "grant:memberSimulateAsMyself",
+        "journey:adjustAgentTools/browseToolTree",
+        "journey:adjustAgentTools/enableUnchosenTool",
+        "journey:adjustAgentTools/findAgentForTools",
+        "journey:adjustAgentTools/toggleTools",
+        "journey:changeAgentBehavior/findAgentForBehavior",
+        "journey:changeAgentBehavior/readBehavior",
+        "journey:changeAgentBehavior/requestBehaviorChange",
+        "journey:changeAgentBehavior/undoBehaviorChange",
+        "journey:changeMyConduct/changeConduct",
+        "journey:changeMyConduct/findMyAgent",
+        "journey:changeMyConduct/readMyConduct",
+        "journey:configureAgent/findAgentForConfig",
+        "journey:configureAgent/readConfiguration",
+        "journey:configureAgent/saveConfiguration",
+        "journey:createVirtualEmployee/describeAgent",
+        "journey:createVirtualEmployee/followDraftSituation",
+        "journey:createVirtualEmployee/openAgentList",
+        "journey:followAgentActivity/browseAgents",
+        "journey:followAgentActivity/readActivity",
+        "journey:followAgentActivity/readOverview",
+        "journey:reviewAndActivateDraft/activateDraft",
+        "journey:reviewAndActivateDraft/adjustDraftTools",
+        "journey:reviewAndActivateDraft/discardDraft",
+        "journey:reviewAndActivateDraft/openReadyDraft",
+        "journey:reviewAndActivateDraft/reviewDraft",
+        "journey:reviewAndActivateDraft/simulateDraft",
+        "journey:simulateAgentByRole/findAgentToSimulate",
+        "journey:simulateAgentByRole/simulateWhatItCan",
+        "journey:simulateAgentByRole/simulateWhatItUnderstands",
+        "journey:simulateAsMyself/findAgentForMe",
+        "journey:simulateAsMyself/seeWhatItCanForMe",
+        "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+        "process:executionRecording",
+        "process:toolCatalogRefresh",
+        "process:virtualEmployeeCreation",
+        "relationship:Agent/agentToolAgent",
+        "relationship:Agent/executionAgent",
+        "relationship:AgentTool/agentToolAgent",
+        "relationship:AgentTool/agentToolTool",
+        "relationship:ExecutionSummary/executionAgent",
+        "relationship:ExecutionSummary/executionRequester",
+        "relationship:OrganizationUser/executionRequester",
+        "relationship:OrganizationUser/restrictionPerson",
+        "relationship:PersonToolRestriction/restrictionPerson",
+        "relationship:Tool/agentToolTool",
+        "relationship:Tool/restrictionTool"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for organizationMember bound to OrganizationUser"
+    }
+  ],
+  "meta": {
+    "pages": {
+      "agents": [
+        "agents.agents.cmdActivate",
+        "agents.agents.cmdCreateAgentDraft",
+        "agents.agents.cmdCreateAgentTool",
+        "agents.agents.cmdDiscard",
+        "agents.agents.cmdUpdateAgent",
+        "agents.agents.cmdUpdateAgentBehavior",
+        "agents.agents.cmdUpdateAgentTool",
+        "agents.agents.cmdUpdatePersonalConduct",
+        "agents.agents.qryListAgent",
+        "agents.agents.qryListAgentBehavior",
+        "agents.agents.qryListAgentDraft",
+        "agents.agents.qryListAgentSimulation",
+        "agents.agents.qryListAgentTool",
+        "agents.agents.qryListExecutionSummary",
+        "agents.agents.qryListOrganizationUser",
+        "agents.agents.qryListPersonToolRestriction",
+        "agents.agents.qryListTool"
+      ],
+      "draft_review": [
+        "agents.draft_review.cmdActivate",
+        "agents.draft_review.cmdDiscard",
+        "agents.draft_review.cmdUpdateAgentTool",
+        "agents.draft_review.qryListAgent",
+        "agents.draft_review.qryListAgentDraft",
+        "agents.draft_review.qryListAgentSimulation",
+        "agents.draft_review.qryListAgentTool",
+        "agents.draft_review.qryListExecutionSummary",
+        "agents.draft_review.qryListOrganizationUser",
+        "agents.draft_review.qryListPersonToolRestriction",
+        "agents.draft_review.qryListTool"
+      ],
+      "agent_overview": [
+        "agents.agent_overview.qryListAgent",
+        "agents.agent_overview.qryListAgentTool",
+        "agents.agent_overview.qryListExecutionSummary",
+        "agents.agent_overview.qryListOrganizationUser",
+        "agents.agent_overview.qryListPersonToolRestriction",
+        "agents.agent_overview.qryListTool"
+      ],
+      "agent_behavior": [
+        "agents.agent_behavior.cmdUpdateAgentBehavior",
+        "agents.agent_behavior.qryListAgent",
+        "agents.agent_behavior.qryListAgentBehavior",
+        "agents.agent_behavior.qryListAgentTool",
+        "agents.agent_behavior.qryListExecutionSummary"
+      ],
+      "agent_tools": [
+        "agents.agent_tools.cmdCreateAgentTool",
+        "agents.agent_tools.cmdUpdateAgentTool",
+        "agents.agent_tools.qryListAgent",
+        "agents.agent_tools.qryListAgentTool",
+        "agents.agent_tools.qryListExecutionSummary",
+        "agents.agent_tools.qryListOrganizationUser",
+        "agents.agent_tools.qryListPersonToolRestriction",
+        "agents.agent_tools.qryListTool"
+      ],
+      "agent_configuration": [
+        "agents.agent_configuration.cmdUpdateAgent",
+        "agents.agent_configuration.qryListAgent",
+        "agents.agent_configuration.qryListAgentTool",
+        "agents.agent_configuration.qryListExecutionSummary",
+        "agents.agent_configuration.qryListOrganizationUser",
+        "agents.agent_configuration.qryListPersonToolRestriction"
+      ],
+      "agent_activity": [
+        "agents.agent_activity.qryListAgent",
+        "agents.agent_activity.qryListAgentTool",
+        "agents.agent_activity.qryListExecutionSummary",
+        "agents.agent_activity.qryListOrganizationUser",
+        "agents.agent_activity.qryListPersonToolRestriction",
+        "agents.agent_activity.qryListTool"
+      ],
+      "agent_simulation": [
+        "agents.agent_simulation.qryListAgent",
+        "agents.agent_simulation.qryListAgentSimulation",
+        "agents.agent_simulation.qryListAgentTool",
+        "agents.agent_simulation.qryListExecutionSummary",
+        "agents.agent_simulation.qryListOrganizationUser",
+        "agents.agent_simulation.qryListPersonToolRestriction",
+        "agents.agent_simulation.qryListTool"
+      ],
+      "my_conduct": [
+        "agents.my_conduct.cmdUpdatePersonalConduct",
+        "agents.my_conduct.qryListAgent",
+        "agents.my_conduct.qryListAgentTool"
+      ],
+      "person_restrictions": [
+        "agents.person_restrictions.cmdUpdatePersonToolRestriction",
+        "agents.person_restrictions.qryListAgent",
+        "agents.person_restrictions.qryListAgentTool",
+        "agents.person_restrictions.qryListExecutionSummary",
+        "agents.person_restrictions.qryListOrganizationUser",
+        "agents.person_restrictions.qryListPersonToolRestriction",
+        "agents.person_restrictions.qryListTool"
+      ],
+      "tool_catalog": [
+        "agents.tool_catalog.qryListAgentTool",
+        "agents.tool_catalog.qryListTool"
+      ]
+    },
+    "generatedAt": "2026-11-20T19:34:58.092Z",
+    "llmCalled": true,
+    "unmappedChanges": []
+  }
+}

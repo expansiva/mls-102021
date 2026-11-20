@@ -1,0 +1,369 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agents",
+  "step": "usecases50",
+  "unitId": "usecases50",
+  "runId": "sha256:2e0f3131bd37d499330abc8ea440a12c8de0b17739a8ef546a4c04811cc2b052",
+  "snapshotHash": "sha256:2e0f3131bd37d499330abc8ea440a12c8de0b17739a8ef546a4c04811cc2b052",
+  "draftHash": "sha256:25328d5cd75d5578c17346a4015e74232824baaa5855001aa3d4154865261ed0",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agents/layer_2_application/usecases/activate.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/createAgentDraft.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/createAgentTool.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/createTool.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/discard.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/getAgent.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/getAgentBehavior.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/getAgentDraft.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listAgent.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listAgentBehavior.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listAgentDraft.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listAgentTool.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listExecutionSummary.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listOrganizationUser.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listPersonToolRestriction.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listPersonalConduct.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listTool.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/undoAgentChange.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateAgent.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updatePersonToolRestriction.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updatePersonalConduct.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateTool.ts",
+    "l1/agents/layer_2_application/usecases/activate.ts",
+    "l1/agents/layer_2_application/usecases/createAgentDraft.ts",
+    "l1/agents/layer_2_application/usecases/createAgentTool.ts",
+    "l1/agents/layer_2_application/usecases/createExecutionSummary.ts",
+    "l1/agents/layer_2_application/usecases/createTool.ts",
+    "l1/agents/layer_2_application/usecases/discard.ts",
+    "l1/agents/layer_2_application/usecases/getAgent.ts",
+    "l1/agents/layer_2_application/usecases/getAgentBehavior.ts",
+    "l1/agents/layer_2_application/usecases/getAgentDraft.ts",
+    "l1/agents/layer_2_application/usecases/getOrganizationUser.ts",
+    "l1/agents/layer_2_application/usecases/listAgent.ts",
+    "l1/agents/layer_2_application/usecases/listAgentBehavior.ts",
+    "l1/agents/layer_2_application/usecases/listAgentDraft.ts",
+    "l1/agents/layer_2_application/usecases/listAgentSimulation.ts",
+    "l1/agents/layer_2_application/usecases/listAgentTool.ts",
+    "l1/agents/layer_2_application/usecases/listExecutionSummary.ts",
+    "l1/agents/layer_2_application/usecases/listOrganizationUser.ts",
+    "l1/agents/layer_2_application/usecases/listPersonToolRestriction.ts",
+    "l1/agents/layer_2_application/usecases/listPersonalConduct.ts",
+    "l1/agents/layer_2_application/usecases/listTool.ts",
+    "l1/agents/layer_2_application/usecases/undoAgentChange.ts",
+    "l1/agents/layer_2_application/usecases/updateAgent.ts",
+    "l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.ts",
+    "l1/agents/layer_2_application/usecases/updateAgentTool.ts",
+    "l1/agents/layer_2_application/usecases/updatePersonToolRestriction.ts",
+    "l1/agents/layer_2_application/usecases/updatePersonalConduct.ts",
+    "l1/agents/layer_2_application/usecases/updateTool.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/activate.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:70dba410304a3b3d3c6eeea05ea3ee57212611cee80bf573332151a8bfeee505",
+      "desiredHash": "sha256:70dba410304a3b3d3c6eeea05ea3ee57212611cee80bf573332151a8bfeee505",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/activate.ts",
+        "l1/agents/layer_2_application/usecases/activate.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createAgentDraft.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:84d6dec6fd4cc0faeaae909de99311758a286b66b70e7f014bf9aba3be7644b5",
+      "desiredHash": "sha256:84d6dec6fd4cc0faeaae909de99311758a286b66b70e7f014bf9aba3be7644b5",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/createAgentDraft.ts",
+        "l1/agents/layer_2_application/usecases/createAgentDraft.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createAgentTool.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:34277da2129f8587b78ff408b38e9b5cfa61502f830b0f9e5c2a5d12db541cb6",
+      "desiredHash": "sha256:34277da2129f8587b78ff408b38e9b5cfa61502f830b0f9e5c2a5d12db541cb6",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/createAgentTool.ts",
+        "l1/agents/layer_2_application/usecases/createAgentTool.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:c2f58f5752ad47ae200d6d0cb52cd574c307e99eecb50e9cfdcc89e92e7dd7ed",
+      "desiredHash": "sha256:c2f58f5752ad47ae200d6d0cb52cd574c307e99eecb50e9cfdcc89e92e7dd7ed",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.ts",
+        "l1/agents/layer_2_application/usecases/createExecutionSummary.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createTool.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:4baf0a79b8c8cc6cc14a56349673bfef1a06a39da0ee827e8a0418585b52511b",
+      "desiredHash": "sha256:4baf0a79b8c8cc6cc14a56349673bfef1a06a39da0ee827e8a0418585b52511b",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/createTool.ts",
+        "l1/agents/layer_2_application/usecases/createTool.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/discard.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:084012b6f396e86cc58e6f71f9d90b66ed0aa645dd424f5cc7f1395c83471a1f",
+      "desiredHash": "sha256:084012b6f396e86cc58e6f71f9d90b66ed0aa645dd424f5cc7f1395c83471a1f",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/discard.ts",
+        "l1/agents/layer_2_application/usecases/discard.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getAgent.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:ff00501613c4e1372906f1cf3b4c6b9941de6dd250841f138afa61a57206ed63",
+      "desiredHash": "sha256:ff00501613c4e1372906f1cf3b4c6b9941de6dd250841f138afa61a57206ed63",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/getAgent.ts",
+        "l1/agents/layer_2_application/usecases/getAgent.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getAgentBehavior.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:bf4ef7a0c6bfad192172514f2f2c1b903412781c92d0bb59bdcdd9f1e76a64bd",
+      "desiredHash": "sha256:bf4ef7a0c6bfad192172514f2f2c1b903412781c92d0bb59bdcdd9f1e76a64bd",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/getAgentBehavior.ts",
+        "l1/agents/layer_2_application/usecases/getAgentBehavior.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getAgentDraft.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:b3b10394d7e366c9fe167a06d3072e06d5842a043fb459eaa335375cbfc8ef88",
+      "desiredHash": "sha256:b3b10394d7e366c9fe167a06d3072e06d5842a043fb459eaa335375cbfc8ef88",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/getAgentDraft.ts",
+        "l1/agents/layer_2_application/usecases/getAgentDraft.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getOrganizationUser.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:d85c3a1330549af2c3edc44560451bb6140965e3a93ff481dd0d32a4769f3694",
+      "desiredHash": "sha256:d85c3a1330549af2c3edc44560451bb6140965e3a93ff481dd0d32a4769f3694",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.ts",
+        "l1/agents/layer_2_application/usecases/getOrganizationUser.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgent.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:54f955773084a0babc1cf17e4fa8a224c01d6a7d7478c53c822c1508257232df",
+      "desiredHash": "sha256:54f955773084a0babc1cf17e4fa8a224c01d6a7d7478c53c822c1508257232df",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/listAgent.ts",
+        "l1/agents/layer_2_application/usecases/listAgent.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentBehavior.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:cb4c924bce20275f72d022136574256a55c22212ed4034b666147ee1bfa821a9",
+      "desiredHash": "sha256:cb4c924bce20275f72d022136574256a55c22212ed4034b666147ee1bfa821a9",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/listAgentBehavior.ts",
+        "l1/agents/layer_2_application/usecases/listAgentBehavior.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentDraft.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:0c55596998ca8a819838c17c7e0e8546493335ee00b4e37fb257fbdcd9404d77",
+      "desiredHash": "sha256:0c55596998ca8a819838c17c7e0e8546493335ee00b4e37fb257fbdcd9404d77",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/listAgentDraft.ts",
+        "l1/agents/layer_2_application/usecases/listAgentDraft.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentSimulation.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:015bdb82cfbeda87e37d5387efa249f0ffe68cfcd947d5a70cb630ed4e31d49d",
+      "desiredHash": "sha256:015bdb82cfbeda87e37d5387efa249f0ffe68cfcd947d5a70cb630ed4e31d49d",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.ts",
+        "l1/agents/layer_2_application/usecases/listAgentSimulation.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentTool.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:c70903554686d22be67ec77573cf4549587b09d0b46563741b35c6b05968ca72",
+      "desiredHash": "sha256:c70903554686d22be67ec77573cf4549587b09d0b46563741b35c6b05968ca72",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/listAgentTool.ts",
+        "l1/agents/layer_2_application/usecases/listAgentTool.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listExecutionSummary.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:aed80500993c351047966ad6068e9ef8aa7344bbb025c3f1aee1b5db27f574df",
+      "desiredHash": "sha256:aed80500993c351047966ad6068e9ef8aa7344bbb025c3f1aee1b5db27f574df",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/listExecutionSummary.ts",
+        "l1/agents/layer_2_application/usecases/listExecutionSummary.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listOrganizationUser.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:8350f9c2593f40339cc3c27444fab1d80f42151c2f8f9d1bae363ea6b6b1c91a",
+      "desiredHash": "sha256:8350f9c2593f40339cc3c27444fab1d80f42151c2f8f9d1bae363ea6b6b1c91a",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/listOrganizationUser.ts",
+        "l1/agents/layer_2_application/usecases/listOrganizationUser.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listPersonalConduct.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:75fca68b5842afc8b7872bd9e9db3301a349dd96d42bf954f0345dede9039208",
+      "desiredHash": "sha256:75fca68b5842afc8b7872bd9e9db3301a349dd96d42bf954f0345dede9039208",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/listPersonalConduct.ts",
+        "l1/agents/layer_2_application/usecases/listPersonalConduct.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listPersonToolRestriction.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:c704b1d5fb9fe560ebf09d3610a55ba1e7529854501f5c52e1b56446d5bd0f6c",
+      "desiredHash": "sha256:c704b1d5fb9fe560ebf09d3610a55ba1e7529854501f5c52e1b56446d5bd0f6c",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/listPersonToolRestriction.ts",
+        "l1/agents/layer_2_application/usecases/listPersonToolRestriction.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listTool.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:be4e3a3a04e069f8046135711df48de2604de51ec6a54f81c6036113563d15c6",
+      "desiredHash": "sha256:be4e3a3a04e069f8046135711df48de2604de51ec6a54f81c6036113563d15c6",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/listTool.ts",
+        "l1/agents/layer_2_application/usecases/listTool.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/undoAgentChange.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:7d9eae545ed33c6f3f7aa2b613d6bc1bad5c176624f449b17b487a8a6b8ef73e",
+      "desiredHash": "sha256:7d9eae545ed33c6f3f7aa2b613d6bc1bad5c176624f449b17b487a8a6b8ef73e",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/undoAgentChange.ts",
+        "l1/agents/layer_2_application/usecases/undoAgentChange.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgent.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:e18ea8314a355f8fad98447e4cdab3512b8bb83e2cf0296785288fe3d7837f15",
+      "desiredHash": "sha256:e18ea8314a355f8fad98447e4cdab3512b8bb83e2cf0296785288fe3d7837f15",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/updateAgent.ts",
+        "l1/agents/layer_2_application/usecases/updateAgent.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:2e0e1c8c09eb795f255defdc22a1ee1391a05aae26d4297084f6413c9093aabb",
+      "desiredHash": "sha256:2e0e1c8c09eb795f255defdc22a1ee1391a05aae26d4297084f6413c9093aabb",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.ts",
+        "l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:bc3412f2ea1d5b291bdbce05618959c7fd8140c4f4a1e4299f7d62ef49899a03",
+      "desiredHash": "sha256:bc3412f2ea1d5b291bdbce05618959c7fd8140c4f4a1e4299f7d62ef49899a03",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.ts",
+        "l1/agents/layer_2_application/usecases/updateAgentTool.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updatePersonalConduct.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:c12b54bfe272c2af94f81fb8834c7ef598146bbbbfdc0a30f0f5a26d1a643ab6",
+      "desiredHash": "sha256:c12b54bfe272c2af94f81fb8834c7ef598146bbbbfdc0a30f0f5a26d1a643ab6",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/updatePersonalConduct.ts",
+        "l1/agents/layer_2_application/usecases/updatePersonalConduct.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updatePersonToolRestriction.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:be0273c41923e6c63edcd2a715610cf612e83dd5a0f3b7e41b0685b198f8b372",
+      "desiredHash": "sha256:be0273c41923e6c63edcd2a715610cf612e83dd5a0f3b7e41b0685b198f8b372",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/updatePersonToolRestriction.ts",
+        "l1/agents/layer_2_application/usecases/updatePersonToolRestriction.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateTool.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:baa16e5086f948ba111d13912081e8f416a1f01371b6767d2338532f6b2c2cec",
+      "desiredHash": "sha256:baa16e5086f948ba111d13912081e8f416a1f01371b6767d2338532f6b2c2cec",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/updateTool.ts",
+        "l1/agents/layer_2_application/usecases/updateTool.ts"
+      ]
+    }
+  ],
+  "issues": []
+}

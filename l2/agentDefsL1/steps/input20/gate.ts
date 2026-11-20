@@ -392,6 +392,7 @@ export function buildD1InputSnapshot(
     receipts,
   }), present, receipts, artifacts.rederiveTypes), present);
   noteRemovals(problems, removed, previous, present, receipts);
+  implicitRemovals(removed, files, present, receipts);
   if (hasCycle(files)) error(problems, 'DAG_CYCLE', 'input.json', 'Planned files have a dependency cycle.');
 
   const pages = pageGroups(requests);
@@ -877,6 +878,22 @@ function collectRemoved(
 /** The file of the previous snapshot a removed item was written to. */
 export function previousFileOfRemoved(previous: D1InputSnapshot | null, item: Pick<D1RemovedItem, 'kind' | 'id'>): D1InputSnapshot['files'][number] | undefined {
   return previous?.files.find(file => file.identity === item.id || file.ownerRefs.includes(`${item.kind}:${item.id}`) || file.ownerRefs.includes(`endpoint:${item.id}`));
+}
+
+/**
+ * d1_250: a usecase def the D1 wrote (the writer receipt is the hash on disk) that no plan carries any more, and the L4 did not list as removed: the route
+ * that used it left the contract, and the L4 only names what it removes. It is inventoried as removed, like the ones the L4 names, so the finalize does
+ * not call it an extra file. A def with no receipt, or edited by hand, is not touched: it stays an extra file.
+ */
+function implicitRemovals(removed: D1RemovedItem[], files: readonly D1PlannedFile[], present: Map<string, string>, receipts: WriterIndex): void {
+  const planned = new Set(files.map(file => file.defPath));
+  const listed = new Set(removed.flatMap(item => (item.defPath ? [item.defPath] : [])));
+  for (const [defPath, hash] of receipts.hash) {
+    const match = /^l1\/[^/]+\/layer_2_application\/usecases\/([A-Za-z][A-Za-z0-9]*)\.defs\.ts$/u.exec(defPath);
+    if (!match || planned.has(defPath) || listed.has(defPath) || removed.some(item => item.kind === 'usecase' && item.id === match[1])) continue;
+    if (present.get(defPath) !== hash) continue;
+    removed.push({ kind: 'usecase', id: match[1], defPath, inventoried: true, contentHash: hash });
+  }
 }
 
 function noteRemovals(

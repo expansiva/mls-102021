@@ -1,0 +1,2306 @@
+{
+  "schemaVersion": "2026-09-24-d1-report-v3",
+  "project": 102047,
+  "moduleName": "agents",
+  "calls": {
+    "finalizeCalledModel": false,
+    "finalizeOpenedRepair": false,
+    "repliesDelivered": null,
+    "repliesUnknown": "usecases50 call log is absent",
+    "promptsAssembled": null,
+    "repairsScheduled": null,
+    "invocationReplies": null,
+    "invocationUnknown": "usecases50 call log is absent"
+  },
+  "executableBackend": false,
+  "inventoryNote": "Inventory recognition is not certification of an executable backend.",
+  "defsStatus": "complete",
+  "materialization": "pending",
+  "outcome": "complete",
+  "blocking": "",
+  "phases": [
+    {
+      "stepId": "entry10",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "input20",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "resolve25",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "domain30",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "persistence40",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "usecases50",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "controllers60",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "support70",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "finalize80",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    }
+  ],
+  "findings": [
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.findPeopleToSimulate access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.agent_simulation.findPeopleToSimulate"
+    },
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItCan access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItCan"
+    },
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItUnderstands access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItUnderstands"
+    },
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.getMyConduct access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.my_conduct.getMyConduct"
+    },
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.listMyConductHistory access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.my_conduct.listMyConductHistory"
+    },
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.sendConductChange access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.my_conduct.sendConductChange"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATION_SOURCE_ABSENT",
+      "path": "/_102034_/l4/ontology/mdm.defs.ts",
+      "message": "Enum OrganizationUser details.identification.status names catalog /_102034_/l4/ontology/mdm.defs.ts, and that snapshot was not opened. It was not treated as platform.",
+      "ownerRef": "OrganizationUser details.identification.status"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "situation",
+      "message": "No consumer: AgentDraft situation. Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "AgentDraft situation"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "level",
+      "message": "No consumer: AgentSimulation level. Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "AgentSimulation level"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "subjectKind",
+      "message": "No consumer: AgentSimulation subjectKind. Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "AgentSimulation subjectKind"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "toolVerdicts.reason",
+      "message": "No consumer: AgentSimulation toolVerdicts.reason. Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "AgentSimulation toolVerdicts.reason"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "choiceSource",
+      "message": "No consumer: AgentTool choiceSource. Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "AgentTool choiceSource"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "details.automaticOrigin",
+      "message": "No consumer: AgentTool details.automaticOrigin. Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "AgentTool details.automaticOrigin"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "details.actions.result",
+      "message": "No consumer: ExecutionSummary details.actions.result. Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "ExecutionSummary details.actions.result"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "details.identification.status",
+      "message": "No consumer: OrganizationUser details.identification.status. Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "OrganizationUser details.identification.status"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "origin",
+      "message": "No consumer: Tool origin. Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "Tool origin"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "status",
+      "message": "No consumer: Tool status. Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "Tool status"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "message": "Route agents.agent_activity.getAgentActivity output.executions.details.actions is not derived: ExecutionSummary inside ExecutionSummary needs one L4 relationship between them; found 0.",
+      "ownerRef": "agents.agent_activity.getAgentActivity"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "message": "Route agents.agent_activity.listAgentExecutions output.executions.details.actions is not derived: ExecutionSummary inside ExecutionSummary needs one L4 relationship between them; found 0.",
+      "ownerRef": "agents.agent_activity.listAgentExecutions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.getAgentBehavior output.behavior.agent.agent.name is not derived: Interface BehaviorAgent: field agent.name is not a field of any entity.",
+      "ownerRef": "agents.agent_behavior.getAgentBehavior"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.listBehaviorChanges input.agentId is not derived: Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.agent_behavior.listBehaviorChanges"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.requestBehaviorChange output.behavior.agent.agent.name is not derived: Interface BehaviorAgent: field agent.name is not a field of any entity.",
+      "ownerRef": "agents.agent_behavior.requestBehaviorChange"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.getAgentConfiguration output.configuration.responsible.agent.responsible is not derived: Interface ResponsiblePerson: field agent.responsible is not a field of any entity.",
+      "ownerRef": "agents.agent_configuration.getAgentConfiguration"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.saveAgentConfiguration output.configuration.responsible.agent.responsible is not derived: Interface ResponsiblePerson: field agent.responsible is not a field of any entity.",
+      "ownerRef": "agents.agent_configuration.saveAgentConfiguration"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.searchResponsibleCandidates output.users.agent.responsible is not derived: Interface ResponsiblePerson: field agent.responsible is not a field of any entity.",
+      "ownerRef": "agents.agent_configuration.searchResponsibleCandidates"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_overview.defs.ts",
+      "message": "Route agents.agent_overview.getAgentOverview input.agentId is not derived: Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.agent_overview.getAgentOverview"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.findPeopleToSimulate output.people.details.identification is not derived: Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.agent_simulation.findPeopleToSimulate"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage output.whatItCan.person is not derived: OrganizationUser inside AgentSimulation needs one L4 relationship between them; found 0.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItCan output.whatItCan.person is not derived: OrganizationUser inside AgentSimulation needs one L4 relationship between them; found 0.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItCan"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItUnderstands output.whatItUnderstands.understanding is not derived: Interface Understanding: fields understanding.asksForAction, moduleName, understanding.subjectName, understanding.explanation are not all fields of one entity or of one entity linked to it by an N:1 relationship.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItUnderstands"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_tools.defs.ts",
+      "message": "Route agents.agent_tools.getAgentToolTree output.name is not derived: Output name is a value (string), not an interface; no entity owns it.",
+      "ownerRef": "agents.agent_tools.getAgentToolTree"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "message": "Route agents.agents.loadAgentsPage input.page is not derived: Page input page pages one of 2 lists; the types do not say which.",
+      "ownerRef": "agents.agents.loadAgentsPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.getDraftReview input.draftId is not derived: Input draftId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.draft_review.getDraftReview"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.searchSimulationPeople output.people.personRef is not derived: Interface SimulationPerson: field personRef is not a field of any entity.",
+      "ownerRef": "agents.draft_review.searchSimulationPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.simulateDraft output.simulation.toolVerdicts is not derived: Interface ToolVerdict: fields moduleName, toolVerdicts.subjectName, toolVerdicts.actionName, toolVerdicts.canUse, toolVerdicts.reason, toolVerdicts.reasonText are not all fields of one entity or of one entity linked to it by an N:1 relationship.",
+      "ownerRef": "agents.draft_review.simulateDraft"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.getMyConduct output.conduct is not derived: Interface MyConduct: fields summary, version are not all fields of one entity or of one entity linked to it by an N:1 relationship.",
+      "ownerRef": "agents.my_conduct.getMyConduct"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.listMyConductHistory output.history.changedAt is not derived: Interface ConductHistoryEntry: field changedAt is not a field of any entity.",
+      "ownerRef": "agents.my_conduct.listMyConductHistory"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.sendConductChange output.conduct is not derived: Interface MyConduct: fields summary, version are not all fields of one entity or of one entity linked to it by an N:1 relationship.",
+      "ownerRef": "agents.my_conduct.sendConductChange"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.getPersonRestrictions output.person.details.identification is not derived: Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.getPersonRestrictions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.listPeople output.people.details.identification is not derived: Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.listPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.saveRestrictions output.person.details.identification is not derived: Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.saveRestrictions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/tool_catalog.defs.ts",
+      "message": "Route agents.tool_catalog.getToolCatalog output.modules.subjects is not derived: Tool inside Tool needs one L4 relationship between them; found 0.",
+      "ownerRef": "agents.tool_catalog.getToolCatalog"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_FROM_CONTRACT",
+      "path": "l4/agents/workflows.defs.ts",
+      "message": "Route agents.cm.record needs ExecutionSummary.create, which is not in the planned pool. Usecase createExecutionSummary was created from the contract.",
+      "ownerRef": "createExecutionSummary"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_FROM_CONTRACT",
+      "path": "l2/agents/web/contracts/platform.defs.ts",
+      "message": "Route agents.platform.releaseCatalogChanged needs Tool.create, which is not in the planned pool. Usecase createTool was created from the contract.",
+      "ownerRef": "createTool"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_FROM_CONTRACT",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.getAgentConfiguration needs OrganizationUser.get, which is not in the planned pool. Usecase getOrganizationUser was created from the contract.",
+      "ownerRef": "getOrganizationUser"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_FROM_CONTRACT",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.listMyConductHistory needs PersonalConduct.list, which is not in the planned pool. Usecase listPersonalConduct was created from the contract.",
+      "ownerRef": "listPersonalConduct"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_FROM_CONTRACT",
+      "path": "l2/agents/web/contracts/platform.defs.ts",
+      "message": "Route agents.platform.releaseCatalogChanged needs Tool.update, which is not in the planned pool. Usecase updateTool was created from the contract.",
+      "ownerRef": "updateTool"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_SPLIT_BY_CALL",
+      "path": "l4/agents/integration.defs.ts",
+      "message": "Usecase listAgentBehavior is on an external entity served by more than one call: getAgentBehavior (get) → cm.readAgent, listAgentBehavior (list) → cm.listAgentHistory.",
+      "ownerRef": "listAgentBehavior"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_SPLIT_BY_CALL",
+      "path": "l4/agents/integration.defs.ts",
+      "message": "Usecase listAgentDraft is on an external entity served by more than one call: listAgentDraft (list) → cm.listAgents, getAgentDraft (get) → cm.readAgent.",
+      "ownerRef": "listAgentDraft"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_SPLIT_BY_CALL",
+      "path": "l4/agents/integration.defs.ts",
+      "message": "Usecase listAgent is on an external entity served by more than one call: listAgent (list) → cm.listAgents, getAgent (get) → cm.readAgent.",
+      "ownerRef": "listAgent"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_SPLIT_BY_CALL",
+      "path": "l4/agents/integration.defs.ts",
+      "message": "Usecase updateAgentBehavior is on an external entity served by more than one call: updateAgentAgentBehavior (update) → cm.updateAgent, undoAgentChange (update) → cm.undoAgentChange.",
+      "ownerRef": "updateAgentBehavior"
+    }
+  ],
+  "declaredNotConsumedBy": [
+    "persistence40",
+    "usecases50",
+    "controllers60",
+    "support70"
+  ],
+  "enumerations": {
+    "consumed": [],
+    "notConsumed": [
+      {
+        "entityId": "AgentDraft",
+        "path": "situation",
+        "values": [
+          "preparing",
+          "ready",
+          "refused",
+          "activated",
+          "discarded"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "external",
+          "writer": "external",
+          "derived": false,
+          "restriction": "own",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l2/shared/contracts/connections/cm.ts",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "AgentSimulation",
+        "path": "level",
+        "values": [
+          "whatItCan",
+          "whatItUnderstands"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "external",
+          "writer": "external",
+          "derived": false,
+          "restriction": "own",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l2/shared/contracts/connections/cm.ts",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "AgentSimulation",
+        "path": "subjectKind",
+        "values": [
+          "person",
+          "role"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "external",
+          "writer": "external",
+          "derived": false,
+          "restriction": "own",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l2/shared/contracts/connections/cm.ts",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "AgentSimulation",
+        "path": "toolVerdicts.reason",
+        "values": [
+          "allowed",
+          "restrictedForPerson",
+          "notPermittedForRole",
+          "removedFromRelease"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "external",
+          "writer": "external",
+          "derived": false,
+          "restriction": "own",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l2/shared/contracts/connections/cm.ts",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "AgentTool",
+        "path": "choiceSource",
+        "values": [
+          "admin",
+          "automatic"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "module",
+          "writer": "module",
+          "derived": false,
+          "restriction": "own",
+          "catalogValues": [],
+          "catalogSource": "",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "AgentTool",
+        "path": "details.automaticOrigin",
+        "values": [
+          "draftSuggestion",
+          "catalogRefresh"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "module",
+          "writer": "module",
+          "derived": false,
+          "restriction": "own",
+          "catalogValues": [],
+          "catalogSource": "",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "ExecutionSummary",
+        "path": "details.actions.result",
+        "values": [
+          "succeeded",
+          "failed",
+          "refused"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "module",
+          "writer": "module",
+          "derived": false,
+          "restriction": "own",
+          "catalogValues": [],
+          "catalogSource": "",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "OrganizationUser",
+        "path": "details.identification.status",
+        "values": [
+          "Active",
+          "Inactive",
+          "Merged",
+          "Blocked"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "unresolved",
+          "writer": "unresolved",
+          "derived": false,
+          "restriction": "unresolved",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l4/ontology/mdm.defs.ts",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "Tool",
+        "path": "origin",
+        "values": [
+          "appModule",
+          "cm"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "module",
+          "writer": "module",
+          "derived": false,
+          "restriction": "own",
+          "catalogValues": [],
+          "catalogSource": "",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "Tool",
+        "path": "status",
+        "values": [
+          "available",
+          "removed"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "module",
+          "writer": "module",
+          "derived": false,
+          "restriction": "own",
+          "catalogValues": [],
+          "catalogSource": "",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      }
+    ]
+  },
+  "files": [
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_activity.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agent_activity.getAgentActivity",
+        "endpoint:agents.agent_activity.listAgentExecutions"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_behavior.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agent_behavior.getAgentBehavior",
+        "endpoint:agents.agent_behavior.listBehaviorChanges",
+        "endpoint:agents.agent_behavior.requestBehaviorChange"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_configuration.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agent_configuration.getAgentConfiguration",
+        "endpoint:agents.agent_configuration.saveAgentConfiguration",
+        "endpoint:agents.agent_configuration.searchResponsibleCandidates"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_overview.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agent_overview.getAgentOverview"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_simulation.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agent_simulation.findPeopleToSimulate",
+        "endpoint:agents.agent_simulation.getSimulationPage",
+        "endpoint:agents.agent_simulation.simulateWhatItCan",
+        "endpoint:agents.agent_simulation.simulateWhatItUnderstands"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_tools.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agent_tools.enableUnchosenTool",
+        "endpoint:agents.agent_tools.getAgentToolTree",
+        "endpoint:agents.agent_tools.listAutomaticToolChoices",
+        "endpoint:agents.agent_tools.toggleToolChoice"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agents.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agents.listAgentsCollection",
+        "endpoint:agents.agents.listRequestHistory",
+        "endpoint:agents.agents.loadAgentsPage",
+        "endpoint:agents.agents.sendNewAgentRequest"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/cm.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.cm.agentDraftReady",
+        "endpoint:agents.cm.describe",
+        "endpoint:agents.cm.record"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/draft_review.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.draft_review.activateDraft",
+        "endpoint:agents.draft_review.discardDraft",
+        "endpoint:agents.draft_review.getDraftReview",
+        "endpoint:agents.draft_review.saveDraftTools",
+        "endpoint:agents.draft_review.searchSimulationPeople",
+        "endpoint:agents.draft_review.simulateDraft"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/my_conduct.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.my_conduct.getMyConduct",
+        "endpoint:agents.my_conduct.listMyConductHistory",
+        "endpoint:agents.my_conduct.sendConductChange"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/person_restrictions.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.person_restrictions.getPersonRestrictions",
+        "endpoint:agents.person_restrictions.listPeople",
+        "endpoint:agents.person_restrictions.saveRestrictions"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/platform.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.platform.releaseCatalogChanged"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/tool_catalog.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.tool_catalog.getToolCatalog",
+        "endpoint:agents.tool_catalog.listCatalogUpdates"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/integration/outbound.defs.ts",
+      "action": "generated",
+      "ownerRefs": [],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentTool.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "table:agentTool"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:AgentToolRepository",
+        "table:agentTool"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/executionSummary.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "table:executionSummary"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:ExecutionSummaryRepository",
+        "table:executionSummary"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/personToolRestriction.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "table:personToolRestriction"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:PersonToolRestrictionRepository",
+        "table:personToolRestriction"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "adapter:AgentToolRepository",
+        "adapter:ExecutionSummaryRepository",
+        "adapter:PersonToolRestrictionRepository",
+        "adapter:ToolRepository"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/seeds.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "table:agentTool",
+        "table:executionSummary",
+        "table:personToolRestriction",
+        "table:tool"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/tool.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "table:tool"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:ToolRepository",
+        "table:tool"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "grant:adminChoosePeople",
+        "grant:adminManageAgents",
+        "grant:adminManageTools",
+        "grant:adminOwnConduct",
+        "grant:adminReadActivity",
+        "grant:memberOwnConduct",
+        "grant:memberReadActivity",
+        "grant:memberReadToolCatalog",
+        "grant:memberSeeAgents",
+        "grant:memberSeePeopleNames",
+        "grant:memberSimulateAsMyself"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:AgentToolRepository"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:ExecutionSummaryRepository"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:PersonToolRestrictionRepository"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:ToolRepository"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_activity.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agent_activity.getAgentActivity",
+        "endpoint:agents.agent_activity.listAgentExecutions"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_behavior.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agent_behavior.getAgentBehavior",
+        "endpoint:agents.agent_behavior.listBehaviorChanges",
+        "endpoint:agents.agent_behavior.requestBehaviorChange"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_configuration.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agent_configuration.getAgentConfiguration",
+        "endpoint:agents.agent_configuration.saveAgentConfiguration",
+        "endpoint:agents.agent_configuration.searchResponsibleCandidates"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_overview.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agent_overview.getAgentOverview"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_simulation.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agent_simulation.findPeopleToSimulate",
+        "endpoint:agents.agent_simulation.getSimulationPage",
+        "endpoint:agents.agent_simulation.simulateWhatItCan",
+        "endpoint:agents.agent_simulation.simulateWhatItUnderstands"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_tools.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agent_tools.enableUnchosenTool",
+        "endpoint:agents.agent_tools.getAgentToolTree",
+        "endpoint:agents.agent_tools.listAutomaticToolChoices",
+        "endpoint:agents.agent_tools.toggleToolChoice"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agents.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.agents.listAgentsCollection",
+        "endpoint:agents.agents.listRequestHistory",
+        "endpoint:agents.agents.loadAgentsPage",
+        "endpoint:agents.agents.sendNewAgentRequest"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/cm.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.cm.agentDraftReady",
+        "endpoint:agents.cm.describe",
+        "endpoint:agents.cm.record"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/draft_review.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.draft_review.activateDraft",
+        "endpoint:agents.draft_review.discardDraft",
+        "endpoint:agents.draft_review.getDraftReview",
+        "endpoint:agents.draft_review.saveDraftTools",
+        "endpoint:agents.draft_review.searchSimulationPeople",
+        "endpoint:agents.draft_review.simulateDraft"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/my_conduct.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.my_conduct.getMyConduct",
+        "endpoint:agents.my_conduct.listMyConductHistory",
+        "endpoint:agents.my_conduct.sendConductChange"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/person_restrictions.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.person_restrictions.getPersonRestrictions",
+        "endpoint:agents.person_restrictions.listPeople",
+        "endpoint:agents.person_restrictions.saveRestrictions"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/platform.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.platform.releaseCatalogChanged"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/tool_catalog.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agents.tool_catalog.getToolCatalog",
+        "endpoint:agents.tool_catalog.listCatalogUpdates"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/scope/accessScope.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "grant:adminChoosePeople",
+        "grant:adminManageAgents",
+        "grant:adminManageTools",
+        "grant:adminOwnConduct",
+        "grant:adminReadActivity",
+        "grant:memberOwnConduct",
+        "grant:memberReadActivity",
+        "grant:memberReadToolCatalog",
+        "grant:memberSeeAgents",
+        "grant:memberSeePeopleNames",
+        "grant:memberSimulateAsMyself"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/activate.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:activate",
+        "endpoint:agents.draft_review.activateDraft"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createAgentDraft.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createAgentDraft",
+        "endpoint:agents.agents.sendNewAgentRequest"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createAgentTool.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createAgentTool",
+        "endpoint:agents.agent_tools.enableUnchosenTool",
+        "endpoint:agents.cm.agentDraftReady"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createExecutionSummary",
+        "endpoint:agents.cm.record"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createTool.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createTool",
+        "endpoint:agents.platform.releaseCatalogChanged"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/discard.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:discard",
+        "endpoint:agents.draft_review.discardDraft"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getAgent.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:getAgent",
+        "endpoint:agents.agent_activity.getAgentActivity",
+        "endpoint:agents.agent_overview.getAgentOverview",
+        "endpoint:agents.agent_simulation.getSimulationPage",
+        "endpoint:agents.agents.listAgentsCollection",
+        "endpoint:agents.agents.loadAgentsPage",
+        "endpoint:agents.agents.sendNewAgentRequest"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getAgentBehavior.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:getAgentBehavior",
+        "endpoint:agents.agent_behavior.getAgentBehavior"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getAgentDraft.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:getAgentDraft",
+        "endpoint:agents.agents.listAgentsCollection",
+        "endpoint:agents.agents.loadAgentsPage",
+        "endpoint:agents.draft_review.getDraftReview"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getOrganizationUser.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:getOrganizationUser",
+        "endpoint:agents.agent_configuration.getAgentConfiguration",
+        "endpoint:agents.agent_configuration.saveAgentConfiguration",
+        "endpoint:agents.agent_simulation.getSimulationPage",
+        "endpoint:agents.agent_simulation.simulateWhatItCan",
+        "endpoint:agents.person_restrictions.getPersonRestrictions",
+        "endpoint:agents.person_restrictions.saveRestrictions"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgent.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listAgent",
+        "endpoint:agents.agent_configuration.getAgentConfiguration"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentBehavior.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listAgentBehavior",
+        "endpoint:agents.agent_behavior.listBehaviorChanges"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentDraft.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listAgentDraft",
+        "endpoint:agents.agents.listRequestHistory",
+        "endpoint:agents.agents.loadAgentsPage"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentSimulation.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listAgentSimulation",
+        "endpoint:agents.agent_simulation.getSimulationPage",
+        "endpoint:agents.agent_simulation.simulateWhatItCan",
+        "endpoint:agents.agent_simulation.simulateWhatItUnderstands",
+        "endpoint:agents.draft_review.simulateDraft"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentTool.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listAgentTool",
+        "endpoint:agents.agent_tools.getAgentToolTree",
+        "endpoint:agents.agent_tools.listAutomaticToolChoices",
+        "endpoint:agents.draft_review.getDraftReview",
+        "endpoint:agents.cm.describe"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listExecutionSummary.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listExecutionSummary",
+        "endpoint:agents.agent_activity.getAgentActivity",
+        "endpoint:agents.agent_activity.listAgentExecutions",
+        "endpoint:agents.agent_configuration.getAgentConfiguration",
+        "endpoint:agents.agent_configuration.saveAgentConfiguration"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listOrganizationUser.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listOrganizationUser",
+        "endpoint:agents.agent_configuration.searchResponsibleCandidates",
+        "endpoint:agents.agent_simulation.findPeopleToSimulate",
+        "endpoint:agents.person_restrictions.listPeople"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listPersonalConduct.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listPersonalConduct",
+        "endpoint:agents.my_conduct.listMyConductHistory"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listPersonToolRestriction.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listPersonToolRestriction",
+        "endpoint:agents.person_restrictions.getPersonRestrictions",
+        "endpoint:agents.cm.describe"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listTool.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listTool",
+        "endpoint:agents.agent_tools.enableUnchosenTool",
+        "endpoint:agents.agent_tools.getAgentToolTree",
+        "endpoint:agents.agent_tools.listAutomaticToolChoices",
+        "endpoint:agents.agent_tools.toggleToolChoice",
+        "endpoint:agents.draft_review.getDraftReview",
+        "endpoint:agents.draft_review.saveDraftTools",
+        "endpoint:agents.person_restrictions.getPersonRestrictions",
+        "endpoint:agents.person_restrictions.saveRestrictions",
+        "endpoint:agents.tool_catalog.getToolCatalog",
+        "endpoint:agents.tool_catalog.listCatalogUpdates",
+        "endpoint:agents.cm.describe"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/undoAgentChange.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:undoAgentChange",
+        "endpoint:agents.agent_behavior.requestBehaviorChange"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgent.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:updateAgent",
+        "endpoint:agents.agent_configuration.saveAgentConfiguration"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:updateAgentAgentBehavior",
+        "endpoint:agents.agent_behavior.requestBehaviorChange"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:updateAgentTool",
+        "endpoint:agents.agent_tools.toggleToolChoice",
+        "endpoint:agents.draft_review.saveDraftTools",
+        "endpoint:agents.platform.releaseCatalogChanged"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updatePersonalConduct.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:updatePersonalConduct",
+        "endpoint:agents.my_conduct.sendConductChange"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updatePersonToolRestriction.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:updatePersonToolRestriction",
+        "endpoint:agents.person_restrictions.saveRestrictions"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateTool.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:updateTool",
+        "endpoint:agents.platform.releaseCatalogChanged"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/workflows/executionRecording.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "process:executionRecording"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/workflows/toolCatalogRefresh.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "process:toolCatalogRefresh"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/workflows/virtualEmployeeCreation.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "process:virtualEmployeeCreation"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agent.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:getAgent",
+        "usecase:listAgent",
+        "usecase:updateAgent"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agentBehavior.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:getAgentBehavior",
+        "usecase:listAgentBehavior",
+        "usecase:undoAgentChange",
+        "usecase:updateAgentAgentBehavior"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:activate",
+        "usecase:createAgentDraft",
+        "usecase:discard",
+        "usecase:getAgentDraft",
+        "usecase:listAgentDraft"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agentSimulation.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listAgentSimulation"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createAgentTool",
+        "usecase:listAgentTool",
+        "usecase:updateAgentTool"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/executionSummary.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createExecutionSummary",
+        "usecase:listExecutionSummary"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:getOrganizationUser",
+        "usecase:listOrganizationUser"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/personalConduct.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listPersonalConduct",
+        "usecase:updatePersonalConduct"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listPersonToolRestriction",
+        "usecase:updatePersonToolRestriction"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/tool.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createTool",
+        "usecase:listTool",
+        "usecase:updateTool"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    }
+  ],
+  "sources": [
+    {
+      "path": "/_102034_/l2/shared/contracts/connections/cm.ts",
+      "sha256": "sha256:300f813f24e49fd720521411ac04e68ebcec0bc4f48f704dd4032831743922ae",
+      "state": "present"
+    },
+    {
+      "path": "/_102034_/l2/shared/contracts/connections/platform.ts",
+      "sha256": "sha256:e499ca568e7fa1d7d9bd750715acb96f09b473ff9de10fca6421da57f22b252b",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "sha256": "sha256:09fdeec3a384bd02d3aaa5fb9e5de4cf0e8d24ec1914148585d4d6db88768600",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "sha256": "sha256:c2e26e175e2b4051d91887ed442c6476bc95301d6cad2db2cd11f88a761525a5",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "sha256": "sha256:5788e2c7dbcc567633b9b4b775cb6bb2430e71456c4d5050d9ecd43d63f9f3cf",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agent_overview.defs.ts",
+      "sha256": "sha256:12a077b8883deadc37ef8e1323e8985e5df73cf5e3ad08f1cc0c127661f02008",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "sha256": "sha256:6648eeff1cb0d540b8cd95e37c760bfb5e01c57e3baff035642377ee0c07ab96",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agent_tools.defs.ts",
+      "sha256": "sha256:a56725aae07f10c0aef3240db635e6fb5d0669d164cd753b47d481fd7ee866a5",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "sha256": "sha256:b45185ab9ddce2b3626df4a35ee37db65375aa873c39ed1dd8939578e558bfe3",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "sha256": "sha256:9afbfc98a22960a10a90359a16c52b030a52dd654cff53bd532cf6eac2bf0820",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "sha256": "sha256:b6f76842fac773a89fa3e63a14849eb10f550b601177fdab23be7b85329b2f92",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "sha256": "sha256:e0ac325db3e82d51c505c9cb799a79a1c2932ac75eec0014f036f4bfe155aa6c",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/tool_catalog.defs.ts",
+      "sha256": "sha256:22422feb653aa84be3e4afb6ae49a7538af9123f855cb4b5563650391a3f1535",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/access.defs.ts",
+      "sha256": "sha256:b22519a4a27e07cc57538105e7e31fc07036c9d32c0168372cd9cc2f5e121cfb",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/integration.defs.ts",
+      "sha256": "sha256:daa3d25eb6045172ba5e7e04f613041fd6b1bfbb5b64dc578b5f6754e8d2b284",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/adjustAgentTools.defs.ts",
+      "sha256": "sha256:5613735f9e5a0bc1c01774fee14a069960e498b04417796c8582ae1106940f28",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/changeAgentBehavior.defs.ts",
+      "sha256": "sha256:4f6f994386603c3cc00a1e604cc595bde733bfc4f3ebf82ed280eefadbe5b4d1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/changeMyConduct.defs.ts",
+      "sha256": "sha256:3bf48a7993ee003b62186c7396d564046fece10d87e3d2c5917d4b1e44d72ec3",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/configureAgent.defs.ts",
+      "sha256": "sha256:5b2106190a254ed427309329712d5e5e5e27c2e23c5ed8d97e8992bcc26e8b84",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/createVirtualEmployee.defs.ts",
+      "sha256": "sha256:7ecd8feb113e8d6f4fbe545a83adf7741181cc66597cb390d33673613c575ea0",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/followAgentActivity.defs.ts",
+      "sha256": "sha256:637a8f89439a4507fa75a32bfef657cc5f27717df6e6ff538d8f41d59d9e95a3",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/index.defs.ts",
+      "sha256": "sha256:d9ba190bfc914e1006bda397078bfe2d72a978c82a8d3e7118522ff37c590076",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/restrictPersonTools.defs.ts",
+      "sha256": "sha256:4720f6b4a1116b4a980adf8655c57771acedd2697fbf127a232a7dfbdb3f5816",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/reviewAndActivateDraft.defs.ts",
+      "sha256": "sha256:95c1284022cd86092e8ebef485d8277e55185f21bbcdb017c75386a1079bb4fc",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/simulateAgentByRole.defs.ts",
+      "sha256": "sha256:96add7cdf3f16b55b87d72ce399d3017f5a32c66a96f56c226b7a79fe18ffbd0",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/simulateAsMyself.defs.ts",
+      "sha256": "sha256:a0c2ec5f1a7e3fb65d3cad772be9badd89ed6aac824f870d40cc3dd445f0ecd8",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/module.defs.ts",
+      "sha256": "sha256:46948a37b7d18eee4f948189c7113564476f645ef6589260cde3f0a261bb24fb",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/Agent.defs.ts",
+      "sha256": "sha256:40f4c834e3c176a4bc3ca43852078124c235b59e5d619e0e3b948f641b9ad284",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/AgentBehavior.defs.ts",
+      "sha256": "sha256:fc08042f2a2a6aaa102e9556d4dd5a4843f060ed73a9d9d3818abbdd7a255b22",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/AgentDraft.defs.ts",
+      "sha256": "sha256:6e1ef25c66feef990b1054f67e7f2be8af8e7d97134a818a0cd74469f810992b",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/AgentSimulation.defs.ts",
+      "sha256": "sha256:9dfc98712851aa401735e0cfa22f499b09029677634949825bd8d5ecef24571e",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/AgentTool.defs.ts",
+      "sha256": "sha256:e0b7bac5457a623e22e80158744d53ceeb52698d08a279d8b30c61f241a2ccab",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/ExecutionSummary.defs.ts",
+      "sha256": "sha256:3a636ee404005f41733cc16a837731d7977b33526992f2193e7a41edee4303ec",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/index.defs.ts",
+      "sha256": "sha256:4ef19e3c8537d25c3aeb359955f3d3b85c38e2641dbb509654fb6fc80f136544",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/OrganizationUser.defs.ts",
+      "sha256": "sha256:7141f03984ff02008f3f723fa41f85ad23adf0921bafec857340d3bee18969cd",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/PersonalConduct.defs.ts",
+      "sha256": "sha256:0cbef4cc7cc379280663ad46ab845e7f7a660c660a0ec7c6f8014ff5fc4e7131",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/PersonToolRestriction.defs.ts",
+      "sha256": "sha256:c0b7b0c29ec0f73626ed388a406c9726479a8ac173f53b6cadfec01a13b16e68",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/Tool.defs.ts",
+      "sha256": "sha256:b17f4558cd3886a1cb70d4fe988eb6279fff64181abedfd748881150320a94fc",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/pool/l1/pipeline.json",
+      "sha256": "sha256:0a4e7d07f21cb5df503298e39f0368c260aad088b90b586e0c06fa90adbb9712",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/pool/l1/web/needs.json",
+      "sha256": "sha256:a9cadccfe5de1fc8ac63c075547c192a97801a1419a9d34c3251ebe5a9f75d19",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/pool/l2/web/backend.json",
+      "sha256": "sha256:bdd94f844d5c2c9b70c38cf2476b30e3b0c2b0ed9a1fa65d930793d9944c371d",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/pool/l2/web/effort.json",
+      "sha256": "sha256:9ec3e5942bc16530943eba24c7e3b8edb60ea907338687d2bd47fba3fea17194",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/pool/l2/web/menu.json",
+      "sha256": "sha256:4b385659148cae1f0cd57beb5dd69391fa51fa11d02099612046ebf6f730d9bf",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/rules.defs.ts",
+      "sha256": "sha256:d38a5bab97dd5c8ef237a049a657bd80fb1080b4790406a82d60667f7fcc25ad",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/workflows.defs.ts",
+      "sha256": "sha256:fb13e3e3b2d3d4b880407dcfa814fab1466902b52e7e3d41a593bc92b939d1d3",
+      "state": "present"
+    }
+  ],
+  "materializationPending": [
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_activity.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_activity.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_behavior.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_behavior.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_configuration.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_configuration.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_overview.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_overview.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_simulation.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_simulation.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_tools.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_tools.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agents.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agents.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/cm.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/cm.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/draft_review.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/draft_review.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/my_conduct.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/my_conduct.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/person_restrictions.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/person_restrictions.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/platform.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/platform.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/tool_catalog.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/http/controllers/tool_catalog.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/integration/outbound.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/integration/outbound.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentTool.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/persistence/agentTool.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/executionSummary.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/persistence/executionSummary.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/personToolRestriction.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/persistence/personToolRestriction.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/persistence/registerRepositories.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/seeds.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/persistence/seeds.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/tool.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/persistence/tool.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_1_external/auth/authorityMap.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/ports/personToolRestrictionRepository.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/ports/toolRepository.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_activity.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/agent_activity.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_behavior.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/agent_behavior.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_configuration.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/agent_configuration.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_overview.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/agent_overview.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_simulation.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/agent_simulation.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_tools.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/agent_tools.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agents.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/agents.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/cm.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/cm.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/draft_review.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/draft_review.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/my_conduct.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/my_conduct.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/person_restrictions.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/person_restrictions.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/platform.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/platform.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/tool_catalog.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/requests/tool_catalog.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/scope/accessScope.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/scope/accessScope.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/activate.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/activate.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createAgentDraft.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/createAgentDraft.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createAgentTool.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/createAgentTool.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createTool.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/createTool.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/discard.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/discard.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getAgent.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/getAgent.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getAgentBehavior.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/getAgentBehavior.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getAgentDraft.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/getAgentDraft.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getOrganizationUser.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgent.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listAgent.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentBehavior.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listAgentBehavior.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentDraft.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listAgentDraft.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentSimulation.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentTool.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listAgentTool.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listExecutionSummary.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listExecutionSummary.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listOrganizationUser.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listOrganizationUser.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listPersonalConduct.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listPersonalConduct.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listPersonToolRestriction.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listPersonToolRestriction.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/listTool.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listTool.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/undoAgentChange.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/undoAgentChange.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgent.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updateAgent.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updatePersonalConduct.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updatePersonalConduct.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updatePersonToolRestriction.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updatePersonToolRestriction.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateTool.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updateTool.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/workflows/executionRecording.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/workflows/executionRecording.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/workflows/toolCatalogRefresh.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/workflows/toolCatalogRefresh.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/workflows/virtualEmployeeCreation.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_2_application/workflows/virtualEmployeeCreation.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agent.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_3_domain/entities/agent.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agentBehavior.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_3_domain/entities/agentDraft.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agentSimulation.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_3_domain/entities/agentSimulation.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_3_domain/entities/agentTool.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/executionSummary.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_3_domain/entities/executionSummary.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_3_domain/entities/organizationUser.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/personalConduct.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_3_domain/entities/personalConduct.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/tool.defs.ts",
+      "outputPath": "_102047_/l1/agents/layer_3_domain/entities/tool.ts",
+      "present": false
+    }
+  ],
+  "coverage": {
+    "checked": true,
+    "gaps": []
+  },
+  "inventory": {
+    "usecaseIds": [
+      "activate",
+      "createAgentDraft",
+      "createAgentTool",
+      "createExecutionSummary",
+      "createTool",
+      "discard",
+      "getAgent",
+      "getAgentBehavior",
+      "getAgentDraft",
+      "getOrganizationUser",
+      "listAgent",
+      "listAgentBehavior",
+      "listAgentDraft",
+      "listAgentSimulation",
+      "listAgentTool",
+      "listExecutionSummary",
+      "listOrganizationUser",
+      "listPersonToolRestriction",
+      "listPersonalConduct",
+      "listTool",
+      "undoAgentChange",
+      "updateAgent",
+      "updateAgentAgentBehavior",
+      "updateAgentTool",
+      "updatePersonToolRestriction",
+      "updatePersonalConduct",
+      "updateTool"
+    ],
+    "routes": [
+      "agents.agent_activity.getAgentActivity",
+      "agents.agent_activity.listAgentExecutions",
+      "agents.agent_behavior.getAgentBehavior",
+      "agents.agent_behavior.listBehaviorChanges",
+      "agents.agent_behavior.requestBehaviorChange",
+      "agents.agent_configuration.getAgentConfiguration",
+      "agents.agent_configuration.saveAgentConfiguration",
+      "agents.agent_configuration.searchResponsibleCandidates",
+      "agents.agent_overview.getAgentOverview",
+      "agents.agent_simulation.findPeopleToSimulate",
+      "agents.agent_simulation.getSimulationPage",
+      "agents.agent_simulation.simulateWhatItCan",
+      "agents.agent_simulation.simulateWhatItUnderstands",
+      "agents.agent_tools.enableUnchosenTool",
+      "agents.agent_tools.getAgentToolTree",
+      "agents.agent_tools.listAutomaticToolChoices",
+      "agents.agent_tools.toggleToolChoice",
+      "agents.agents.listAgentsCollection",
+      "agents.agents.listRequestHistory",
+      "agents.agents.loadAgentsPage",
+      "agents.agents.sendNewAgentRequest",
+      "agents.cm.agentDraftReady",
+      "agents.cm.describe",
+      "agents.cm.record",
+      "agents.draft_review.activateDraft",
+      "agents.draft_review.discardDraft",
+      "agents.draft_review.getDraftReview",
+      "agents.draft_review.saveDraftTools",
+      "agents.draft_review.searchSimulationPeople",
+      "agents.draft_review.simulateDraft",
+      "agents.my_conduct.getMyConduct",
+      "agents.my_conduct.listMyConductHistory",
+      "agents.my_conduct.sendConductChange",
+      "agents.person_restrictions.getPersonRestrictions",
+      "agents.person_restrictions.listPeople",
+      "agents.person_restrictions.saveRestrictions",
+      "agents.platform.releaseCatalogChanged",
+      "agents.tool_catalog.getToolCatalog",
+      "agents.tool_catalog.listCatalogUpdates"
+    ],
+    "portIds": [
+      "AgentToolRepository",
+      "ExecutionSummaryRepository",
+      "PersonToolRestrictionRepository",
+      "ToolRepository"
+    ],
+    "tableIds": [
+      "agentTool",
+      "executionSummary",
+      "personToolRestriction",
+      "tool"
+    ]
+  },
+  "snapshotHash": "sha256:fc2bc13b0a4cc0031c9f9e533cde25d8e46fc72021a947a21b67cb2c4eaa36b9"
+}

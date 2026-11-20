@@ -1,0 +1,65 @@
+/// <mls fileReference="_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "Agent",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+  ],
+  "data": {
+    "entityId": "Agent",
+    "storageTarget": "external",
+    "fields": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "definition",
+        "type": "text"
+      },
+      {
+        "name": "talksTo",
+        "type": "text"
+      },
+      {
+        "name": "onBehalfOf",
+        "type": "text"
+      },
+      {
+        "name": "isOn",
+        "type": "boolean"
+      },
+      {
+        "name": "responsible",
+        "type": "record",
+        "ref": "OrganizationUser"
+      },
+      {
+        "name": "limits",
+        "type": "object"
+      },
+      {
+        "name": "limits.label",
+        "type": "string"
+      },
+      {
+        "name": "limits.value",
+        "type": "string"
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [
+      "agentNameUniqueAmongActive"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

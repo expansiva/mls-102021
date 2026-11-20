@@ -1,0 +1,5310 @@
+{
+  "schemaVersion": "2026-10-01-d1-input-v2",
+  "project": 102047,
+  "moduleName": "agents",
+  "device": "web",
+  "plannerRun": {
+    "flowId": "agentPlannerL1",
+    "thread": "agents-20261120193417",
+    "round": 1,
+    "schemaVersion": "2026-09-20-p1-pipeline-v1"
+  },
+  "sources": [
+    {
+      "path": "/_102034_/l2/shared/contracts/connections/cm.ts",
+      "sha256": "sha256:456c9fe91340b428b67e8c3287fb6efa6a6187b9a17a08b8040452bc820aa707",
+      "bytes": 15927,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "/_102034_/l2/shared/contracts/connections/platform.ts",
+      "sha256": "sha256:e499ca568e7fa1d7d9bd750715acb96f09b473ff9de10fca6421da57f22b252b",
+      "bytes": 2578,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "sha256": "sha256:09fdeec3a384bd02d3aaa5fb9e5de4cf0e8d24ec1914148585d4d6db88768600",
+      "bytes": 4162,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "sha256": "sha256:c2e26e175e2b4051d91887ed442c6476bc95301d6cad2db2cd11f88a761525a5",
+      "bytes": 4026,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "sha256": "sha256:5788e2c7dbcc567633b9b4b775cb6bb2430e71456c4d5050d9ecd43d63f9f3cf",
+      "bytes": 4800,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agent_overview.defs.ts",
+      "sha256": "sha256:12a077b8883deadc37ef8e1323e8985e5df73cf5e3ad08f1cc0c127661f02008",
+      "bytes": 1804,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "sha256": "sha256:6648eeff1cb0d540b8cd95e37c760bfb5e01c57e3baff035642377ee0c07ab96",
+      "bytes": 8303,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agent_tools.defs.ts",
+      "sha256": "sha256:a56725aae07f10c0aef3240db635e6fb5d0669d164cd753b47d481fd7ee866a5",
+      "bytes": 6620,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "sha256": "sha256:df3333e40f4bd6225e20315207a0607d6c6f784dcdb9f4007f2f59b79841a42c",
+      "bytes": 6931,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "sha256": "sha256:9afbfc98a22960a10a90359a16c52b030a52dd654cff53bd532cf6eac2bf0820",
+      "bytes": 11331,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "sha256": "sha256:b6f76842fac773a89fa3e63a14849eb10f550b601177fdab23be7b85329b2f92",
+      "bytes": 4709,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "sha256": "sha256:e0ac325db3e82d51c505c9cb799a79a1c2932ac75eec0014f036f4bfe155aa6c",
+      "bytes": 6450,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l2/agents/web/contracts/tool_catalog.defs.ts",
+      "sha256": "sha256:22422feb653aa84be3e4afb6ae49a7538af9123f855cb4b5563650391a3f1535",
+      "bytes": 4257,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/access.defs.ts",
+      "sha256": "sha256:b22519a4a27e07cc57538105e7e31fc07036c9d32c0168372cd9cc2f5e121cfb",
+      "bytes": 9990,
+      "schemaVersion": "2026-09-12-ns5-access-v3",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/integration.defs.ts",
+      "sha256": "sha256:daa3d25eb6045172ba5e7e04f613041fd6b1bfbb5b64dc578b5f6754e8d2b284",
+      "bytes": 9075,
+      "schemaVersion": "2026-11-20-ns5-integration-v5",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/adjustAgentTools.defs.ts",
+      "sha256": "sha256:5613735f9e5a0bc1c01774fee14a069960e498b04417796c8582ae1106940f28",
+      "bytes": 2459,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/changeAgentBehavior.defs.ts",
+      "sha256": "sha256:4f6f994386603c3cc00a1e604cc595bde733bfc4f3ebf82ed280eefadbe5b4d1",
+      "bytes": 2378,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/changeMyConduct.defs.ts",
+      "sha256": "sha256:3bf48a7993ee003b62186c7396d564046fece10d87e3d2c5917d4b1e44d72ec3",
+      "bytes": 1995,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/configureAgent.defs.ts",
+      "sha256": "sha256:5b2106190a254ed427309329712d5e5e5e27c2e23c5ed8d97e8992bcc26e8b84",
+      "bytes": 2080,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/createVirtualEmployee.defs.ts",
+      "sha256": "sha256:7ecd8feb113e8d6f4fbe545a83adf7741181cc66597cb390d33673613c575ea0",
+      "bytes": 2156,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/followAgentActivity.defs.ts",
+      "sha256": "sha256:637a8f89439a4507fa75a32bfef657cc5f27717df6e6ff538d8f41d59d9e95a3",
+      "bytes": 2036,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/index.defs.ts",
+      "sha256": "sha256:d9ba190bfc914e1006bda397078bfe2d72a978c82a8d3e7118522ff37c590076",
+      "bytes": 1832,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/restrictPersonTools.defs.ts",
+      "sha256": "sha256:4720f6b4a1116b4a980adf8655c57771acedd2697fbf127a232a7dfbdb3f5816",
+      "bytes": 2019,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/reviewAndActivateDraft.defs.ts",
+      "sha256": "sha256:95c1284022cd86092e8ebef485d8277e55185f21bbcdb017c75386a1079bb4fc",
+      "bytes": 3418,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/simulateAgentByRole.defs.ts",
+      "sha256": "sha256:96add7cdf3f16b55b87d72ce399d3017f5a32c66a96f56c226b7a79fe18ffbd0",
+      "bytes": 2041,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/journeys/simulateAsMyself.defs.ts",
+      "sha256": "sha256:a0c2ec5f1a7e3fb65d3cad772be9badd89ed6aac824f870d40cc3dd445f0ecd8",
+      "bytes": 1977,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/module.defs.ts",
+      "sha256": "sha256:46948a37b7d18eee4f948189c7113564476f645ef6589260cde3f0a261bb24fb",
+      "bytes": 4296,
+      "schemaVersion": "2026-09-10-ns5-module-v2",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/Agent.defs.ts",
+      "sha256": "sha256:40f4c834e3c176a4bc3ca43852078124c235b59e5d619e0e3b948f641b9ad284",
+      "bytes": 3818,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/AgentBehavior.defs.ts",
+      "sha256": "sha256:fc08042f2a2a6aaa102e9556d4dd5a4843f060ed73a9d9d3818abbdd7a255b22",
+      "bytes": 3314,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/AgentDraft.defs.ts",
+      "sha256": "sha256:6e1ef25c66feef990b1054f67e7f2be8af8e7d97134a818a0cd74469f810992b",
+      "bytes": 3908,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/AgentSimulation.defs.ts",
+      "sha256": "sha256:9dfc98712851aa401735e0cfa22f499b09029677634949825bd8d5ecef24571e",
+      "bytes": 7177,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/AgentTool.defs.ts",
+      "sha256": "sha256:e0b7bac5457a623e22e80158744d53ceeb52698d08a279d8b30c61f241a2ccab",
+      "bytes": 7590,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/ExecutionSummary.defs.ts",
+      "sha256": "sha256:3a636ee404005f41733cc16a837731d7977b33526992f2193e7a41edee4303ec",
+      "bytes": 6897,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/index.defs.ts",
+      "sha256": "sha256:4ef19e3c8537d25c3aeb359955f3d3b85c38e2641dbb509654fb6fc80f136544",
+      "bytes": 3789,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/OrganizationUser.defs.ts",
+      "sha256": "sha256:7141f03984ff02008f3f723fa41f85ad23adf0921bafec857340d3bee18969cd",
+      "bytes": 6234,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/PersonalConduct.defs.ts",
+      "sha256": "sha256:0cbef4cc7cc379280663ad46ab845e7f7a660c660a0ec7c6f8014ff5fc4e7131",
+      "bytes": 2891,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/PersonToolRestriction.defs.ts",
+      "sha256": "sha256:c0b7b0c29ec0f73626ed388a406c9726479a8ac173f53b6cadfec01a13b16e68",
+      "bytes": 5706,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/ontology/Tool.defs.ts",
+      "sha256": "sha256:b17f4558cd3886a1cb70d4fe988eb6279fff64181abedfd748881150320a94fc",
+      "bytes": 9341,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/pool/l1/pipeline.json",
+      "sha256": "sha256:0a4e7d07f21cb5df503298e39f0368c260aad088b90b586e0c06fa90adbb9712",
+      "bytes": 3328,
+      "schemaVersion": "2026-09-20-p1-pipeline-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/pool/l1/web/needs.json",
+      "sha256": "sha256:a9cadccfe5de1fc8ac63c075547c192a97801a1419a9d34c3251ebe5a9f75d19",
+      "bytes": 58261,
+      "schemaVersion": "2026-09-21-p2-needs-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/pool/l2/web/backend.json",
+      "sha256": "sha256:bdd94f844d5c2c9b70c38cf2476b30e3b0c2b0ed9a1fa65d930793d9944c371d",
+      "bytes": 49539,
+      "schemaVersion": "2026-09-21-p1-backend-v1.2",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/pool/l2/web/effort.json",
+      "sha256": "sha256:9ec3e5942bc16530943eba24c7e3b8edb60ea907338687d2bd47fba3fea17194",
+      "bytes": 43100,
+      "schemaVersion": "2026-09-21-p2-effort-v1.2",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/pool/l2/web/menu.json",
+      "sha256": "sha256:4b385659148cae1f0cd57beb5dd69391fa51fa11d02099612046ebf6f730d9bf",
+      "bytes": 11224,
+      "schemaVersion": "2026-09-20-p2-menu-v2.2",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/rules.defs.ts",
+      "sha256": "sha256:d38a5bab97dd5c8ef237a049a657bd80fb1080b4790406a82d60667f7fcc25ad",
+      "bytes": 6505,
+      "schemaVersion": "2026-09-16-ns5-rules-v2",
+      "state": "present"
+    },
+    {
+      "path": "l4/agents/workflows.defs.ts",
+      "sha256": "sha256:fb13e3e3b2d3d4b880407dcfa814fab1466902b52e7e3d41a593bc92b939d1d3",
+      "bytes": 8535,
+      "schemaVersion": "2026-09-17-ns5-workflows-v3",
+      "state": "present"
+    }
+  ],
+  "selection": {
+    "pages": [
+      {
+        "pageId": "agent_activity",
+        "routes": [
+          "agents.agent_activity.getAgentActivity",
+          "agents.agent_activity.listAgentExecutions"
+        ]
+      },
+      {
+        "pageId": "agent_behavior",
+        "routes": [
+          "agents.agent_behavior.getAgentBehavior",
+          "agents.agent_behavior.listBehaviorChanges",
+          "agents.agent_behavior.requestBehaviorChange"
+        ]
+      },
+      {
+        "pageId": "agent_configuration",
+        "routes": [
+          "agents.agent_configuration.getAgentConfiguration",
+          "agents.agent_configuration.saveAgentConfiguration",
+          "agents.agent_configuration.searchResponsibleCandidates"
+        ]
+      },
+      {
+        "pageId": "agent_overview",
+        "routes": [
+          "agents.agent_overview.getAgentOverview"
+        ]
+      },
+      {
+        "pageId": "agent_simulation",
+        "routes": [
+          "agents.agent_simulation.findPeopleToSimulate",
+          "agents.agent_simulation.getSimulationPage",
+          "agents.agent_simulation.simulateWhatItCan",
+          "agents.agent_simulation.simulateWhatItUnderstands"
+        ]
+      },
+      {
+        "pageId": "agent_tools",
+        "routes": [
+          "agents.agent_tools.enableUnchosenTool",
+          "agents.agent_tools.getAgentToolTree",
+          "agents.agent_tools.listAutomaticToolChoices",
+          "agents.agent_tools.toggleToolChoice"
+        ]
+      },
+      {
+        "pageId": "agents",
+        "routes": [
+          "agents.agents.listAgentsCollection",
+          "agents.agents.listRequestHistory",
+          "agents.agents.loadAgentsPage",
+          "agents.agents.sendNewAgentRequest"
+        ]
+      },
+      {
+        "pageId": "cm",
+        "routes": [
+          "agents.cm.agentDraftReady",
+          "agents.cm.describe",
+          "agents.cm.record"
+        ]
+      },
+      {
+        "pageId": "draft_review",
+        "routes": [
+          "agents.draft_review.activateDraft",
+          "agents.draft_review.discardDraft",
+          "agents.draft_review.getDraftReview",
+          "agents.draft_review.saveDraftTools",
+          "agents.draft_review.searchSimulationPeople",
+          "agents.draft_review.simulateDraft"
+        ]
+      },
+      {
+        "pageId": "my_conduct",
+        "routes": [
+          "agents.my_conduct.getMyConduct",
+          "agents.my_conduct.listMyConductHistory",
+          "agents.my_conduct.sendConductChange"
+        ]
+      },
+      {
+        "pageId": "person_restrictions",
+        "routes": [
+          "agents.person_restrictions.getPersonRestrictions",
+          "agents.person_restrictions.listPeople",
+          "agents.person_restrictions.saveRestrictions"
+        ]
+      },
+      {
+        "pageId": "platform",
+        "routes": [
+          "agents.platform.releaseCatalogChanged"
+        ]
+      },
+      {
+        "pageId": "tool_catalog",
+        "routes": [
+          "agents.tool_catalog.getToolCatalog",
+          "agents.tool_catalog.listCatalogUpdates"
+        ]
+      }
+    ],
+    "requests": [
+      {
+        "route": "agents.agent_activity.getAgentActivity",
+        "pageId": "agent_activity",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "executions",
+            "entity": "ExecutionSummary",
+            "many": true,
+            "page": "page",
+            "pageSize": "pageSize",
+            "hasMore": "hasMore"
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "executions",
+            "pages": "executions"
+          },
+          {
+            "name": "pageSize",
+            "target": "executions",
+            "pages": "executions"
+          },
+          {
+            "name": "agentId",
+            "target": "executions",
+            "field": "agentId"
+          }
+        ],
+        "uses": [
+          "listExecutionSummary"
+        ],
+        "unresolved": [
+          {
+            "path": "output.agent",
+            "reason": "Interface AgentHeader: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "Agent",
+              "AgentDraft",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.executions.details.actions.toolName",
+            "reason": "Interface ExecutionAction: field toolName is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "details.actions.toolName",
+              "details.toolName",
+              "none"
+            ]
+          },
+          {
+            "path": "output.executions.details.actions.result",
+            "reason": "Interface ExecutionAction: field result is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "details.actions.result",
+              "none"
+            ]
+          },
+          {
+            "path": "output.executions.details.actions.resultNote",
+            "reason": "Interface ExecutionAction: field resultNote is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "details.actions.resultNote",
+              "none"
+            ]
+          },
+          {
+            "path": "output.executions.organizationUser",
+            "reason": "Interface ExecutionCaller has no field that is not readonly, so no entity owns it.",
+            "kind": "computedRule",
+            "candidates": [
+              "activityNewestFirst",
+              "noTechnicalIdsOnScreen",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_activity.listAgentExecutions",
+        "pageId": "agent_activity",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "executions",
+            "entity": "ExecutionSummary",
+            "many": true,
+            "page": "page",
+            "pageSize": "pageSize",
+            "hasMore": "hasMore"
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "executions",
+            "pages": "executions"
+          },
+          {
+            "name": "pageSize",
+            "target": "executions",
+            "pages": "executions"
+          },
+          {
+            "name": "agentId",
+            "target": "executions",
+            "field": "agentId"
+          }
+        ],
+        "uses": [
+          "listExecutionSummary"
+        ],
+        "unresolved": [
+          {
+            "path": "output.executions.details.actions.toolName",
+            "reason": "Interface ExecutionAction: field toolName is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "details.actions.toolName",
+              "details.toolName",
+              "none"
+            ]
+          },
+          {
+            "path": "output.executions.details.actions.result",
+            "reason": "Interface ExecutionAction: field result is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "details.actions.result",
+              "none"
+            ]
+          },
+          {
+            "path": "output.executions.details.actions.resultNote",
+            "reason": "Interface ExecutionAction: field resultNote is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "details.actions.resultNote",
+              "none"
+            ]
+          },
+          {
+            "path": "output.executions.organizationUser",
+            "reason": "Interface ExecutionCaller has no field that is not readonly, so no entity owns it.",
+            "kind": "computedRule",
+            "candidates": [
+              "activityNewestFirst",
+              "noTechnicalIdsOnScreen",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_behavior.getAgentBehavior",
+        "pageId": "agent_behavior",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "behavior",
+            "entity": "AgentBehavior",
+            "many": false
+          }
+        ],
+        "params": [
+          {
+            "name": "agentId",
+            "target": "behavior"
+          }
+        ],
+        "uses": [
+          "getAgentBehavior"
+        ],
+        "unresolved": [
+          {
+            "path": "output.behavior.agent.agent.name",
+            "reason": "Interface BehaviorAgent: field agent.name is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "input.agentId",
+            "reason": "Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "behavior:changes.changeRef",
+              "behavior:changes.summary",
+              "behavior:summary",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_behavior.listBehaviorChanges",
+        "pageId": "agent_behavior",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [],
+        "params": [
+          {
+            "name": "agentId",
+            "target": ""
+          }
+        ],
+        "uses": [],
+        "unresolved": [
+          {
+            "path": "output.changes.changeRef",
+            "reason": "Interface BehaviorChange: field changeRef is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "changes.changeRef",
+              "none"
+            ]
+          },
+          {
+            "path": "output.changes.changedBy",
+            "reason": "Interface BehaviorChange: field changedBy is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "changes.changedBy",
+              "history.changedBy",
+              "none"
+            ]
+          },
+          {
+            "path": "output.changes.changedAt",
+            "reason": "Interface BehaviorChange: field changedAt is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "changes.changedAt",
+              "history.changedAt",
+              "none"
+            ]
+          },
+          {
+            "path": "output.changes.undone",
+            "reason": "Interface BehaviorChange: field undone is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "changes.undone",
+              "none"
+            ]
+          },
+          {
+            "path": "input.page",
+            "reason": "Page input page pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "changes",
+              "none"
+            ]
+          },
+          {
+            "path": "input.pageSize",
+            "reason": "Page input pageSize pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "changes",
+              "none"
+            ]
+          },
+          {
+            "path": "input.agentId",
+            "reason": "Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_behavior.requestBehaviorChange",
+        "pageId": "agent_behavior",
+        "kind": "cmd",
+        "writes": "AgentBehavior.update",
+        "outputs": [
+          {
+            "key": "behavior",
+            "entity": "AgentBehavior",
+            "many": false
+          }
+        ],
+        "params": [
+          {
+            "name": "changeRequest",
+            "target": "",
+            "optional": true
+          },
+          {
+            "name": "undoChangeRef",
+            "target": "",
+            "optional": true
+          }
+        ],
+        "uses": [
+          "updateAgentAgentBehavior",
+          "undoAgentChange"
+        ],
+        "unresolved": [
+          {
+            "path": "output.behavior.agent.agent.name",
+            "reason": "Interface BehaviorAgent: field agent.name is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_configuration.getAgentConfiguration",
+        "pageId": "agent_configuration",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "configuration",
+            "entity": "ExecutionSummary",
+            "many": false,
+            "related": [
+              {
+                "field": "name",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              },
+              {
+                "field": "isOn",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "agentId",
+            "target": "configuration",
+            "field": "agentId"
+          }
+        ],
+        "uses": [
+          "listExecutionSummary"
+        ],
+        "unresolved": [
+          {
+            "path": "output.configuration.responsible.agent.responsible",
+            "reason": "Interface ResponsiblePerson: field agent.responsible is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "output.limits.label",
+            "reason": "Interface AgentLimit: field label is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "limits.label",
+              "none"
+            ]
+          },
+          {
+            "path": "output.limits.value",
+            "reason": "Interface AgentLimit: field value is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "limits.value",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_configuration.saveAgentConfiguration",
+        "pageId": "agent_configuration",
+        "kind": "cmd",
+        "writes": "Agent.update",
+        "outputs": [
+          {
+            "key": "configuration",
+            "entity": "ExecutionSummary",
+            "many": false,
+            "related": [
+              {
+                "field": "name",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              },
+              {
+                "field": "isOn",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "responsible",
+            "target": "",
+            "optional": true
+          }
+        ],
+        "uses": [
+          "updateAgent",
+          "listExecutionSummary"
+        ],
+        "unresolved": [
+          {
+            "path": "output.configuration.responsible.agent.responsible",
+            "reason": "Interface ResponsiblePerson: field agent.responsible is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "output.limits.label",
+            "reason": "Interface AgentLimit: field label is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "limits.label",
+              "none"
+            ]
+          },
+          {
+            "path": "output.limits.value",
+            "reason": "Interface AgentLimit: field value is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "limits.value",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_configuration.searchResponsibleCandidates",
+        "pageId": "agent_configuration",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [],
+        "params": [
+          {
+            "name": "search",
+            "target": "",
+            "optional": true
+          }
+        ],
+        "uses": [],
+        "unresolved": [
+          {
+            "path": "output.users.agent.responsible",
+            "reason": "Interface ResponsiblePerson: field agent.responsible is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "input.page",
+            "reason": "Page input page pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "users",
+              "none"
+            ]
+          },
+          {
+            "path": "input.pageSize",
+            "reason": "Page input pageSize pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "users",
+              "none"
+            ]
+          },
+          {
+            "path": "input.search",
+            "reason": "Input search is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_overview.getAgentOverview",
+        "pageId": "agent_overview",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "agent",
+            "entity": "Agent",
+            "many": false,
+            "computed": [
+              "responsibleName"
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "agentId",
+            "target": "agent"
+          }
+        ],
+        "uses": [
+          "getAgent"
+        ],
+        "unresolved": [
+          {
+            "path": "input.agentId",
+            "reason": "Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "agent:limits.label",
+              "agent:limits.value",
+              "agent:name",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_simulation.findPeopleToSimulate",
+        "pageId": "agent_simulation",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [],
+        "params": [
+          {
+            "name": "search",
+            "target": "people",
+            "optional": true
+          }
+        ],
+        "uses": [],
+        "unresolved": [
+          {
+            "path": "output.people",
+            "reason": "Interface SimulatedPerson: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "AgentTool",
+              "ExecutionSummary",
+              "OrganizationUser",
+              "PersonToolRestriction",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.people.details.identification",
+            "reason": "Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "Agent",
+              "AgentDraft",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "input.page",
+            "reason": "Page input page pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "people",
+              "none"
+            ]
+          },
+          {
+            "path": "input.pageSize",
+            "reason": "Page input pageSize pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "people",
+              "none"
+            ]
+          },
+          {
+            "path": "input.search",
+            "reason": "Input search is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "people:details.actions.toolName",
+              "people:details.agents.loginEmail",
+              "people:details.conversationLink",
+              "people:details.identification.name",
+              "people:details.identification.tags",
+              "people:details.moduleTitle",
+              "people:details.releaseLabel",
+              "people:details.subjectTitle",
+              "people:details.toolName",
+              "people:details.toolPath",
+              "people:executionRef",
+              "people:moduleName",
+              "people:name",
+              "people:subject",
+              "people:toolKey",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_simulation.getSimulationPage",
+        "pageId": "agent_simulation",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "whatItCan",
+            "entity": "AgentSimulation",
+            "many": false
+          }
+        ],
+        "params": [
+          {
+            "name": "agentId",
+            "target": ""
+          }
+        ],
+        "uses": [
+          "listAgentSimulation"
+        ],
+        "unresolved": [
+          {
+            "path": "output.agent",
+            "reason": "Interface AgentHeader: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "Agent",
+              "AgentDraft",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.person",
+            "reason": "Interface SimulatedPerson: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "AgentTool",
+              "ExecutionSummary",
+              "OrganizationUser",
+              "PersonToolRestriction",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.person.details.identification",
+            "reason": "Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "Agent",
+              "AgentDraft",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.toolVerdicts.tool",
+            "reason": "Interface ToolVerdict: field tool is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.tool",
+              "understanding.actions.tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.toolVerdicts.subjectName",
+            "reason": "Interface ToolVerdict: field subjectName is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.subjectName",
+              "understanding.subjectName",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.toolVerdicts.actionName",
+            "reason": "Interface ToolVerdict: field actionName is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.actionName",
+              "understanding.actions.actionName",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.toolVerdicts.canUse",
+            "reason": "Interface ToolVerdict: field canUse is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.canUse",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.toolVerdicts.reason",
+            "reason": "Interface ToolVerdict: field reason is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.reason",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.toolVerdicts.reasonText",
+            "reason": "Interface ToolVerdict: field reasonText is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.reasonText",
+              "none"
+            ]
+          },
+          {
+            "path": "input.agentId",
+            "reason": "Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "agent:details.moduleTitle",
+              "agent:details.releaseLabel",
+              "agent:details.subjectTitle",
+              "agent:limits.label",
+              "agent:limits.value",
+              "agent:moduleName",
+              "agent:name",
+              "agent:subject",
+              "agent:toolKey",
+              "whatItCan:roleName",
+              "whatItCan:toolVerdicts.actionName",
+              "whatItCan:toolVerdicts.moduleName",
+              "whatItCan:toolVerdicts.reasonText",
+              "whatItCan:toolVerdicts.subjectName",
+              "whatItCan:understanding.actions.actionName",
+              "whatItCan:understanding.moduleName",
+              "whatItCan:understanding.subjectName",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_simulation.simulateWhatItCan",
+        "pageId": "agent_simulation",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "whatItCan",
+            "entity": "AgentSimulation",
+            "many": false
+          }
+        ],
+        "params": [
+          {
+            "name": "agentId",
+            "target": "whatItCan"
+          },
+          {
+            "name": "subjectKind",
+            "target": "whatItCan",
+            "field": "subjectKind"
+          },
+          {
+            "name": "person",
+            "target": "whatItCan",
+            "field": "person",
+            "optional": true
+          },
+          {
+            "name": "roleName",
+            "target": "whatItCan",
+            "field": "roleName",
+            "optional": true
+          }
+        ],
+        "uses": [
+          "listAgentSimulation"
+        ],
+        "unresolved": [
+          {
+            "path": "output.whatItCan.person",
+            "reason": "Interface SimulatedPerson: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "AgentTool",
+              "ExecutionSummary",
+              "OrganizationUser",
+              "PersonToolRestriction",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.person.details.identification",
+            "reason": "Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "Agent",
+              "AgentDraft",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.toolVerdicts.tool",
+            "reason": "Interface ToolVerdict: field tool is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.tool",
+              "understanding.actions.tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.toolVerdicts.subjectName",
+            "reason": "Interface ToolVerdict: field subjectName is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.subjectName",
+              "understanding.subjectName",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.toolVerdicts.actionName",
+            "reason": "Interface ToolVerdict: field actionName is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.actionName",
+              "understanding.actions.actionName",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.toolVerdicts.canUse",
+            "reason": "Interface ToolVerdict: field canUse is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.canUse",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.toolVerdicts.reason",
+            "reason": "Interface ToolVerdict: field reason is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.reason",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItCan.toolVerdicts.reasonText",
+            "reason": "Interface ToolVerdict: field reasonText is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.reasonText",
+              "none"
+            ]
+          },
+          {
+            "path": "input.agentId",
+            "reason": "Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "whatItCan:roleName",
+              "whatItCan:toolVerdicts.actionName",
+              "whatItCan:toolVerdicts.moduleName",
+              "whatItCan:toolVerdicts.reasonText",
+              "whatItCan:toolVerdicts.subjectName",
+              "whatItCan:understanding.actions.actionName",
+              "whatItCan:understanding.moduleName",
+              "whatItCan:understanding.subjectName",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_simulation.simulateWhatItUnderstands",
+        "pageId": "agent_simulation",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "whatItUnderstands",
+            "entity": "AgentSimulation",
+            "many": false
+          }
+        ],
+        "params": [
+          {
+            "name": "agentId",
+            "target": "whatItUnderstands"
+          },
+          {
+            "name": "sentence",
+            "target": "whatItUnderstands",
+            "field": "sentence"
+          },
+          {
+            "name": "subjectKind",
+            "target": "whatItUnderstands",
+            "field": "subjectKind",
+            "optional": true
+          },
+          {
+            "name": "person",
+            "target": "whatItUnderstands",
+            "field": "person",
+            "optional": true
+          },
+          {
+            "name": "roleName",
+            "target": "whatItUnderstands",
+            "field": "roleName",
+            "optional": true
+          }
+        ],
+        "uses": [
+          "listAgentSimulation"
+        ],
+        "unresolved": [
+          {
+            "path": "output.whatItUnderstands.understanding.asksForAction",
+            "reason": "Interface Understanding: field asksForAction is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "understanding.asksForAction",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItUnderstands.understanding.subjectName",
+            "reason": "Interface Understanding: field subjectName is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.subjectName",
+              "understanding.subjectName",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItUnderstands.understanding.explanation",
+            "reason": "Interface Understanding: field explanation is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "understanding.explanation",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItUnderstands.understanding.actions.tool",
+            "reason": "Interface UnderstoodAction: field tool is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.tool",
+              "understanding.actions.tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.whatItUnderstands.understanding.actions.actionName",
+            "reason": "Interface UnderstoodAction: field actionName is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.actionName",
+              "understanding.actions.actionName",
+              "none"
+            ]
+          },
+          {
+            "path": "input.agentId",
+            "reason": "Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "whatItUnderstands:roleName",
+              "whatItUnderstands:toolVerdicts.actionName",
+              "whatItUnderstands:toolVerdicts.moduleName",
+              "whatItUnderstands:toolVerdicts.reasonText",
+              "whatItUnderstands:toolVerdicts.subjectName",
+              "whatItUnderstands:understanding.actions.actionName",
+              "whatItUnderstands:understanding.moduleName",
+              "whatItUnderstands:understanding.subjectName",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_tools.enableUnchosenTool",
+        "pageId": "agent_tools",
+        "kind": "cmd",
+        "writes": "AgentTool.create",
+        "outputs": [
+          {
+            "key": "action",
+            "entity": "Tool",
+            "many": false
+          },
+          {
+            "key": "action.agentTool",
+            "entity": "AgentTool",
+            "many": false,
+            "parent": "action",
+            "relationship": "agentToolTool"
+          }
+        ],
+        "params": [],
+        "uses": [
+          "createAgentTool",
+          "listTool"
+        ]
+      },
+      {
+        "route": "agents.agent_tools.getAgentToolTree",
+        "pageId": "agent_tools",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "actions",
+            "entity": "Tool",
+            "many": true
+          },
+          {
+            "key": "actions.agentTool",
+            "entity": "AgentTool",
+            "many": false,
+            "parent": "actions",
+            "relationship": "agentToolTool"
+          }
+        ],
+        "params": [
+          {
+            "name": "agentId",
+            "target": "actions"
+          }
+        ],
+        "uses": [
+          "listTool",
+          "listAgentTool"
+        ],
+        "unresolved": [
+          {
+            "path": "output.name",
+            "reason": "Output name is a value (string), not an interface; no entity owns it.",
+            "kind": "value",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "input.agentId",
+            "reason": "Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "actions:details.moduleTitle",
+              "actions:details.releaseLabel",
+              "actions:details.subjectTitle",
+              "actions:moduleName",
+              "actions:name",
+              "actions:subject",
+              "actions:toolKey",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agent_tools.listAutomaticToolChoices",
+        "pageId": "agent_tools",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "choices",
+            "entity": "AgentTool",
+            "many": true
+          },
+          {
+            "key": "choices.tool",
+            "entity": "Tool",
+            "many": false,
+            "parent": "choices",
+            "relationship": "agentToolTool"
+          }
+        ],
+        "params": [
+          {
+            "name": "agentId",
+            "target": "choices",
+            "field": "agentId"
+          }
+        ],
+        "uses": [
+          "listAgentTool",
+          "listTool"
+        ]
+      },
+      {
+        "route": "agents.agent_tools.toggleToolChoice",
+        "pageId": "agent_tools",
+        "kind": "cmd",
+        "writes": "AgentTool.update",
+        "outputs": [
+          {
+            "key": "action",
+            "entity": "Tool",
+            "many": false
+          },
+          {
+            "key": "action.agentTool",
+            "entity": "AgentTool",
+            "many": false,
+            "parent": "action",
+            "relationship": "agentToolTool"
+          }
+        ],
+        "params": [],
+        "uses": [
+          "updateAgentTool",
+          "listTool"
+        ]
+      },
+      {
+        "route": "agents.agents.listAgentsCollection",
+        "pageId": "agents",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "agents.agent",
+            "entity": "ExecutionSummary",
+            "many": false,
+            "computed": [
+              "responsibleName"
+            ],
+            "related": [
+              {
+                "field": "name",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              },
+              {
+                "field": "talksTo",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              },
+              {
+                "field": "isOn",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "agents.agent",
+            "pages": "agents"
+          },
+          {
+            "name": "pageSize",
+            "target": "agents.agent",
+            "pages": "agents"
+          }
+        ],
+        "uses": [
+          "listExecutionSummary"
+        ],
+        "unresolved": [
+          {
+            "path": "output.agents.draft.draftId",
+            "reason": "Interface DraftCard: field draftId is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agents.listRequestHistory",
+        "pageId": "agents",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [],
+        "params": [],
+        "uses": [],
+        "unresolved": [
+          {
+            "path": "output.requests.draftId",
+            "reason": "Interface RequestEvent: field draftId is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "input.page",
+            "reason": "Page input page pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "requests",
+              "none"
+            ]
+          },
+          {
+            "path": "input.pageSize",
+            "reason": "Page input pageSize pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "requests",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agents.loadAgentsPage",
+        "pageId": "agents",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "agents.agent",
+            "entity": "ExecutionSummary",
+            "many": false,
+            "computed": [
+              "responsibleName"
+            ],
+            "related": [
+              {
+                "field": "name",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              },
+              {
+                "field": "talksTo",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              },
+              {
+                "field": "isOn",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "agents.agent",
+            "pages": "agents"
+          },
+          {
+            "name": "pageSize",
+            "target": "agents.agent",
+            "pages": "agents"
+          }
+        ],
+        "uses": [
+          "listExecutionSummary"
+        ],
+        "unresolved": [
+          {
+            "path": "output.inbox.draftId",
+            "reason": "Interface DraftInboxItem: field draftId is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "output.agents.draft.draftId",
+            "reason": "Interface DraftCard: field draftId is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "output.requests.draftId",
+            "reason": "Interface RequestEvent: field draftId is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.agents.sendNewAgentRequest",
+        "pageId": "agents",
+        "kind": "cmd",
+        "writes": "AgentDraft.create",
+        "outputs": [
+          {
+            "key": "collectionEntry.agent",
+            "entity": "ExecutionSummary",
+            "many": false,
+            "computed": [
+              "responsibleName"
+            ],
+            "related": [
+              {
+                "field": "name",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              },
+              {
+                "field": "talksTo",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              },
+              {
+                "field": "isOn",
+                "entity": "Agent",
+                "relationship": "executionAgent"
+              }
+            ]
+          }
+        ],
+        "params": [],
+        "uses": [
+          "createAgentDraft",
+          "listExecutionSummary"
+        ],
+        "unresolved": [
+          {
+            "path": "output.request.draftId",
+            "reason": "Interface RequestEvent: field draftId is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "output.inboxItem.draftId",
+            "reason": "Interface DraftInboxItem: field draftId is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "output.collectionEntry.draft.draftId",
+            "reason": "Interface DraftCard: field draftId is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.draft_review.activateDraft",
+        "pageId": "draft_review",
+        "kind": "cmd",
+        "writes": "AgentDraft.activate",
+        "outputs": [
+          {
+            "key": "draft",
+            "entity": "AgentDraft",
+            "many": false
+          }
+        ],
+        "params": [],
+        "uses": [
+          "activate"
+        ]
+      },
+      {
+        "route": "agents.draft_review.discardDraft",
+        "pageId": "draft_review",
+        "kind": "cmd",
+        "writes": "AgentDraft.discard",
+        "outputs": [
+          {
+            "key": "draft",
+            "entity": "AgentDraft",
+            "many": false
+          }
+        ],
+        "params": [],
+        "uses": [
+          "discard"
+        ]
+      },
+      {
+        "route": "agents.draft_review.getDraftReview",
+        "pageId": "draft_review",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "draft",
+            "entity": "AgentDraft",
+            "many": false
+          },
+          {
+            "key": "tools",
+            "entity": "AgentTool",
+            "many": true
+          },
+          {
+            "key": "tools.tool",
+            "entity": "Tool",
+            "many": false,
+            "parent": "tools",
+            "relationship": "agentToolTool"
+          }
+        ],
+        "params": [
+          {
+            "name": "draftId",
+            "target": ""
+          }
+        ],
+        "uses": [
+          "getAgentDraft",
+          "listAgentTool",
+          "listTool"
+        ],
+        "unresolved": [
+          {
+            "path": "input.draftId",
+            "reason": "Input draftId is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "draft:name",
+              "tools:details.toolName",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.draft_review.saveDraftTools",
+        "pageId": "draft_review",
+        "kind": "cmd",
+        "writes": "AgentTool.update",
+        "outputs": [
+          {
+            "key": "tools",
+            "entity": "AgentTool",
+            "many": true
+          },
+          {
+            "key": "tools.tool",
+            "entity": "Tool",
+            "many": false,
+            "parent": "tools",
+            "relationship": "agentToolTool"
+          }
+        ],
+        "params": [],
+        "uses": [
+          "updateAgentTool",
+          "listTool"
+        ]
+      },
+      {
+        "route": "agents.draft_review.searchSimulationPeople",
+        "pageId": "draft_review",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [],
+        "params": [
+          {
+            "name": "name",
+            "target": "",
+            "optional": true
+          }
+        ],
+        "uses": [],
+        "unresolved": [
+          {
+            "path": "output.people.personRef",
+            "reason": "Interface SimulationPerson: field personRef is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "output.people.details.identification",
+            "reason": "Interface SimulationPersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "Agent",
+              "AgentDraft",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.people.details.agents",
+            "reason": "Interface SimulationPersonAgents has no field that is not readonly, so no entity owns it.",
+            "kind": "computedRule",
+            "candidates": [
+              "adminSimulatesByRole",
+              "noTechnicalIdsOnScreen",
+              "onlyActiveUsersRestricted",
+              "none"
+            ]
+          },
+          {
+            "path": "input.page",
+            "reason": "Page input page pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "people",
+              "none"
+            ]
+          },
+          {
+            "path": "input.pageSize",
+            "reason": "Page input pageSize pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "people",
+              "none"
+            ]
+          },
+          {
+            "path": "input.name",
+            "reason": "Input name is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.draft_review.simulateDraft",
+        "pageId": "draft_review",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "simulation",
+            "entity": "AgentSimulation",
+            "many": false
+          }
+        ],
+        "params": [
+          {
+            "name": "draftId",
+            "target": "simulation"
+          },
+          {
+            "name": "level",
+            "target": "simulation",
+            "field": "level"
+          },
+          {
+            "name": "subjectKind",
+            "target": "simulation",
+            "field": "subjectKind",
+            "optional": true
+          },
+          {
+            "name": "person",
+            "target": "simulation",
+            "field": "person",
+            "optional": true
+          },
+          {
+            "name": "roleName",
+            "target": "simulation",
+            "field": "roleName",
+            "optional": true
+          },
+          {
+            "name": "sentence",
+            "target": "simulation",
+            "field": "sentence",
+            "optional": true
+          }
+        ],
+        "uses": [
+          "listAgentSimulation"
+        ],
+        "unresolved": [
+          {
+            "path": "output.simulation.toolVerdicts.subjectName",
+            "reason": "Interface ToolVerdict: field subjectName is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.subjectName",
+              "understanding.subjectName",
+              "none"
+            ]
+          },
+          {
+            "path": "output.simulation.toolVerdicts.actionName",
+            "reason": "Interface ToolVerdict: field actionName is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.actionName",
+              "understanding.actions.actionName",
+              "none"
+            ]
+          },
+          {
+            "path": "output.simulation.toolVerdicts.canUse",
+            "reason": "Interface ToolVerdict: field canUse is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.canUse",
+              "none"
+            ]
+          },
+          {
+            "path": "output.simulation.toolVerdicts.reason",
+            "reason": "Interface ToolVerdict: field reason is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.reason",
+              "none"
+            ]
+          },
+          {
+            "path": "output.simulation.toolVerdicts.reasonText",
+            "reason": "Interface ToolVerdict: field reasonText is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.reasonText",
+              "none"
+            ]
+          },
+          {
+            "path": "output.simulation.understanding.asksForAction",
+            "reason": "Interface SimulationUnderstanding: field asksForAction is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "understanding.asksForAction",
+              "none"
+            ]
+          },
+          {
+            "path": "output.simulation.understanding.subjectName",
+            "reason": "Interface SimulationUnderstanding: field subjectName is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.subjectName",
+              "understanding.subjectName",
+              "none"
+            ]
+          },
+          {
+            "path": "output.simulation.understanding.explanation",
+            "reason": "Interface SimulationUnderstanding: field explanation is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "understanding.explanation",
+              "none"
+            ]
+          },
+          {
+            "path": "output.simulation.understanding.actions.actionName",
+            "reason": "Interface UnderstoodAction: field actionName is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "toolVerdicts.actionName",
+              "understanding.actions.actionName",
+              "none"
+            ]
+          },
+          {
+            "path": "input.draftId",
+            "reason": "Input draftId is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "simulation:roleName",
+              "simulation:toolVerdicts.actionName",
+              "simulation:toolVerdicts.moduleName",
+              "simulation:toolVerdicts.reasonText",
+              "simulation:toolVerdicts.subjectName",
+              "simulation:understanding.actions.actionName",
+              "simulation:understanding.moduleName",
+              "simulation:understanding.subjectName",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.my_conduct.getMyConduct",
+        "pageId": "my_conduct",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [],
+        "params": [
+          {
+            "name": "agentId",
+            "target": ""
+          }
+        ],
+        "uses": [],
+        "unresolved": [
+          {
+            "path": "output.conduct",
+            "reason": "Interface MyConduct: fields summary, version are not all fields of one entity or of one entity linked to it by an N:1 relationship.",
+            "kind": "entity",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "output.conduct.agent",
+            "reason": "Interface ConductAgent: fields name, onBehalfOf are fields of Agent, AgentDraft; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "Agent",
+              "AgentDraft",
+              "none"
+            ]
+          },
+          {
+            "path": "input.agentId",
+            "reason": "Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.my_conduct.listMyConductHistory",
+        "pageId": "my_conduct",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [],
+        "params": [
+          {
+            "name": "agentId",
+            "target": ""
+          }
+        ],
+        "uses": [],
+        "unresolved": [
+          {
+            "path": "output.history.changedAt",
+            "reason": "Interface ConductHistoryEntry: field changedAt is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "changes.changedAt",
+              "history.changedAt",
+              "none"
+            ]
+          },
+          {
+            "path": "output.history.changedBy",
+            "reason": "Interface ConductHistoryEntry: field changedBy is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "changes.changedBy",
+              "history.changedBy",
+              "none"
+            ]
+          },
+          {
+            "path": "input.page",
+            "reason": "Page input page pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "history",
+              "none"
+            ]
+          },
+          {
+            "path": "input.pageSize",
+            "reason": "Page input pageSize pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "history",
+              "none"
+            ]
+          },
+          {
+            "path": "input.agentId",
+            "reason": "Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.my_conduct.sendConductChange",
+        "pageId": "my_conduct",
+        "kind": "cmd",
+        "writes": "PersonalConduct.update",
+        "outputs": [],
+        "params": [],
+        "uses": [
+          "updatePersonalConduct"
+        ],
+        "unresolved": [
+          {
+            "path": "output.conduct",
+            "reason": "Interface MyConduct: fields summary, version are not all fields of one entity or of one entity linked to it by an N:1 relationship.",
+            "kind": "entity",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "output.conduct.agent",
+            "reason": "Interface ConductAgent: fields name, onBehalfOf are fields of Agent, AgentDraft; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "Agent",
+              "AgentDraft",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.person_restrictions.getPersonRestrictions",
+        "pageId": "person_restrictions",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "tools",
+            "entity": "Tool",
+            "many": true,
+            "computed": [
+              "blocked"
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "personId",
+            "target": ""
+          }
+        ],
+        "uses": [
+          "listTool"
+        ],
+        "unresolved": [
+          {
+            "path": "output.person",
+            "reason": "Interface PersonOption: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "AgentTool",
+              "ExecutionSummary",
+              "OrganizationUser",
+              "PersonToolRestriction",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.person.details.identification",
+            "reason": "Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "Agent",
+              "AgentDraft",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.person.details.agents",
+            "reason": "Interface PersonAgentsData has no field that is not readonly, so no entity owns it.",
+            "kind": "computedRule",
+            "candidates": [
+              "noTechnicalIdsOnScreen",
+              "onlyActiveUsersRestricted",
+              "removedToolRestrictionKept",
+              "restrictionUniquePerPersonTool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.tools.personToolRestriction",
+            "reason": "Interface BlockedToolRestriction: fields id, version are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "AgentTool",
+              "ExecutionSummary",
+              "OrganizationUser",
+              "PersonToolRestriction",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "input.personId",
+            "reason": "Input personId names a field of more than one output entity; the types do not say which it filters.",
+            "kind": "filterField",
+            "candidates": [
+              "person:personId",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.person_restrictions.listPeople",
+        "pageId": "person_restrictions",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [],
+        "params": [
+          {
+            "name": "search",
+            "target": "people",
+            "optional": true
+          }
+        ],
+        "uses": [],
+        "unresolved": [
+          {
+            "path": "output.people",
+            "reason": "Interface PersonOption: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "AgentTool",
+              "ExecutionSummary",
+              "OrganizationUser",
+              "PersonToolRestriction",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.people.details.identification",
+            "reason": "Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "Agent",
+              "AgentDraft",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.people.details.agents",
+            "reason": "Interface PersonAgentsData has no field that is not readonly, so no entity owns it.",
+            "kind": "computedRule",
+            "candidates": [
+              "noTechnicalIdsOnScreen",
+              "onlyActiveUsersRestricted",
+              "none"
+            ]
+          },
+          {
+            "path": "input.page",
+            "reason": "Page input page pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "people",
+              "none"
+            ]
+          },
+          {
+            "path": "input.pageSize",
+            "reason": "Page input pageSize pages one of 0 lists; the types do not say which.",
+            "kind": "pageParam",
+            "candidates": [
+              "people",
+              "none"
+            ]
+          },
+          {
+            "path": "input.search",
+            "reason": "Input search is not the last segment of any field of the output entities; it filters one of their text fields.",
+            "kind": "filterField",
+            "candidates": [
+              "people:details.actions.toolName",
+              "people:details.agents.loginEmail",
+              "people:details.conversationLink",
+              "people:details.identification.name",
+              "people:details.identification.tags",
+              "people:details.moduleTitle",
+              "people:details.releaseLabel",
+              "people:details.subjectTitle",
+              "people:details.toolName",
+              "people:details.toolPath",
+              "people:executionRef",
+              "people:moduleName",
+              "people:name",
+              "people:subject",
+              "people:toolKey",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.person_restrictions.saveRestrictions",
+        "pageId": "person_restrictions",
+        "kind": "cmd",
+        "writes": "PersonToolRestriction.update",
+        "outputs": [
+          {
+            "key": "tools",
+            "entity": "Tool",
+            "many": true,
+            "computed": [
+              "blocked"
+            ]
+          }
+        ],
+        "params": [],
+        "uses": [
+          "updatePersonToolRestriction",
+          "listTool"
+        ],
+        "unresolved": [
+          {
+            "path": "output.person",
+            "reason": "Interface PersonOption: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "AgentTool",
+              "ExecutionSummary",
+              "OrganizationUser",
+              "PersonToolRestriction",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.person.details.identification",
+            "reason": "Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "Agent",
+              "AgentDraft",
+              "Tool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.person.details.agents",
+            "reason": "Interface PersonAgentsData has no field that is not readonly, so no entity owns it.",
+            "kind": "computedRule",
+            "candidates": [
+              "onlyActiveUsersRestricted",
+              "onlyCompanyAdminRestrictsTools",
+              "removedToolRestrictionKept",
+              "restrictionAppliesThroughAnyAgent",
+              "restrictionUniquePerPersonTool",
+              "none"
+            ]
+          },
+          {
+            "path": "output.tools.personToolRestriction",
+            "reason": "Interface BlockedToolRestriction: fields id, version are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+            "kind": "entity",
+            "candidates": [
+              "AgentTool",
+              "ExecutionSummary",
+              "OrganizationUser",
+              "PersonToolRestriction",
+              "Tool",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.tool_catalog.getToolCatalog",
+        "pageId": "tool_catalog",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "modules",
+            "entity": "Tool",
+            "many": true
+          },
+          {
+            "key": "modules.subjects",
+            "entity": "Tool",
+            "many": true,
+            "parent": "modules"
+          },
+          {
+            "key": "modules.subjects.tools",
+            "entity": "Tool",
+            "many": true,
+            "parent": "modules.subjects"
+          },
+          {
+            "key": "toolUsage",
+            "entity": "Tool",
+            "many": true,
+            "computed": [
+              "usedByAgents"
+            ]
+          }
+        ],
+        "params": [],
+        "uses": [
+          "listTool"
+        ],
+        "unresolved": [
+          {
+            "path": "output.modules.subjects",
+            "reason": "Tool inside Tool needs one L4 relationship between them; found 0.",
+            "kind": "relationship",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "output.modules.subjects.tools",
+            "reason": "Tool inside Tool needs one L4 relationship between them; found 0.",
+            "kind": "relationship",
+            "candidates": [
+              "none"
+            ]
+          },
+          {
+            "path": "output.toolUsage.usedByAgents",
+            "reason": "Interface ToolUsage: readonly usedByAgents is not a field of Tool; it may stand for one of its paths.",
+            "kind": "fieldPath",
+            "candidates": [
+              "details.usedByAgents",
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "agents.tool_catalog.listCatalogUpdates",
+        "pageId": "tool_catalog",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "updates",
+            "entity": "Tool",
+            "many": true,
+            "page": "page",
+            "pageSize": "pageSize",
+            "hasMore": "hasMore"
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "updates",
+            "pages": "updates"
+          },
+          {
+            "name": "pageSize",
+            "target": "updates",
+            "pages": "updates"
+          }
+        ],
+        "uses": [
+          "listTool"
+        ]
+      },
+      {
+        "route": "agents.cm.agentDraftReady",
+        "pageId": "cm",
+        "kind": "cmd",
+        "writes": "AgentTool.create",
+        "outputs": [],
+        "params": [
+          {
+            "name": "draftId",
+            "target": ""
+          },
+          {
+            "name": "status",
+            "target": ""
+          },
+          {
+            "name": "refusedReason",
+            "target": "",
+            "optional": true
+          },
+          {
+            "name": "suggestedTools",
+            "target": "",
+            "optional": true
+          }
+        ],
+        "uses": [
+          "createAgentTool"
+        ],
+        "serves": "cm.agentDraftReady"
+      },
+      {
+        "route": "agents.cm.describe",
+        "pageId": "cm",
+        "kind": "qry",
+        "writes": "AgentTool.list",
+        "outputs": [],
+        "params": [
+          {
+            "name": "agentId",
+            "target": ""
+          },
+          {
+            "name": "knownVersion",
+            "target": "",
+            "optional": true
+          },
+          {
+            "name": "authorities",
+            "target": ""
+          },
+          {
+            "name": "snapshotAt",
+            "target": ""
+          }
+        ],
+        "uses": [
+          "listAgentTool",
+          "listPersonToolRestriction",
+          "listTool"
+        ],
+        "serves": "cm.describe"
+      },
+      {
+        "route": "agents.cm.record",
+        "pageId": "cm",
+        "kind": "cmd",
+        "writes": "ExecutionSummary.create",
+        "outputs": [],
+        "params": [
+          {
+            "name": "executionId",
+            "target": ""
+          },
+          {
+            "name": "agentId",
+            "target": ""
+          },
+          {
+            "name": "mode",
+            "target": ""
+          },
+          {
+            "name": "startedAt",
+            "target": ""
+          },
+          {
+            "name": "durationMs",
+            "target": ""
+          },
+          {
+            "name": "costUsd",
+            "target": ""
+          },
+          {
+            "name": "actions",
+            "target": ""
+          },
+          {
+            "name": "usedMainModel",
+            "target": ""
+          },
+          {
+            "name": "handedOff",
+            "target": ""
+          },
+          {
+            "name": "refs",
+            "target": ""
+          }
+        ],
+        "uses": [],
+        "serves": "cm.record"
+      },
+      {
+        "route": "agents.platform.releaseCatalogChanged",
+        "pageId": "platform",
+        "kind": "cmd",
+        "writes": "Tool.create",
+        "outputs": [],
+        "params": [
+          {
+            "name": "releaseId",
+            "target": ""
+          },
+          {
+            "name": "hash",
+            "target": ""
+          },
+          {
+            "name": "catalogs",
+            "target": ""
+          }
+        ],
+        "uses": [],
+        "serves": "platform.releaseCatalogChanged",
+        "upserts": [
+          {
+            "entityId": "Tool",
+            "key": [
+              "toolKey"
+            ],
+            "keyKind": "unique"
+          }
+        ]
+      }
+    ],
+    "usecases": [
+      {
+        "usecaseId": "activate",
+        "entity": "AgentDraft",
+        "operation": "transition",
+        "transitionRef": "activate",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "activate",
+        "routes": [
+          "agents.draft_review.activateDraft"
+        ],
+        "call": "cm.activateAgent"
+      },
+      {
+        "usecaseId": "createAgentDraft",
+        "entity": "AgentDraft",
+        "operation": "create",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "createAgentDraft",
+        "routes": [
+          "agents.agents.sendNewAgentRequest"
+        ],
+        "call": "cm.createAgent"
+      },
+      {
+        "usecaseId": "createAgentTool",
+        "entity": "AgentTool",
+        "operation": "create",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "createAgentTool",
+        "routes": [
+          "agents.agent_tools.enableUnchosenTool",
+          "agents.cm.agentDraftReady"
+        ]
+      },
+      {
+        "usecaseId": "createExecutionSummary",
+        "entity": "ExecutionSummary",
+        "operation": "create",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "createExecutionSummary",
+        "routes": [
+          "agents.cm.record"
+        ]
+      },
+      {
+        "usecaseId": "createTool",
+        "entity": "Tool",
+        "operation": "create",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "createTool",
+        "routes": [
+          "agents.platform.releaseCatalogChanged"
+        ]
+      },
+      {
+        "usecaseId": "discard",
+        "entity": "AgentDraft",
+        "operation": "transition",
+        "transitionRef": "discard",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "discard",
+        "routes": [
+          "agents.draft_review.discardDraft"
+        ],
+        "call": "cm.discardAgentDraft"
+      },
+      {
+        "usecaseId": "getAgent",
+        "entity": "Agent",
+        "operation": "get",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "getAgent",
+        "routes": [
+          "agents.agent_overview.getAgentOverview"
+        ],
+        "call": "cm.readAgent"
+      },
+      {
+        "usecaseId": "getAgentBehavior",
+        "entity": "AgentBehavior",
+        "operation": "get",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "getAgentBehavior",
+        "routes": [
+          "agents.agent_behavior.getAgentBehavior"
+        ],
+        "call": "cm.readAgent"
+      },
+      {
+        "usecaseId": "getAgentDraft",
+        "entity": "AgentDraft",
+        "operation": "get",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "getAgentDraft",
+        "routes": [
+          "agents.draft_review.getDraftReview"
+        ],
+        "call": "cm.readAgent"
+      },
+      {
+        "usecaseId": "listAgentSimulation",
+        "entity": "AgentSimulation",
+        "operation": "list",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "listAgentSimulation",
+        "routes": [
+          "agents.agent_simulation.getSimulationPage",
+          "agents.agent_simulation.simulateWhatItCan",
+          "agents.agent_simulation.simulateWhatItUnderstands",
+          "agents.draft_review.simulateDraft"
+        ],
+        "call": "cm.simulateAgent"
+      },
+      {
+        "usecaseId": "listAgentTool",
+        "entity": "AgentTool",
+        "operation": "list",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "listAgentTool",
+        "routes": [
+          "agents.agent_tools.getAgentToolTree",
+          "agents.agent_tools.listAutomaticToolChoices",
+          "agents.draft_review.getDraftReview",
+          "agents.cm.describe"
+        ]
+      },
+      {
+        "usecaseId": "listExecutionSummary",
+        "entity": "ExecutionSummary",
+        "operation": "list",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "listExecutionSummary",
+        "routes": [
+          "agents.agent_activity.getAgentActivity",
+          "agents.agent_activity.listAgentExecutions",
+          "agents.agent_configuration.getAgentConfiguration",
+          "agents.agent_configuration.saveAgentConfiguration",
+          "agents.agents.listAgentsCollection",
+          "agents.agents.loadAgentsPage",
+          "agents.agents.sendNewAgentRequest"
+        ]
+      },
+      {
+        "usecaseId": "listPersonToolRestriction",
+        "entity": "PersonToolRestriction",
+        "operation": "list",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "listPersonToolRestriction",
+        "routes": [
+          "agents.cm.describe"
+        ]
+      },
+      {
+        "usecaseId": "listTool",
+        "entity": "Tool",
+        "operation": "list",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "listTool",
+        "routes": [
+          "agents.agent_tools.enableUnchosenTool",
+          "agents.agent_tools.getAgentToolTree",
+          "agents.agent_tools.listAutomaticToolChoices",
+          "agents.agent_tools.toggleToolChoice",
+          "agents.draft_review.getDraftReview",
+          "agents.draft_review.saveDraftTools",
+          "agents.person_restrictions.getPersonRestrictions",
+          "agents.person_restrictions.saveRestrictions",
+          "agents.tool_catalog.getToolCatalog",
+          "agents.tool_catalog.listCatalogUpdates",
+          "agents.cm.describe"
+        ]
+      },
+      {
+        "usecaseId": "undoAgentChange",
+        "entity": "AgentBehavior",
+        "operation": "update",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "undoAgentChange",
+        "routes": [
+          "agents.agent_behavior.requestBehaviorChange"
+        ],
+        "call": "cm.undoAgentChange"
+      },
+      {
+        "usecaseId": "updateAgent",
+        "entity": "Agent",
+        "operation": "update",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "updateAgent",
+        "routes": [
+          "agents.agent_configuration.saveAgentConfiguration"
+        ],
+        "call": "cm.updateAgent"
+      },
+      {
+        "usecaseId": "updateAgentAgentBehavior",
+        "entity": "AgentBehavior",
+        "operation": "update",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "updateAgentAgentBehavior",
+        "routes": [
+          "agents.agent_behavior.requestBehaviorChange"
+        ],
+        "call": "cm.updateAgent"
+      },
+      {
+        "usecaseId": "updateAgentTool",
+        "entity": "AgentTool",
+        "operation": "update",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "updateAgentTool",
+        "routes": [
+          "agents.agent_tools.toggleToolChoice",
+          "agents.draft_review.saveDraftTools",
+          "agents.platform.releaseCatalogChanged"
+        ]
+      },
+      {
+        "usecaseId": "updatePersonalConduct",
+        "entity": "PersonalConduct",
+        "operation": "update",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "updatePersonalConduct",
+        "routes": [
+          "agents.my_conduct.sendConductChange"
+        ],
+        "call": "cm.updateAgent"
+      },
+      {
+        "usecaseId": "updatePersonToolRestriction",
+        "entity": "PersonToolRestriction",
+        "operation": "update",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "updatePersonToolRestriction",
+        "routes": [
+          "agents.person_restrictions.saveRestrictions"
+        ]
+      },
+      {
+        "usecaseId": "updateTool",
+        "entity": "Tool",
+        "operation": "update",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "updateTool",
+        "routes": [
+          "agents.platform.releaseCatalogChanged"
+        ]
+      }
+    ],
+    "ports": [
+      {
+        "portId": "AgentToolRepository",
+        "entity": "AgentTool",
+        "status": "toCreate"
+      },
+      {
+        "portId": "ExecutionSummaryRepository",
+        "entity": "ExecutionSummary",
+        "status": "toCreate"
+      },
+      {
+        "portId": "PersonToolRestrictionRepository",
+        "entity": "PersonToolRestriction",
+        "status": "toCreate"
+      },
+      {
+        "portId": "ToolRepository",
+        "entity": "Tool",
+        "status": "toCreate"
+      }
+    ],
+    "tables": [
+      {
+        "tableId": "agentTool",
+        "entity": "AgentTool",
+        "status": "toCreate"
+      },
+      {
+        "tableId": "executionSummary",
+        "entity": "ExecutionSummary",
+        "status": "toCreate"
+      },
+      {
+        "tableId": "personToolRestriction",
+        "entity": "PersonToolRestriction",
+        "status": "toCreate"
+      },
+      {
+        "tableId": "tool",
+        "entity": "Tool",
+        "status": "toCreate"
+      }
+    ],
+    "entities": [
+      "Agent",
+      "AgentBehavior",
+      "AgentDraft",
+      "AgentSimulation",
+      "AgentTool",
+      "ExecutionSummary",
+      "OrganizationUser",
+      "PersonToolRestriction",
+      "PersonalConduct",
+      "Tool"
+    ],
+    "outbound": []
+  },
+  "files": [
+    {
+      "id": "controller:agent_activity",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_activity.defs.ts",
+      "action": "create",
+      "identity": "agent_activity",
+      "ownerRefs": [
+        "endpoint:agents.agent_activity.getAgentActivity",
+        "endpoint:agents.agent_activity.listAgentExecutions"
+      ],
+      "dependsOn": [
+        "requestService:agent_activity",
+        "usecase:listExecutionSummary",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:agent_behavior",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_behavior.defs.ts",
+      "action": "create",
+      "identity": "agent_behavior",
+      "ownerRefs": [
+        "endpoint:agents.agent_behavior.getAgentBehavior",
+        "endpoint:agents.agent_behavior.listBehaviorChanges",
+        "endpoint:agents.agent_behavior.requestBehaviorChange"
+      ],
+      "dependsOn": [
+        "requestService:agent_behavior",
+        "usecase:getAgentBehavior",
+        "usecase:updateAgentAgentBehavior",
+        "usecase:undoAgentChange",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:agent_configuration",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_configuration.defs.ts",
+      "action": "create",
+      "identity": "agent_configuration",
+      "ownerRefs": [
+        "endpoint:agents.agent_configuration.getAgentConfiguration",
+        "endpoint:agents.agent_configuration.saveAgentConfiguration",
+        "endpoint:agents.agent_configuration.searchResponsibleCandidates"
+      ],
+      "dependsOn": [
+        "requestService:agent_configuration",
+        "usecase:listExecutionSummary",
+        "usecase:updateAgent",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:agent_overview",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_overview.defs.ts",
+      "action": "create",
+      "identity": "agent_overview",
+      "ownerRefs": [
+        "endpoint:agents.agent_overview.getAgentOverview"
+      ],
+      "dependsOn": [
+        "requestService:agent_overview",
+        "usecase:getAgent",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:agent_simulation",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_simulation.defs.ts",
+      "action": "create",
+      "identity": "agent_simulation",
+      "ownerRefs": [
+        "endpoint:agents.agent_simulation.findPeopleToSimulate",
+        "endpoint:agents.agent_simulation.getSimulationPage",
+        "endpoint:agents.agent_simulation.simulateWhatItCan",
+        "endpoint:agents.agent_simulation.simulateWhatItUnderstands"
+      ],
+      "dependsOn": [
+        "requestService:agent_simulation",
+        "usecase:listAgentSimulation",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:agent_tools",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_tools.defs.ts",
+      "action": "create",
+      "identity": "agent_tools",
+      "ownerRefs": [
+        "endpoint:agents.agent_tools.enableUnchosenTool",
+        "endpoint:agents.agent_tools.getAgentToolTree",
+        "endpoint:agents.agent_tools.listAutomaticToolChoices",
+        "endpoint:agents.agent_tools.toggleToolChoice"
+      ],
+      "dependsOn": [
+        "requestService:agent_tools",
+        "usecase:createAgentTool",
+        "usecase:listTool",
+        "usecase:listAgentTool",
+        "usecase:updateAgentTool",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:agents",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agents.defs.ts",
+      "action": "create",
+      "identity": "agents",
+      "ownerRefs": [
+        "endpoint:agents.agents.listAgentsCollection",
+        "endpoint:agents.agents.listRequestHistory",
+        "endpoint:agents.agents.loadAgentsPage",
+        "endpoint:agents.agents.sendNewAgentRequest"
+      ],
+      "dependsOn": [
+        "requestService:agents",
+        "usecase:listExecutionSummary",
+        "usecase:createAgentDraft",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:cm",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/cm.defs.ts",
+      "action": "create",
+      "identity": "cm",
+      "ownerRefs": [
+        "endpoint:agents.cm.agentDraftReady",
+        "endpoint:agents.cm.describe",
+        "endpoint:agents.cm.record"
+      ],
+      "dependsOn": [
+        "requestService:cm",
+        "usecase:createAgentTool",
+        "usecase:listAgentTool",
+        "usecase:listPersonToolRestriction",
+        "usecase:listTool",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:draft_review",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/draft_review.defs.ts",
+      "action": "create",
+      "identity": "draft_review",
+      "ownerRefs": [
+        "endpoint:agents.draft_review.activateDraft",
+        "endpoint:agents.draft_review.discardDraft",
+        "endpoint:agents.draft_review.getDraftReview",
+        "endpoint:agents.draft_review.saveDraftTools",
+        "endpoint:agents.draft_review.searchSimulationPeople",
+        "endpoint:agents.draft_review.simulateDraft"
+      ],
+      "dependsOn": [
+        "requestService:draft_review",
+        "usecase:activate",
+        "usecase:discard",
+        "usecase:getAgentDraft",
+        "usecase:listAgentTool",
+        "usecase:listTool",
+        "usecase:updateAgentTool",
+        "usecase:listAgentSimulation",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:my_conduct",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/my_conduct.defs.ts",
+      "action": "create",
+      "identity": "my_conduct",
+      "ownerRefs": [
+        "endpoint:agents.my_conduct.getMyConduct",
+        "endpoint:agents.my_conduct.listMyConductHistory",
+        "endpoint:agents.my_conduct.sendConductChange"
+      ],
+      "dependsOn": [
+        "requestService:my_conduct",
+        "usecase:updatePersonalConduct",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:person_restrictions",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/person_restrictions.defs.ts",
+      "action": "create",
+      "identity": "person_restrictions",
+      "ownerRefs": [
+        "endpoint:agents.person_restrictions.getPersonRestrictions",
+        "endpoint:agents.person_restrictions.listPeople",
+        "endpoint:agents.person_restrictions.saveRestrictions"
+      ],
+      "dependsOn": [
+        "requestService:person_restrictions",
+        "usecase:listTool",
+        "usecase:updatePersonToolRestriction",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:platform",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/platform.defs.ts",
+      "action": "create",
+      "identity": "platform",
+      "ownerRefs": [
+        "endpoint:agents.platform.releaseCatalogChanged"
+      ],
+      "dependsOn": [
+        "requestService:platform",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:tool_catalog",
+      "artifactType": "httpController",
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/tool_catalog.defs.ts",
+      "action": "create",
+      "identity": "tool_catalog",
+      "ownerRefs": [
+        "endpoint:agents.tool_catalog.getToolCatalog",
+        "endpoint:agents.tool_catalog.listCatalogUpdates"
+      ],
+      "dependsOn": [
+        "requestService:tool_catalog",
+        "usecase:listTool",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "integration:outbound",
+      "artifactType": "integrationOutbound",
+      "defPath": "l1/agents/layer_1_external/adapters/integration/outbound.defs.ts",
+      "action": "create",
+      "identity": "outbound",
+      "ownerRefs": [],
+      "dependsOn": []
+    },
+    {
+      "id": "table:agentTool",
+      "artifactType": "table",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentTool.defs.ts",
+      "action": "create",
+      "identity": "agentTool",
+      "ownerRefs": [
+        "table:agentTool"
+      ],
+      "dependsOn": [
+        "entity:AgentTool"
+      ]
+    },
+    {
+      "id": "adapter:AgentToolRepository",
+      "artifactType": "repositoryAdapter",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.defs.ts",
+      "action": "create",
+      "identity": "AgentToolRepository",
+      "ownerRefs": [
+        "port:AgentToolRepository",
+        "table:agentTool"
+      ],
+      "dependsOn": [
+        "port:AgentToolRepository",
+        "table:agentTool"
+      ]
+    },
+    {
+      "id": "table:executionSummary",
+      "artifactType": "table",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/executionSummary.defs.ts",
+      "action": "create",
+      "identity": "executionSummary",
+      "ownerRefs": [
+        "table:executionSummary"
+      ],
+      "dependsOn": [
+        "entity:ExecutionSummary"
+      ]
+    },
+    {
+      "id": "adapter:ExecutionSummaryRepository",
+      "artifactType": "repositoryAdapter",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.defs.ts",
+      "action": "create",
+      "identity": "ExecutionSummaryRepository",
+      "ownerRefs": [
+        "port:ExecutionSummaryRepository",
+        "table:executionSummary"
+      ],
+      "dependsOn": [
+        "port:ExecutionSummaryRepository",
+        "table:executionSummary"
+      ]
+    },
+    {
+      "id": "table:personToolRestriction",
+      "artifactType": "table",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/personToolRestriction.defs.ts",
+      "action": "create",
+      "identity": "personToolRestriction",
+      "ownerRefs": [
+        "table:personToolRestriction"
+      ],
+      "dependsOn": [
+        "entity:PersonToolRestriction"
+      ]
+    },
+    {
+      "id": "adapter:PersonToolRestrictionRepository",
+      "artifactType": "repositoryAdapter",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.defs.ts",
+      "action": "create",
+      "identity": "PersonToolRestrictionRepository",
+      "ownerRefs": [
+        "port:PersonToolRestrictionRepository",
+        "table:personToolRestriction"
+      ],
+      "dependsOn": [
+        "port:PersonToolRestrictionRepository",
+        "table:personToolRestriction"
+      ]
+    },
+    {
+      "id": "registration:repositories",
+      "artifactType": "repositoryRegistration",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+      "action": "create",
+      "identity": "registerRepositories",
+      "ownerRefs": [
+        "adapter:AgentToolRepository",
+        "adapter:ExecutionSummaryRepository",
+        "adapter:PersonToolRestrictionRepository",
+        "adapter:ToolRepository"
+      ],
+      "dependsOn": [
+        "adapter:AgentToolRepository",
+        "adapter:ExecutionSummaryRepository",
+        "adapter:PersonToolRestrictionRepository",
+        "adapter:ToolRepository"
+      ]
+    },
+    {
+      "id": "seeds:persistence",
+      "artifactType": "persistenceSeeds",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/seeds.defs.ts",
+      "action": "create",
+      "identity": "seeds",
+      "ownerRefs": [
+        "table:agentTool",
+        "table:executionSummary",
+        "table:personToolRestriction",
+        "table:tool"
+      ],
+      "dependsOn": [
+        "table:agentTool",
+        "table:executionSummary",
+        "table:personToolRestriction",
+        "table:tool"
+      ]
+    },
+    {
+      "id": "table:tool",
+      "artifactType": "table",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/tool.defs.ts",
+      "action": "create",
+      "identity": "tool",
+      "ownerRefs": [
+        "table:tool"
+      ],
+      "dependsOn": [
+        "entity:Tool"
+      ]
+    },
+    {
+      "id": "adapter:ToolRepository",
+      "artifactType": "repositoryAdapter",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.defs.ts",
+      "action": "create",
+      "identity": "ToolRepository",
+      "ownerRefs": [
+        "port:ToolRepository",
+        "table:tool"
+      ],
+      "dependsOn": [
+        "port:ToolRepository",
+        "table:tool"
+      ]
+    },
+    {
+      "id": "auth:authorityMap",
+      "artifactType": "authorityMap",
+      "defPath": "l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+      "action": "create",
+      "identity": "authorityMap",
+      "ownerRefs": [
+        "grant:adminChoosePeople",
+        "grant:adminManageAgents",
+        "grant:adminManageTools",
+        "grant:adminOwnConduct",
+        "grant:adminReadActivity",
+        "grant:memberOwnConduct",
+        "grant:memberReadActivity",
+        "grant:memberReadToolCatalog",
+        "grant:memberSeeAgents",
+        "grant:memberSeePeopleNames",
+        "grant:memberSimulateAsMyself"
+      ],
+      "dependsOn": [
+        "scope:access"
+      ]
+    },
+    {
+      "id": "port:AgentToolRepository",
+      "artifactType": "repositoryPort",
+      "defPath": "l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+      "action": "create",
+      "identity": "AgentToolRepository",
+      "ownerRefs": [
+        "port:AgentToolRepository"
+      ],
+      "dependsOn": [
+        "entity:AgentTool"
+      ]
+    },
+    {
+      "id": "port:ExecutionSummaryRepository",
+      "artifactType": "repositoryPort",
+      "defPath": "l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts",
+      "action": "create",
+      "identity": "ExecutionSummaryRepository",
+      "ownerRefs": [
+        "port:ExecutionSummaryRepository"
+      ],
+      "dependsOn": [
+        "entity:ExecutionSummary"
+      ]
+    },
+    {
+      "id": "port:PersonToolRestrictionRepository",
+      "artifactType": "repositoryPort",
+      "defPath": "l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts",
+      "action": "create",
+      "identity": "PersonToolRestrictionRepository",
+      "ownerRefs": [
+        "port:PersonToolRestrictionRepository"
+      ],
+      "dependsOn": [
+        "entity:PersonToolRestriction"
+      ]
+    },
+    {
+      "id": "port:ToolRepository",
+      "artifactType": "repositoryPort",
+      "defPath": "l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+      "action": "create",
+      "identity": "ToolRepository",
+      "ownerRefs": [
+        "port:ToolRepository"
+      ],
+      "dependsOn": [
+        "entity:Tool"
+      ]
+    },
+    {
+      "id": "requestService:agent_activity",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/agent_activity.defs.ts",
+      "action": "create",
+      "identity": "agent_activity",
+      "ownerRefs": [
+        "endpoint:agents.agent_activity.getAgentActivity",
+        "endpoint:agents.agent_activity.listAgentExecutions"
+      ],
+      "dependsOn": [
+        "usecase:listExecutionSummary"
+      ]
+    },
+    {
+      "id": "requestService:agent_behavior",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/agent_behavior.defs.ts",
+      "action": "create",
+      "identity": "agent_behavior",
+      "ownerRefs": [
+        "endpoint:agents.agent_behavior.getAgentBehavior",
+        "endpoint:agents.agent_behavior.listBehaviorChanges",
+        "endpoint:agents.agent_behavior.requestBehaviorChange"
+      ],
+      "dependsOn": [
+        "usecase:getAgentBehavior",
+        "usecase:updateAgentAgentBehavior",
+        "usecase:undoAgentChange"
+      ]
+    },
+    {
+      "id": "requestService:agent_configuration",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/agent_configuration.defs.ts",
+      "action": "create",
+      "identity": "agent_configuration",
+      "ownerRefs": [
+        "endpoint:agents.agent_configuration.getAgentConfiguration",
+        "endpoint:agents.agent_configuration.saveAgentConfiguration",
+        "endpoint:agents.agent_configuration.searchResponsibleCandidates"
+      ],
+      "dependsOn": [
+        "usecase:listExecutionSummary",
+        "usecase:updateAgent"
+      ]
+    },
+    {
+      "id": "requestService:agent_overview",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/agent_overview.defs.ts",
+      "action": "create",
+      "identity": "agent_overview",
+      "ownerRefs": [
+        "endpoint:agents.agent_overview.getAgentOverview"
+      ],
+      "dependsOn": [
+        "usecase:getAgent"
+      ]
+    },
+    {
+      "id": "requestService:agent_simulation",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/agent_simulation.defs.ts",
+      "action": "create",
+      "identity": "agent_simulation",
+      "ownerRefs": [
+        "endpoint:agents.agent_simulation.findPeopleToSimulate",
+        "endpoint:agents.agent_simulation.getSimulationPage",
+        "endpoint:agents.agent_simulation.simulateWhatItCan",
+        "endpoint:agents.agent_simulation.simulateWhatItUnderstands"
+      ],
+      "dependsOn": [
+        "usecase:listAgentSimulation"
+      ]
+    },
+    {
+      "id": "requestService:agent_tools",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/agent_tools.defs.ts",
+      "action": "create",
+      "identity": "agent_tools",
+      "ownerRefs": [
+        "endpoint:agents.agent_tools.enableUnchosenTool",
+        "endpoint:agents.agent_tools.getAgentToolTree",
+        "endpoint:agents.agent_tools.listAutomaticToolChoices",
+        "endpoint:agents.agent_tools.toggleToolChoice"
+      ],
+      "dependsOn": [
+        "usecase:createAgentTool",
+        "usecase:listTool",
+        "usecase:listAgentTool",
+        "usecase:updateAgentTool"
+      ]
+    },
+    {
+      "id": "requestService:agents",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/agents.defs.ts",
+      "action": "create",
+      "identity": "agents",
+      "ownerRefs": [
+        "endpoint:agents.agents.listAgentsCollection",
+        "endpoint:agents.agents.listRequestHistory",
+        "endpoint:agents.agents.loadAgentsPage",
+        "endpoint:agents.agents.sendNewAgentRequest"
+      ],
+      "dependsOn": [
+        "usecase:listExecutionSummary",
+        "usecase:createAgentDraft"
+      ]
+    },
+    {
+      "id": "requestService:cm",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/cm.defs.ts",
+      "action": "create",
+      "identity": "cm",
+      "ownerRefs": [
+        "endpoint:agents.cm.agentDraftReady",
+        "endpoint:agents.cm.describe",
+        "endpoint:agents.cm.record"
+      ],
+      "dependsOn": [
+        "usecase:createAgentTool",
+        "usecase:listAgentTool",
+        "usecase:listPersonToolRestriction",
+        "usecase:listTool"
+      ]
+    },
+    {
+      "id": "requestService:draft_review",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/draft_review.defs.ts",
+      "action": "create",
+      "identity": "draft_review",
+      "ownerRefs": [
+        "endpoint:agents.draft_review.activateDraft",
+        "endpoint:agents.draft_review.discardDraft",
+        "endpoint:agents.draft_review.getDraftReview",
+        "endpoint:agents.draft_review.saveDraftTools",
+        "endpoint:agents.draft_review.searchSimulationPeople",
+        "endpoint:agents.draft_review.simulateDraft"
+      ],
+      "dependsOn": [
+        "usecase:activate",
+        "usecase:discard",
+        "usecase:getAgentDraft",
+        "usecase:listAgentTool",
+        "usecase:listTool",
+        "usecase:updateAgentTool",
+        "usecase:listAgentSimulation"
+      ]
+    },
+    {
+      "id": "requestService:my_conduct",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/my_conduct.defs.ts",
+      "action": "create",
+      "identity": "my_conduct",
+      "ownerRefs": [
+        "endpoint:agents.my_conduct.getMyConduct",
+        "endpoint:agents.my_conduct.listMyConductHistory",
+        "endpoint:agents.my_conduct.sendConductChange"
+      ],
+      "dependsOn": [
+        "usecase:updatePersonalConduct"
+      ]
+    },
+    {
+      "id": "requestService:person_restrictions",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/person_restrictions.defs.ts",
+      "action": "create",
+      "identity": "person_restrictions",
+      "ownerRefs": [
+        "endpoint:agents.person_restrictions.getPersonRestrictions",
+        "endpoint:agents.person_restrictions.listPeople",
+        "endpoint:agents.person_restrictions.saveRestrictions"
+      ],
+      "dependsOn": [
+        "usecase:listTool",
+        "usecase:updatePersonToolRestriction"
+      ]
+    },
+    {
+      "id": "requestService:platform",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/platform.defs.ts",
+      "action": "create",
+      "identity": "platform",
+      "ownerRefs": [
+        "endpoint:agents.platform.releaseCatalogChanged"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "requestService:tool_catalog",
+      "artifactType": "requestService",
+      "defPath": "l1/agents/layer_2_application/requests/tool_catalog.defs.ts",
+      "action": "create",
+      "identity": "tool_catalog",
+      "ownerRefs": [
+        "endpoint:agents.tool_catalog.getToolCatalog",
+        "endpoint:agents.tool_catalog.listCatalogUpdates"
+      ],
+      "dependsOn": [
+        "usecase:listTool"
+      ]
+    },
+    {
+      "id": "scope:access",
+      "artifactType": "accessScope",
+      "defPath": "l1/agents/layer_2_application/scope/accessScope.defs.ts",
+      "action": "create",
+      "identity": "accessScope",
+      "ownerRefs": [
+        "grant:adminChoosePeople",
+        "grant:adminManageAgents",
+        "grant:adminManageTools",
+        "grant:adminOwnConduct",
+        "grant:adminReadActivity",
+        "grant:memberOwnConduct",
+        "grant:memberReadActivity",
+        "grant:memberReadToolCatalog",
+        "grant:memberSeeAgents",
+        "grant:memberSeePeopleNames",
+        "grant:memberSimulateAsMyself"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "usecase:activate",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/activate.defs.ts",
+      "action": "create",
+      "identity": "activate",
+      "ownerRefs": [
+        "usecase:activate",
+        "endpoint:agents.draft_review.activateDraft"
+      ],
+      "dependsOn": [
+        "entity:AgentDraft",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:createAgentDraft",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/createAgentDraft.defs.ts",
+      "action": "create",
+      "identity": "createAgentDraft",
+      "ownerRefs": [
+        "usecase:createAgentDraft",
+        "endpoint:agents.agents.sendNewAgentRequest"
+      ],
+      "dependsOn": [
+        "entity:AgentDraft",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:createAgentTool",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/createAgentTool.defs.ts",
+      "action": "create",
+      "identity": "createAgentTool",
+      "ownerRefs": [
+        "usecase:createAgentTool",
+        "endpoint:agents.agent_tools.enableUnchosenTool",
+        "endpoint:agents.cm.agentDraftReady"
+      ],
+      "dependsOn": [
+        "entity:AgentTool",
+        "port:AgentToolRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:createExecutionSummary",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts",
+      "action": "create",
+      "identity": "createExecutionSummary",
+      "ownerRefs": [
+        "usecase:createExecutionSummary",
+        "endpoint:agents.cm.record"
+      ],
+      "dependsOn": [
+        "entity:ExecutionSummary",
+        "port:ExecutionSummaryRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:createTool",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/createTool.defs.ts",
+      "action": "create",
+      "identity": "createTool",
+      "ownerRefs": [
+        "usecase:createTool",
+        "endpoint:agents.platform.releaseCatalogChanged"
+      ],
+      "dependsOn": [
+        "entity:Tool",
+        "port:ToolRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:discard",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/discard.defs.ts",
+      "action": "create",
+      "identity": "discard",
+      "ownerRefs": [
+        "usecase:discard",
+        "endpoint:agents.draft_review.discardDraft"
+      ],
+      "dependsOn": [
+        "entity:AgentDraft",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:getAgent",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/getAgent.defs.ts",
+      "action": "create",
+      "identity": "getAgent",
+      "ownerRefs": [
+        "usecase:getAgent",
+        "endpoint:agents.agent_overview.getAgentOverview"
+      ],
+      "dependsOn": [
+        "entity:Agent",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:getAgentBehavior",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/getAgentBehavior.defs.ts",
+      "action": "create",
+      "identity": "getAgentBehavior",
+      "ownerRefs": [
+        "usecase:getAgentBehavior",
+        "endpoint:agents.agent_behavior.getAgentBehavior"
+      ],
+      "dependsOn": [
+        "entity:AgentBehavior",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:getAgentDraft",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/getAgentDraft.defs.ts",
+      "action": "create",
+      "identity": "getAgentDraft",
+      "ownerRefs": [
+        "usecase:getAgentDraft",
+        "endpoint:agents.draft_review.getDraftReview"
+      ],
+      "dependsOn": [
+        "entity:AgentDraft",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:listAgentSimulation",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentSimulation.defs.ts",
+      "action": "create",
+      "identity": "listAgentSimulation",
+      "ownerRefs": [
+        "usecase:listAgentSimulation",
+        "endpoint:agents.agent_simulation.getSimulationPage",
+        "endpoint:agents.agent_simulation.simulateWhatItCan",
+        "endpoint:agents.agent_simulation.simulateWhatItUnderstands",
+        "endpoint:agents.draft_review.simulateDraft"
+      ],
+      "dependsOn": [
+        "entity:AgentSimulation",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:listAgentTool",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentTool.defs.ts",
+      "action": "create",
+      "identity": "listAgentTool",
+      "ownerRefs": [
+        "usecase:listAgentTool",
+        "endpoint:agents.agent_tools.getAgentToolTree",
+        "endpoint:agents.agent_tools.listAutomaticToolChoices",
+        "endpoint:agents.draft_review.getDraftReview",
+        "endpoint:agents.cm.describe"
+      ],
+      "dependsOn": [
+        "entity:AgentTool",
+        "port:AgentToolRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:listExecutionSummary",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/listExecutionSummary.defs.ts",
+      "action": "create",
+      "identity": "listExecutionSummary",
+      "ownerRefs": [
+        "usecase:listExecutionSummary",
+        "endpoint:agents.agent_activity.getAgentActivity",
+        "endpoint:agents.agent_activity.listAgentExecutions",
+        "endpoint:agents.agent_configuration.getAgentConfiguration",
+        "endpoint:agents.agent_configuration.saveAgentConfiguration",
+        "endpoint:agents.agents.listAgentsCollection",
+        "endpoint:agents.agents.loadAgentsPage",
+        "endpoint:agents.agents.sendNewAgentRequest"
+      ],
+      "dependsOn": [
+        "entity:ExecutionSummary",
+        "port:ExecutionSummaryRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:listPersonToolRestriction",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/listPersonToolRestriction.defs.ts",
+      "action": "create",
+      "identity": "listPersonToolRestriction",
+      "ownerRefs": [
+        "usecase:listPersonToolRestriction",
+        "endpoint:agents.cm.describe"
+      ],
+      "dependsOn": [
+        "entity:PersonToolRestriction",
+        "port:PersonToolRestrictionRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:listTool",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/listTool.defs.ts",
+      "action": "create",
+      "identity": "listTool",
+      "ownerRefs": [
+        "usecase:listTool",
+        "endpoint:agents.agent_tools.enableUnchosenTool",
+        "endpoint:agents.agent_tools.getAgentToolTree",
+        "endpoint:agents.agent_tools.listAutomaticToolChoices",
+        "endpoint:agents.agent_tools.toggleToolChoice",
+        "endpoint:agents.draft_review.getDraftReview",
+        "endpoint:agents.draft_review.saveDraftTools",
+        "endpoint:agents.person_restrictions.getPersonRestrictions",
+        "endpoint:agents.person_restrictions.saveRestrictions",
+        "endpoint:agents.tool_catalog.getToolCatalog",
+        "endpoint:agents.tool_catalog.listCatalogUpdates",
+        "endpoint:agents.cm.describe"
+      ],
+      "dependsOn": [
+        "entity:Tool",
+        "port:ToolRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:undoAgentChange",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/undoAgentChange.defs.ts",
+      "action": "create",
+      "identity": "undoAgentChange",
+      "ownerRefs": [
+        "usecase:undoAgentChange",
+        "endpoint:agents.agent_behavior.requestBehaviorChange"
+      ],
+      "dependsOn": [
+        "entity:AgentBehavior",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:updateAgent",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgent.defs.ts",
+      "action": "create",
+      "identity": "updateAgent",
+      "ownerRefs": [
+        "usecase:updateAgent",
+        "endpoint:agents.agent_configuration.saveAgentConfiguration"
+      ],
+      "dependsOn": [
+        "entity:Agent",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:updateAgentAgentBehavior",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.defs.ts",
+      "action": "create",
+      "identity": "updateAgentAgentBehavior",
+      "ownerRefs": [
+        "usecase:updateAgentAgentBehavior",
+        "endpoint:agents.agent_behavior.requestBehaviorChange"
+      ],
+      "dependsOn": [
+        "entity:AgentBehavior",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:updateAgentTool",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts",
+      "action": "create",
+      "identity": "updateAgentTool",
+      "ownerRefs": [
+        "usecase:updateAgentTool",
+        "endpoint:agents.agent_tools.toggleToolChoice",
+        "endpoint:agents.draft_review.saveDraftTools",
+        "endpoint:agents.platform.releaseCatalogChanged"
+      ],
+      "dependsOn": [
+        "entity:AgentTool",
+        "port:AgentToolRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:updatePersonalConduct",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/updatePersonalConduct.defs.ts",
+      "action": "create",
+      "identity": "updatePersonalConduct",
+      "ownerRefs": [
+        "usecase:updatePersonalConduct",
+        "endpoint:agents.my_conduct.sendConductChange"
+      ],
+      "dependsOn": [
+        "entity:PersonalConduct",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:updatePersonToolRestriction",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/updatePersonToolRestriction.defs.ts",
+      "action": "create",
+      "identity": "updatePersonToolRestriction",
+      "ownerRefs": [
+        "usecase:updatePersonToolRestriction",
+        "endpoint:agents.person_restrictions.saveRestrictions"
+      ],
+      "dependsOn": [
+        "entity:PersonToolRestriction",
+        "port:PersonToolRestrictionRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:updateTool",
+      "artifactType": "usecase",
+      "defPath": "l1/agents/layer_2_application/usecases/updateTool.defs.ts",
+      "action": "create",
+      "identity": "updateTool",
+      "ownerRefs": [
+        "usecase:updateTool",
+        "endpoint:agents.platform.releaseCatalogChanged"
+      ],
+      "dependsOn": [
+        "entity:Tool",
+        "port:ToolRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "workflow:executionRecording",
+      "artifactType": "workflowProcess",
+      "defPath": "l1/agents/layer_2_application/workflows/executionRecording.defs.ts",
+      "action": "create",
+      "identity": "executionRecording",
+      "ownerRefs": [
+        "process:executionRecording"
+      ],
+      "dependsOn": [
+        "usecase:createExecutionSummary"
+      ]
+    },
+    {
+      "id": "workflow:toolCatalogRefresh",
+      "artifactType": "workflowProcess",
+      "defPath": "l1/agents/layer_2_application/workflows/toolCatalogRefresh.defs.ts",
+      "action": "create",
+      "identity": "toolCatalogRefresh",
+      "ownerRefs": [
+        "process:toolCatalogRefresh"
+      ],
+      "dependsOn": [
+        "usecase:updateAgentTool",
+        "usecase:updateTool"
+      ]
+    },
+    {
+      "id": "workflow:virtualEmployeeCreation",
+      "artifactType": "workflowProcess",
+      "defPath": "l1/agents/layer_2_application/workflows/virtualEmployeeCreation.defs.ts",
+      "action": "create",
+      "identity": "virtualEmployeeCreation",
+      "ownerRefs": [
+        "process:virtualEmployeeCreation"
+      ],
+      "dependsOn": [
+        "usecase:activate",
+        "usecase:createAgentDraft",
+        "usecase:discard",
+        "usecase:updateAgentTool"
+      ]
+    },
+    {
+      "id": "entity:Agent",
+      "artifactType": "domainEntity",
+      "defPath": "l1/agents/layer_3_domain/entities/agent.defs.ts",
+      "action": "create",
+      "identity": "Agent",
+      "ownerRefs": [
+        "usecase:getAgent",
+        "usecase:updateAgent"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "entity:AgentBehavior",
+      "artifactType": "domainEntity",
+      "defPath": "l1/agents/layer_3_domain/entities/agentBehavior.defs.ts",
+      "action": "create",
+      "identity": "AgentBehavior",
+      "ownerRefs": [
+        "usecase:getAgentBehavior",
+        "usecase:undoAgentChange",
+        "usecase:updateAgentAgentBehavior"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "entity:AgentDraft",
+      "artifactType": "domainEntity",
+      "defPath": "l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+      "action": "create",
+      "identity": "AgentDraft",
+      "ownerRefs": [
+        "usecase:activate",
+        "usecase:createAgentDraft",
+        "usecase:discard",
+        "usecase:getAgentDraft"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "entity:AgentSimulation",
+      "artifactType": "domainEntity",
+      "defPath": "l1/agents/layer_3_domain/entities/agentSimulation.defs.ts",
+      "action": "create",
+      "identity": "AgentSimulation",
+      "ownerRefs": [
+        "usecase:listAgentSimulation"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "entity:AgentTool",
+      "artifactType": "domainEntity",
+      "defPath": "l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+      "action": "create",
+      "identity": "AgentTool",
+      "ownerRefs": [
+        "usecase:createAgentTool",
+        "usecase:listAgentTool",
+        "usecase:updateAgentTool"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "entity:ExecutionSummary",
+      "artifactType": "domainEntity",
+      "defPath": "l1/agents/layer_3_domain/entities/executionSummary.defs.ts",
+      "action": "create",
+      "identity": "ExecutionSummary",
+      "ownerRefs": [
+        "usecase:createExecutionSummary",
+        "usecase:listExecutionSummary"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "entity:OrganizationUser",
+      "artifactType": "domainEntity",
+      "defPath": "l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+      "action": "create",
+      "identity": "OrganizationUser",
+      "ownerRefs": [
+        "relationship:restrictionPerson",
+        "usecase:listPersonToolRestriction",
+        "usecase:updatePersonToolRestriction"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "entity:PersonalConduct",
+      "artifactType": "domainEntity",
+      "defPath": "l1/agents/layer_3_domain/entities/personalConduct.defs.ts",
+      "action": "create",
+      "identity": "PersonalConduct",
+      "ownerRefs": [
+        "usecase:updatePersonalConduct"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "entity:PersonToolRestriction",
+      "artifactType": "domainEntity",
+      "defPath": "l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts",
+      "action": "create",
+      "identity": "PersonToolRestriction",
+      "ownerRefs": [
+        "usecase:listPersonToolRestriction",
+        "usecase:updatePersonToolRestriction"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "entity:Tool",
+      "artifactType": "domainEntity",
+      "defPath": "l1/agents/layer_3_domain/entities/tool.defs.ts",
+      "action": "create",
+      "identity": "Tool",
+      "ownerRefs": [
+        "usecase:createTool",
+        "usecase:listTool",
+        "usecase:updateTool"
+      ],
+      "dependsOn": []
+    }
+  ],
+  "removed": [
+    {
+      "kind": "usecase",
+      "id": "listAgent",
+      "defPath": "l1/agents/layer_2_application/usecases/listAgent.defs.ts",
+      "inventoried": true,
+      "contentHash": "sha256:54f955773084a0babc1cf17e4fa8a224c01d6a7d7478c53c822c1508257232df"
+    },
+    {
+      "kind": "usecase",
+      "id": "listAgentBehavior",
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentBehavior.defs.ts",
+      "inventoried": true,
+      "contentHash": "sha256:cb4c924bce20275f72d022136574256a55c22212ed4034b666147ee1bfa821a9"
+    },
+    {
+      "kind": "usecase",
+      "id": "listAgentDraft",
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentDraft.defs.ts",
+      "inventoried": true,
+      "contentHash": "sha256:0c55596998ca8a819838c17c7e0e8546493335ee00b4e37fb257fbdcd9404d77"
+    },
+    {
+      "kind": "usecase",
+      "id": "listOrganizationUser",
+      "defPath": "l1/agents/layer_2_application/usecases/listOrganizationUser.defs.ts",
+      "inventoried": true,
+      "contentHash": "sha256:8350f9c2593f40339cc3c27444fab1d80f42151c2f8f9d1bae363ea6b6b1c91a"
+    }
+  ],
+  "problems": [
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.findPeopleToSimulate access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.agent_simulation.findPeopleToSimulate"
+    },
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItCan access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItCan"
+    },
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItUnderstands access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItUnderstands"
+    },
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.getMyConduct access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.my_conduct.getMyConduct"
+    },
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.listMyConductHistory access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.my_conduct.listMyConductHistory"
+    },
+    {
+      "severity": "review",
+      "code": "CONTRACT_ACCESS_DIVERGENT",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.sendConductChange access does not match the L4 access artifact. L4 stays the source.",
+      "ownerRef": "agents.my_conduct.sendConductChange"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "message": "Route agents.agent_activity.getAgentActivity output.agent is not derived: Interface AgentHeader: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.agent_activity.getAgentActivity"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "message": "Route agents.agent_activity.getAgentActivity output.executions.details.actions.toolName is not derived: Interface ExecutionAction: field toolName is not a field of any entity.",
+      "ownerRef": "agents.agent_activity.getAgentActivity"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "message": "Route agents.agent_activity.getAgentActivity output.executions.details.actions.result is not derived: Interface ExecutionAction: field result is not a field of any entity.",
+      "ownerRef": "agents.agent_activity.getAgentActivity"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "message": "Route agents.agent_activity.getAgentActivity output.executions.details.actions.resultNote is not derived: Interface ExecutionAction: field resultNote is not a field of any entity.",
+      "ownerRef": "agents.agent_activity.getAgentActivity"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "message": "Route agents.agent_activity.getAgentActivity output.executions.organizationUser is not derived: Interface ExecutionCaller has no field that is not readonly, so no entity owns it.",
+      "ownerRef": "agents.agent_activity.getAgentActivity"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "message": "Route agents.agent_activity.listAgentExecutions output.executions.details.actions.toolName is not derived: Interface ExecutionAction: field toolName is not a field of any entity.",
+      "ownerRef": "agents.agent_activity.listAgentExecutions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "message": "Route agents.agent_activity.listAgentExecutions output.executions.details.actions.result is not derived: Interface ExecutionAction: field result is not a field of any entity.",
+      "ownerRef": "agents.agent_activity.listAgentExecutions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "message": "Route agents.agent_activity.listAgentExecutions output.executions.details.actions.resultNote is not derived: Interface ExecutionAction: field resultNote is not a field of any entity.",
+      "ownerRef": "agents.agent_activity.listAgentExecutions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_activity.defs.ts",
+      "message": "Route agents.agent_activity.listAgentExecutions output.executions.organizationUser is not derived: Interface ExecutionCaller has no field that is not readonly, so no entity owns it.",
+      "ownerRef": "agents.agent_activity.listAgentExecutions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.getAgentBehavior output.behavior.agent.agent.name is not derived: Interface BehaviorAgent: field agent.name is not a field of any entity.",
+      "ownerRef": "agents.agent_behavior.getAgentBehavior"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.getAgentBehavior input.agentId is not derived: Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.agent_behavior.getAgentBehavior"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.listBehaviorChanges output.changes.changeRef is not derived: Interface BehaviorChange: field changeRef is not a field of any entity.",
+      "ownerRef": "agents.agent_behavior.listBehaviorChanges"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.listBehaviorChanges output.changes.changedBy is not derived: Interface BehaviorChange: field changedBy is not a field of any entity.",
+      "ownerRef": "agents.agent_behavior.listBehaviorChanges"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.listBehaviorChanges output.changes.changedAt is not derived: Interface BehaviorChange: field changedAt is not a field of any entity.",
+      "ownerRef": "agents.agent_behavior.listBehaviorChanges"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.listBehaviorChanges output.changes.undone is not derived: Interface BehaviorChange: field undone is not a field of any entity.",
+      "ownerRef": "agents.agent_behavior.listBehaviorChanges"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.listBehaviorChanges input.page is not derived: Page input page pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.agent_behavior.listBehaviorChanges"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.listBehaviorChanges input.pageSize is not derived: Page input pageSize pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.agent_behavior.listBehaviorChanges"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.listBehaviorChanges input.agentId is not derived: Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.agent_behavior.listBehaviorChanges"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_behavior.defs.ts",
+      "message": "Route agents.agent_behavior.requestBehaviorChange output.behavior.agent.agent.name is not derived: Interface BehaviorAgent: field agent.name is not a field of any entity.",
+      "ownerRef": "agents.agent_behavior.requestBehaviorChange"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.getAgentConfiguration output.configuration.responsible.agent.responsible is not derived: Interface ResponsiblePerson: field agent.responsible is not a field of any entity.",
+      "ownerRef": "agents.agent_configuration.getAgentConfiguration"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.getAgentConfiguration output.limits.label is not derived: Interface AgentLimit: field label is not a field of any entity.",
+      "ownerRef": "agents.agent_configuration.getAgentConfiguration"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.getAgentConfiguration output.limits.value is not derived: Interface AgentLimit: field value is not a field of any entity.",
+      "ownerRef": "agents.agent_configuration.getAgentConfiguration"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.saveAgentConfiguration output.configuration.responsible.agent.responsible is not derived: Interface ResponsiblePerson: field agent.responsible is not a field of any entity.",
+      "ownerRef": "agents.agent_configuration.saveAgentConfiguration"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.saveAgentConfiguration output.limits.label is not derived: Interface AgentLimit: field label is not a field of any entity.",
+      "ownerRef": "agents.agent_configuration.saveAgentConfiguration"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.saveAgentConfiguration output.limits.value is not derived: Interface AgentLimit: field value is not a field of any entity.",
+      "ownerRef": "agents.agent_configuration.saveAgentConfiguration"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.searchResponsibleCandidates output.users.agent.responsible is not derived: Interface ResponsiblePerson: field agent.responsible is not a field of any entity.",
+      "ownerRef": "agents.agent_configuration.searchResponsibleCandidates"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.searchResponsibleCandidates input.page is not derived: Page input page pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.agent_configuration.searchResponsibleCandidates"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.searchResponsibleCandidates input.pageSize is not derived: Page input pageSize pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.agent_configuration.searchResponsibleCandidates"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_configuration.defs.ts",
+      "message": "Route agents.agent_configuration.searchResponsibleCandidates input.search is not derived: Input search is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.agent_configuration.searchResponsibleCandidates"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_overview.defs.ts",
+      "message": "Route agents.agent_overview.getAgentOverview input.agentId is not derived: Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.agent_overview.getAgentOverview"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.findPeopleToSimulate output.people is not derived: Interface SimulatedPerson: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+      "ownerRef": "agents.agent_simulation.findPeopleToSimulate"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.findPeopleToSimulate output.people.details.identification is not derived: Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.agent_simulation.findPeopleToSimulate"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.findPeopleToSimulate input.page is not derived: Page input page pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.agent_simulation.findPeopleToSimulate"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.findPeopleToSimulate input.pageSize is not derived: Page input pageSize pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.agent_simulation.findPeopleToSimulate"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.findPeopleToSimulate input.search is not derived: Input search is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.agent_simulation.findPeopleToSimulate"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage output.agent is not derived: Interface AgentHeader: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage output.whatItCan.person is not derived: Interface SimulatedPerson: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage output.whatItCan.person.details.identification is not derived: Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage output.whatItCan.toolVerdicts.tool is not derived: Interface ToolVerdict: field tool is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage output.whatItCan.toolVerdicts.subjectName is not derived: Interface ToolVerdict: field subjectName is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage output.whatItCan.toolVerdicts.actionName is not derived: Interface ToolVerdict: field actionName is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage output.whatItCan.toolVerdicts.canUse is not derived: Interface ToolVerdict: field canUse is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage output.whatItCan.toolVerdicts.reason is not derived: Interface ToolVerdict: field reason is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage output.whatItCan.toolVerdicts.reasonText is not derived: Interface ToolVerdict: field reasonText is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.getSimulationPage input.agentId is not derived: Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.agent_simulation.getSimulationPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItCan output.whatItCan.person is not derived: Interface SimulatedPerson: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItCan"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItCan output.whatItCan.person.details.identification is not derived: Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItCan"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItCan output.whatItCan.toolVerdicts.tool is not derived: Interface ToolVerdict: field tool is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItCan"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItCan output.whatItCan.toolVerdicts.subjectName is not derived: Interface ToolVerdict: field subjectName is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItCan"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItCan output.whatItCan.toolVerdicts.actionName is not derived: Interface ToolVerdict: field actionName is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItCan"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItCan output.whatItCan.toolVerdicts.canUse is not derived: Interface ToolVerdict: field canUse is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItCan"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItCan output.whatItCan.toolVerdicts.reason is not derived: Interface ToolVerdict: field reason is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItCan"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItCan output.whatItCan.toolVerdicts.reasonText is not derived: Interface ToolVerdict: field reasonText is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItCan"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItCan input.agentId is not derived: Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItCan"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItUnderstands output.whatItUnderstands.understanding.asksForAction is not derived: Interface Understanding: field asksForAction is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItUnderstands"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItUnderstands output.whatItUnderstands.understanding.subjectName is not derived: Interface Understanding: field subjectName is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItUnderstands"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItUnderstands output.whatItUnderstands.understanding.explanation is not derived: Interface Understanding: field explanation is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItUnderstands"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItUnderstands output.whatItUnderstands.understanding.actions.tool is not derived: Interface UnderstoodAction: field tool is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItUnderstands"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItUnderstands output.whatItUnderstands.understanding.actions.actionName is not derived: Interface UnderstoodAction: field actionName is not a field of any entity.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItUnderstands"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_simulation.defs.ts",
+      "message": "Route agents.agent_simulation.simulateWhatItUnderstands input.agentId is not derived: Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.agent_simulation.simulateWhatItUnderstands"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_tools.defs.ts",
+      "message": "Route agents.agent_tools.getAgentToolTree output.name is not derived: Output name is a value (string), not an interface; no entity owns it.",
+      "ownerRef": "agents.agent_tools.getAgentToolTree"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agent_tools.defs.ts",
+      "message": "Route agents.agent_tools.getAgentToolTree input.agentId is not derived: Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.agent_tools.getAgentToolTree"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "message": "Route agents.agents.listAgentsCollection output.agents.draft.draftId is not derived: Interface DraftCard: field draftId is not a field of any entity.",
+      "ownerRef": "agents.agents.listAgentsCollection"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "message": "Route agents.agents.listRequestHistory output.requests.draftId is not derived: Interface RequestEvent: field draftId is not a field of any entity.",
+      "ownerRef": "agents.agents.listRequestHistory"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "message": "Route agents.agents.listRequestHistory input.page is not derived: Page input page pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.agents.listRequestHistory"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "message": "Route agents.agents.listRequestHistory input.pageSize is not derived: Page input pageSize pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.agents.listRequestHistory"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "message": "Route agents.agents.loadAgentsPage output.inbox.draftId is not derived: Interface DraftInboxItem: field draftId is not a field of any entity.",
+      "ownerRef": "agents.agents.loadAgentsPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "message": "Route agents.agents.loadAgentsPage output.agents.draft.draftId is not derived: Interface DraftCard: field draftId is not a field of any entity.",
+      "ownerRef": "agents.agents.loadAgentsPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "message": "Route agents.agents.loadAgentsPage output.requests.draftId is not derived: Interface RequestEvent: field draftId is not a field of any entity.",
+      "ownerRef": "agents.agents.loadAgentsPage"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "message": "Route agents.agents.sendNewAgentRequest output.request.draftId is not derived: Interface RequestEvent: field draftId is not a field of any entity.",
+      "ownerRef": "agents.agents.sendNewAgentRequest"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "message": "Route agents.agents.sendNewAgentRequest output.inboxItem.draftId is not derived: Interface DraftInboxItem: field draftId is not a field of any entity.",
+      "ownerRef": "agents.agents.sendNewAgentRequest"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/agents.defs.ts",
+      "message": "Route agents.agents.sendNewAgentRequest output.collectionEntry.draft.draftId is not derived: Interface DraftCard: field draftId is not a field of any entity.",
+      "ownerRef": "agents.agents.sendNewAgentRequest"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.getDraftReview input.draftId is not derived: Input draftId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.draft_review.getDraftReview"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.searchSimulationPeople output.people.personRef is not derived: Interface SimulationPerson: field personRef is not a field of any entity.",
+      "ownerRef": "agents.draft_review.searchSimulationPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.searchSimulationPeople output.people.details.identification is not derived: Interface SimulationPersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.draft_review.searchSimulationPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.searchSimulationPeople output.people.details.agents is not derived: Interface SimulationPersonAgents has no field that is not readonly, so no entity owns it.",
+      "ownerRef": "agents.draft_review.searchSimulationPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.searchSimulationPeople input.page is not derived: Page input page pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.draft_review.searchSimulationPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.searchSimulationPeople input.pageSize is not derived: Page input pageSize pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.draft_review.searchSimulationPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.searchSimulationPeople input.name is not derived: Input name is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.draft_review.searchSimulationPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.simulateDraft output.simulation.toolVerdicts.subjectName is not derived: Interface ToolVerdict: field subjectName is not a field of any entity.",
+      "ownerRef": "agents.draft_review.simulateDraft"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.simulateDraft output.simulation.toolVerdicts.actionName is not derived: Interface ToolVerdict: field actionName is not a field of any entity.",
+      "ownerRef": "agents.draft_review.simulateDraft"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.simulateDraft output.simulation.toolVerdicts.canUse is not derived: Interface ToolVerdict: field canUse is not a field of any entity.",
+      "ownerRef": "agents.draft_review.simulateDraft"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.simulateDraft output.simulation.toolVerdicts.reason is not derived: Interface ToolVerdict: field reason is not a field of any entity.",
+      "ownerRef": "agents.draft_review.simulateDraft"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.simulateDraft output.simulation.toolVerdicts.reasonText is not derived: Interface ToolVerdict: field reasonText is not a field of any entity.",
+      "ownerRef": "agents.draft_review.simulateDraft"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.simulateDraft output.simulation.understanding.asksForAction is not derived: Interface SimulationUnderstanding: field asksForAction is not a field of any entity.",
+      "ownerRef": "agents.draft_review.simulateDraft"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.simulateDraft output.simulation.understanding.subjectName is not derived: Interface SimulationUnderstanding: field subjectName is not a field of any entity.",
+      "ownerRef": "agents.draft_review.simulateDraft"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.simulateDraft output.simulation.understanding.explanation is not derived: Interface SimulationUnderstanding: field explanation is not a field of any entity.",
+      "ownerRef": "agents.draft_review.simulateDraft"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.simulateDraft output.simulation.understanding.actions.actionName is not derived: Interface UnderstoodAction: field actionName is not a field of any entity.",
+      "ownerRef": "agents.draft_review.simulateDraft"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/draft_review.defs.ts",
+      "message": "Route agents.draft_review.simulateDraft input.draftId is not derived: Input draftId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.draft_review.simulateDraft"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.getMyConduct output.conduct is not derived: Interface MyConduct: fields summary, version are not all fields of one entity or of one entity linked to it by an N:1 relationship.",
+      "ownerRef": "agents.my_conduct.getMyConduct"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.getMyConduct output.conduct.agent is not derived: Interface ConductAgent: fields name, onBehalfOf are fields of Agent, AgentDraft; the types do not say which.",
+      "ownerRef": "agents.my_conduct.getMyConduct"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.getMyConduct input.agentId is not derived: Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.my_conduct.getMyConduct"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.listMyConductHistory output.history.changedAt is not derived: Interface ConductHistoryEntry: field changedAt is not a field of any entity.",
+      "ownerRef": "agents.my_conduct.listMyConductHistory"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.listMyConductHistory output.history.changedBy is not derived: Interface ConductHistoryEntry: field changedBy is not a field of any entity.",
+      "ownerRef": "agents.my_conduct.listMyConductHistory"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.listMyConductHistory input.page is not derived: Page input page pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.my_conduct.listMyConductHistory"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.listMyConductHistory input.pageSize is not derived: Page input pageSize pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.my_conduct.listMyConductHistory"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.listMyConductHistory input.agentId is not derived: Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.my_conduct.listMyConductHistory"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.sendConductChange output.conduct is not derived: Interface MyConduct: fields summary, version are not all fields of one entity or of one entity linked to it by an N:1 relationship.",
+      "ownerRef": "agents.my_conduct.sendConductChange"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/my_conduct.defs.ts",
+      "message": "Route agents.my_conduct.sendConductChange output.conduct.agent is not derived: Interface ConductAgent: fields name, onBehalfOf are fields of Agent, AgentDraft; the types do not say which.",
+      "ownerRef": "agents.my_conduct.sendConductChange"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.getPersonRestrictions output.person is not derived: Interface PersonOption: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.getPersonRestrictions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.getPersonRestrictions output.person.details.identification is not derived: Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.getPersonRestrictions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.getPersonRestrictions output.person.details.agents is not derived: Interface PersonAgentsData has no field that is not readonly, so no entity owns it.",
+      "ownerRef": "agents.person_restrictions.getPersonRestrictions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.getPersonRestrictions output.tools.personToolRestriction is not derived: Interface BlockedToolRestriction: fields id, version are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.getPersonRestrictions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.getPersonRestrictions input.personId is not derived: Input personId names a field of more than one output entity; the types do not say which it filters.",
+      "ownerRef": "agents.person_restrictions.getPersonRestrictions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.listPeople output.people is not derived: Interface PersonOption: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.listPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.listPeople output.people.details.identification is not derived: Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.listPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.listPeople output.people.details.agents is not derived: Interface PersonAgentsData has no field that is not readonly, so no entity owns it.",
+      "ownerRef": "agents.person_restrictions.listPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.listPeople input.page is not derived: Page input page pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.listPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.listPeople input.pageSize is not derived: Page input pageSize pages one of 0 lists; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.listPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.listPeople input.search is not derived: Input search is not the last segment of any field of the output entities; it filters one of their text fields.",
+      "ownerRef": "agents.person_restrictions.listPeople"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.saveRestrictions output.person is not derived: Interface PersonOption: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.saveRestrictions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.saveRestrictions output.person.details.identification is not derived: Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.saveRestrictions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.saveRestrictions output.person.details.agents is not derived: Interface PersonAgentsData has no field that is not readonly, so no entity owns it.",
+      "ownerRef": "agents.person_restrictions.saveRestrictions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/person_restrictions.defs.ts",
+      "message": "Route agents.person_restrictions.saveRestrictions output.tools.personToolRestriction is not derived: Interface BlockedToolRestriction: fields id, version are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.",
+      "ownerRef": "agents.person_restrictions.saveRestrictions"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/tool_catalog.defs.ts",
+      "message": "Route agents.tool_catalog.getToolCatalog output.modules.subjects is not derived: Tool inside Tool needs one L4 relationship between them; found 0.",
+      "ownerRef": "agents.tool_catalog.getToolCatalog"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/tool_catalog.defs.ts",
+      "message": "Route agents.tool_catalog.getToolCatalog output.modules.subjects.tools is not derived: Tool inside Tool needs one L4 relationship between them; found 0.",
+      "ownerRef": "agents.tool_catalog.getToolCatalog"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/agents/web/contracts/tool_catalog.defs.ts",
+      "message": "Route agents.tool_catalog.getToolCatalog output.toolUsage.usedByAgents is not derived: Interface ToolUsage: readonly usedByAgents is not a field of Tool; it may stand for one of its paths.",
+      "ownerRef": "agents.tool_catalog.getToolCatalog"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_FROM_CONTRACT",
+      "path": "l2/agents/web/contracts/platform.defs.ts",
+      "message": "Route agents.platform.releaseCatalogChanged needs Tool.create, which is not in the planned pool. Usecase createTool was created from the contract.",
+      "ownerRef": "createTool"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_FROM_CONTRACT",
+      "path": "l2/agents/web/contracts/platform.defs.ts",
+      "message": "Route agents.platform.releaseCatalogChanged needs Tool.update, which is not in the planned pool. Usecase updateTool was created from the contract.",
+      "ownerRef": "updateTool"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_FROM_CONTRACT",
+      "path": "l4/agents/workflows.defs.ts",
+      "message": "Route agents.cm.record needs ExecutionSummary.create, which is not in the planned pool. Usecase createExecutionSummary was created from the contract.",
+      "ownerRef": "createExecutionSummary"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_SPLIT_BY_CALL",
+      "path": "l4/agents/integration.defs.ts",
+      "message": "Usecase listAgent is on an external entity served by more than one call: listAgent (list) → cm.listAgents, getAgent (get) → cm.readAgent.",
+      "ownerRef": "listAgent"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_SPLIT_BY_CALL",
+      "path": "l4/agents/integration.defs.ts",
+      "message": "Usecase listAgentBehavior is on an external entity served by more than one call: getAgentBehavior (get) → cm.readAgent, listAgentBehavior (list) → cm.listAgentHistory.",
+      "ownerRef": "listAgentBehavior"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_SPLIT_BY_CALL",
+      "path": "l4/agents/integration.defs.ts",
+      "message": "Usecase listAgentDraft is on an external entity served by more than one call: listAgentDraft (list) → cm.listAgents, getAgentDraft (get) → cm.readAgent.",
+      "ownerRef": "listAgentDraft"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_SPLIT_BY_CALL",
+      "path": "l4/agents/integration.defs.ts",
+      "message": "Usecase updateAgentBehavior is on an external entity served by more than one call: updateAgentAgentBehavior (update) → cm.updateAgent, undoAgentChange (update) → cm.undoAgentChange.",
+      "ownerRef": "updateAgentBehavior"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_WITHOUT_REQUEST",
+      "path": "l4/agents/pool/l2/web/backend.json",
+      "message": "Usecase listAgent is in the pool and no contract request calls it. It is removed.",
+      "ownerRef": "listAgent"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_WITHOUT_REQUEST",
+      "path": "l4/agents/pool/l2/web/backend.json",
+      "message": "Usecase listAgentBehavior is in the pool and no contract request calls it. It is removed.",
+      "ownerRef": "listAgentBehavior"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_WITHOUT_REQUEST",
+      "path": "l4/agents/pool/l2/web/backend.json",
+      "message": "Usecase listAgentDraft is in the pool and no contract request calls it. It is removed.",
+      "ownerRef": "listAgentDraft"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_WITHOUT_REQUEST",
+      "path": "l4/agents/pool/l2/web/backend.json",
+      "message": "Usecase listOrganizationUser is in the pool and no contract request calls it. It is removed.",
+      "ownerRef": "listOrganizationUser"
+    }
+  ],
+  "consumersReleased": true,
+  "snapshotHash": "sha256:f22fc482e93a41c2e8023e78c8b5dd568a17f6e91bf98e8ae54317df27b6c79d",
+  "sourceKey": "sha256:0bb4430bd7246481719f856df9c78bb800bb12158b5663b75183c9467d8d2740"
+}
