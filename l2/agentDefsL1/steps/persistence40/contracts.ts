@@ -133,6 +133,8 @@ export interface D1PersistenceRequest {
   physicalCitations: Record<string, string[]>;
   /** Catalog paths this step opened and did not write. */
   catalogsRead: string[];
+  /** d1_220: `connectionId` → the source an `external` entity opens (the platform file or a sibling declaration). Absent: the platform path. */
+  catalogRefs?: Record<string, string>;
 }
 
 /** Logical field encoded by one column string. `json:` marks the details envelope. */

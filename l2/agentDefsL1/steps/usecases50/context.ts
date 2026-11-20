@@ -5,6 +5,7 @@ import { outboundOnKeys, qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers
 import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
+import { parseCatalogSource, resolveEntityCatalogs } from '/_102021_/l2/agentDefsL1/steps/input20/entityCatalog.js';
 import {
   contractPath,
   entityCatalogSource,
@@ -118,9 +119,10 @@ export async function loadVerifiedSources(
   }
   const catalogs: VerifiedBundle['catalogs'] = [];
   const seenCatalog = new Set<string>();
+  const resolved = await resolveEntityCatalogs(project, moduleName, Object.values(bodies), readCatalogText);
   for (const body of Object.values(bodies)) {
     if (!isRecord(body)) continue;
-    const source = entityCatalogSource(body);
+    const source = entityCatalogSource(body, resolved.refs);
     if (!source) continue;
     if (seenCatalog.has(source)) continue;
     seenCatalog.add(source);
@@ -132,7 +134,9 @@ export async function loadVerifiedSources(
     rememberFile(files, source, text);
     const sha256 = await sha256Text(text);
     hashes.push({ path: source, sha256 });
-    const parsed = parseD1Source(text, 'defs');
+    const parsed = parseCatalogSource(text);
+    // A connection catalog (the platform's or a sibling declaration) lists operations, not MDM rules: it is opened and sealed, and says no rule.
+    if (isRecord(body) && body.kind === 'external' && isRecord(parsed) && Array.isArray(parsed.operations)) continue;
     const rules = ruleTexts(parsed);
     if (!rules) {
       findings.push(absent(source, `Source ${source} did not parse. The usecase was not sent to the model.`));

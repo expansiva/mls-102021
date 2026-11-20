@@ -24,3 +24,6 @@ export type {
   ResolvedConnection,
   SiblingSystems,
 } from '/_102020_/l2/helpers/connections/catalogResolve.js';
+
+// d1_220: the generated declaration is `const x = {…}; export default x`; the readers of the D1 read it with the helper the L2 promoted.
+export { declarationObjectOf } from '/_102020_/l2/helpers/connections/declarationObject.js';

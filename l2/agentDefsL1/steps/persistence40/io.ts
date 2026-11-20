@@ -7,7 +7,8 @@ import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js'
 import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { artifactFile, parseRendered, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { D1_DOMAIN_VERSION, type D1DomainBuild } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
-import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
+import { readCatalogRef } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
+import { resolveEntityCatalogs } from '/_102021_/l2/agentDefsL1/steps/input20/entityCatalog.js';
 import { entityCatalogSource, entityPath, isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import type { D1PersistenceBuild, D1PersistenceRequest } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
@@ -115,14 +116,13 @@ async function persistenceRequest(
     preservedPorts[file.defPath] = rendered?.definition ?? { unreadable: true };
   }
   const catalogsRead: string[] = [];
+  const resolved = await resolveEntityCatalogs(project, moduleName, Object.values(entities), readCatalogRef);
   for (const plan of domain.entities) {
     if (plan.storageTarget !== 'external') continue;
     const body = entities[plan.entityId];
-    const source = entityCatalogSource(body);
+    const source = entityCatalogSource(body, resolved.refs);
     if (!source) continue;
-    const info = catalogInfo(source);
-    if (!info) continue;
-    const text = await readText(info);
+    const text = await readCatalogRef(source);
     if (text) catalogsRead.push(source);
   }
   return {
@@ -149,6 +149,7 @@ async function persistenceRequest(
     preservedPorts,
     physicalCitations: {},
     catalogsRead,
+    catalogRefs: resolved.refs,
   };
 }
 

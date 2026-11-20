@@ -31,6 +31,8 @@ export const ENUMERATION_LIMITS = 'Covered uses are a seed scenario that names t
 
 export interface D1EnumSnapshot {
   sources: Record<string, string>;
+  /** d1_220: `connectionId` → the source an `external` entity names as its catalog (the platform file or a sibling declaration). */
+  catalogRefs?: Record<string, string>;
   definitions: string[];
   tables: Array<{ tableId: string; entityId: string }>;
 }
@@ -46,6 +48,7 @@ interface ParsedBody {
   index: unknown;
   rules: unknown;
   catalogs: Record<string, unknown>;
+  catalogRefs: Record<string, string>;
 }
 
 /**
@@ -54,7 +57,7 @@ interface ParsedBody {
  */
 export function projectEnumerations(input: D1EnumInput): D1EnumRow[] {
   const snapshot = input.snapshot;
-  const bodies = bodiesOf(snapshot?.sources || {});
+  const bodies = bodiesOf(snapshot?.sources || {}, snapshot?.catalogRefs || {});
   const tables = new Map((snapshot?.tables || []).map(table => [table.tableId, table.entityId]));
   const fromDefs = usesFromTexts(snapshot?.definitions || [], input.enumerations, tables);
   const fromSeeds = (input.seedCitations || []).map(citation => useOf(
@@ -110,7 +113,7 @@ function originOf(entityId: string, path: string, effective: readonly string[], 
   const unresolved = emptyOrigin();
   const entity = bodies.entities[entityId];
   if (!isRecord(entity)) return unresolved;
-  const source = entityCatalogSource(entity);
+  const source = entityCatalogSource(entity, bodies.catalogRefs);
   if (entity.kind === 'external') return externalOrigin(entity, path, source);
   const catalog = source ? bodies.catalogs[source] : undefined;
   const resolved = catalog ? resolvedNodes(entity, bodies.index, catalog, bodies.rules) : null;
@@ -361,8 +364,8 @@ function splitTop(type: string, separator: '|' | ';' | ','): string[] {
   return parts;
 }
 
-function bodiesOf(sources: Readonly<Record<string, string>>): ParsedBody {
-  const bodies: ParsedBody = { entities: {}, index: null, rules: null, catalogs: {} };
+function bodiesOf(sources: Readonly<Record<string, string>>, catalogRefs: Readonly<Record<string, string>>): ParsedBody {
+  const bodies: ParsedBody = { entities: {}, index: null, rules: null, catalogs: {}, catalogRefs: { ...catalogRefs } };
   for (const [path, text] of Object.entries(sources)) {
     const parsed = parseD1Source(text, 'defs');
     if (!isRecord(parsed)) continue;

@@ -13,8 +13,10 @@ import {
   declaredSystemsOf,
   integrationLogicalPath,
   integrationOf,
+  resolveConnection,
   siblingDeclarationMissing,
   siblingModuleNames,
+  type SiblingSystems,
 } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 
 export type CatalogRead = (ref: string) => Promise<string | null>;
@@ -43,9 +45,20 @@ export async function connectionCatalogSource(read: CatalogRead, project: number
   const platform: ConnectionCatalogSource = { connectionId, origin: 'platform', ref: platformRef, importPath: catalogImportPath(connectionId), source: null };
   if (!platformRef) return platform;
   const platformSource = await read(platformRef);
+  // The platform comes first, as in `resolveConnection`: then nothing else is read. After it the order (this module, a sibling) is the resolver's.
   if (platformSource !== null) return { ...platform, source: platformSource };
-  const own = declaredSystemsOf(integrationOf(await read(`_${project}_/${integrationLogicalPath(moduleName)}`))).find(system => system.id === connectionId);
-  if (own) {
+  const own = declaredSystemsOf(integrationOf(await read(`_${project}_/${integrationLogicalPath(moduleName)}`)));
+  const siblings: SiblingSystems[] = [];
+  let resolved = resolveConnection(connectionId, { moduleName, own, siblings }, false);
+  if (resolved.origin === 'unknown') {
+    const registry = integrationOf(await read(`_${project}_/${REGISTRY_LOGICAL_PATH}`));
+    for (const sibling of siblingModuleNames(registry, moduleName)) {
+      siblings.push({ moduleName: sibling, systems: declaredSystemsOf(integrationOf(await read(`_${project}_/${integrationLogicalPath(sibling)}`))) });
+      resolved = resolveConnection(connectionId, { moduleName, own, siblings }, false);
+      if (resolved.origin !== 'unknown') break;
+    }
+  }
+  if (resolved.origin === 'own') {
     const ref = declarationRef(project, moduleName, connectionId);
     const source = await read(ref);
     return {
@@ -53,15 +66,12 @@ export async function connectionCatalogSource(read: CatalogRead, project: number
       ...(source === null ? { problem: { code: 'DECLARATION_NOT_GENERATED', detail: `Connection ${connectionId} is a system this module declares, and its declaration ${ref} is not generated. Run the external15 phase first.` } } : {}),
     };
   }
-  const registry = integrationOf(await read(`_${project}_/${REGISTRY_LOGICAL_PATH}`));
-  for (const sibling of siblingModuleNames(registry, moduleName)) {
-    const declared = declaredSystemsOf(integrationOf(await read(`_${project}_/${integrationLogicalPath(sibling)}`))).find(system => system.id === connectionId);
-    if (!declared) continue;
-    const ref = declarationRef(project, sibling, connectionId);
+  if (resolved.origin === 'sibling') {
+    const ref = declarationRef(project, resolved.moduleName, connectionId);
     const source = await read(ref);
     return {
-      connectionId, origin: 'sibling', ref, importPath: declarationImportPath(project, sibling, connectionId), source,
-      ...(source === null ? { problem: { code: 'SIBLING_DECLARATION_MISSING', detail: siblingDeclarationMissing(connectionId, sibling) } } : {}),
+      connectionId, origin: 'sibling', ref, importPath: declarationImportPath(project, resolved.moduleName, connectionId), source,
+      ...(source === null ? { problem: { code: 'SIBLING_DECLARATION_MISSING', detail: siblingDeclarationMissing(connectionId, resolved.moduleName) } } : {}),
     };
   }
   return platform;

@@ -79,7 +79,7 @@ export function buildD1Persistence(request: D1PersistenceRequest): D1Persistence
 
   for (const plan of request.domain.entities) {
     if (plan.storageTarget !== 'external') continue;
-    const source = sourceOf(request.entities[plan.entityId]);
+    const source = sourceOf(request.entities[plan.entityId], request.catalogRefs);
     if (!source) {
       review(problems, 'CATALOG_SOURCE_MISSING', plan.entityId, `External entity ${plan.entityId} names no catalog source. No local table was planned.`);
       continue;
@@ -901,8 +901,8 @@ function pushEmit(
   out.push({ definition: stamped, pipeline: [pipeline] });
 }
 
-function sourceOf(body: unknown): string {
-  return entityCatalogSource(body);
+function sourceOf(body: unknown, refs?: Readonly<Record<string, string>>): string {
+  return entityCatalogSource(body, refs);
 }
 
 function finish(

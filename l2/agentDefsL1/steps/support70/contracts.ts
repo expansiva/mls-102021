@@ -382,6 +382,7 @@ export interface D1SupportRequest {
    */
   enumSnapshot?: {
     sources: Record<string, string>;
+    catalogRefs?: Record<string, string>;
     definitions: string[];
     tables: Array<{ tableId: string; entityId: string }>;
   };

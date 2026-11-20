@@ -19,6 +19,8 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { entityCatalogSource, isSafeToken, lowerFirst } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { ownSystemRefusal, type EntityCatalogProblem } from '/_102021_/l2/agentDefsL1/steps/input20/entityCatalog.js';
+import { externalConnectionId } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import {
   D1_DOMAIN_ACTIONS,
   D1_DOMAIN_VERSION,
@@ -49,6 +51,10 @@ export interface D1DomainRequest {
   rules: unknown;
   /** Catalog document keyed by the entity `source` string. Absent means unread. */
   catalogs: Record<string, unknown>;
+  /** d1_220: `connectionId` → the source an `external` entity opens (the platform file or a sibling declaration). Absent: the platform path. */
+  catalogRefs?: Record<string, string>;
+  /** d1_220: `connectionId` → the distinct refusal (a system of this module, a sibling declaration not generated). */
+  catalogProblems?: Record<string, EntityCatalogProblem>;
 }
 
 interface IndexRow {
@@ -260,13 +266,18 @@ function planEntity(
   const enumerations: D1Enumeration[] = [];
   const fields = body && !bag.shape ? emitFields(entityId, body, resolutions, extracted, problems, normalizations, enumerations, blocked) : [];
   const kind = body ? text(body.kind) || row?.kind || '' : row?.kind || '';
-  const source = body ? entityCatalogSource(kind === 'external' ? { ...body, kind } : body) : '';
+  const source = body ? entityCatalogSource(kind === 'external' ? { ...body, kind } : body, request.catalogRefs) : '';
   if (body && kind === 'external' && !source) {
     error(problems, 'EXTERNAL_ENTITY_WITHOUT_CONNECTION', entityId, `External entity ${entityId} has no valid connectionId. The catalog is named by connectionId and nothing else.`);
     blocked.add(entityId);
   }
   const catalog = source && Object.prototype.hasOwnProperty.call(request.catalogs, source) ? request.catalogs[source] : undefined;
-  if (source && catalog === undefined) {
+  const refusal = body && kind === 'external' ? request.catalogProblems?.[externalConnectionId(body)] : undefined;
+  if (refusal) {
+    // A system of this module or a sibling declaration not generated: the distinct refusal, never the generic unread catalog.
+    error(problems, refusal.code, entityId, refusal.code === 'EXTERNAL_OWN_SYSTEM' ? ownSystemRefusal(entityId, externalConnectionId(body)) : refusal.detail);
+    blocked.add(entityId);
+  } else if (source && catalog === undefined) {
     review(problems, 'CATALOG_UNREAD', source, `Catalog ${source} was not opened. Citations keep that owner and their spelling.`);
   }
   const catalogRules = catalog === undefined ? null : ruleMap(catalog);

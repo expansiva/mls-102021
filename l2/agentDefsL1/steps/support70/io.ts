@@ -11,7 +11,8 @@ import { resolveAllowedFields } from '/_102021_/l2/helpers/l1Defs/disclosure.js'
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { externalCallsOf, processConsumersOf, type D1ExternalCallMatch } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
-import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
+import { catalogInfo, readCatalogRef } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
+import { resolveEntityCatalogs } from '/_102021_/l2/agentDefsL1/steps/input20/entityCatalog.js';
 import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import {
   REGISTRY_LOGICAL_PATH,
@@ -244,17 +245,16 @@ async function enumSnapshotOf(
     if (text == null || await sha256Text(text) !== source.sha256) continue;
     sources[source.path] = text;
   }
+  const bodies = Object.values(sources).map(text => parseD1Source(text, 'defs'));
+  const resolved = await resolveEntityCatalogs(project, moduleName, bodies, readCatalogRef);
   const catalogs = new Set<string>();
-  for (const text of Object.values(sources)) {
-    const parsed = parseD1Source(text, 'defs');
-    const source = entityCatalogSource(parsed);
+  for (const parsed of bodies) {
+    const source = entityCatalogSource(parsed, resolved.refs);
     if (source) catalogs.add(source);
   }
   for (const source of catalogs) {
     if (sources[source]) continue;
-    const info = catalogInfo(source);
-    if (!info) continue;
-    const text = await readText(info);
+    const text = await readCatalogRef(source);
     if (text == null) continue;
     const listed = snapshot.sources.find(item => item.path === source);
     if (listed && listed.sha256 !== await sha256Text(text)) continue;
@@ -268,6 +268,7 @@ async function enumSnapshotOf(
   }
   return {
     sources,
+    catalogRefs: resolved.refs,
     definitions,
     tables: snapshot.selection.tables.map(table => ({ tableId: table.tableId, entityId: table.entity })),
   };

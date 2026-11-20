@@ -11,9 +11,11 @@ import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/ide
 import { readWriterReceipts } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
+import { externalConnectionIds } from '/_102021_/l2/agentDefsL1/steps/input20/entityCatalog.js';
 import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import {
   REGISTRY_LOGICAL_PATH,
+  declarationRef,
   declaredSystemsOf,
   integrationLogicalPath,
   siblingModuleNames,
@@ -170,7 +172,7 @@ async function loadInputSources(project: number, moduleName: string): Promise<{
     contractMap[contract.pageId] = contract.loaded.parsed as D1ContractAst | null;
     if (contract.loaded.text != null) contractTexts[contract.pageId] = contract.loaded.text;
   }
-  const { catalogTexts, catalogs, connectionScope } = await loadServeCatalogs(project, moduleName, parsed.get(paths.integration));
+  const { catalogTexts, catalogs, connectionScope } = await loadServeCatalogs(project, moduleName, parsed.get(paths.integration), externalConnectionIds(dynamic.map(item => item.parsed)));
   return { known, loaded: contracts.map(item => item.loaded), parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope };
 }
 
@@ -301,7 +303,7 @@ function fixedPaths(moduleName: string): string[] {
  * (a declared system has no catalog file). The sibling L4 and the project registry are sealed in the sources only when a connection
  * is neither on the platform nor this module's: a module with platform connections only reads what it read before.
  */
-async function loadServeCatalogs(project: number, moduleName: string, integration: unknown): Promise<{
+async function loadServeCatalogs(project: number, moduleName: string, integration: unknown, entityConnectionIds: readonly string[]): Promise<{
   catalogTexts: Record<string, string>;
   catalogs: Loaded[];
   connectionScope: ConnectionScope;
@@ -325,6 +327,8 @@ async function loadServeCatalogs(project: number, moduleName: string, integratio
     if (!isSafeToken(connectionId) || serveIds.includes(connectionId) || otherIds.includes(connectionId)) continue;
     (text(row.direction) === 'serve' ? serveIds : otherIds).push(connectionId);
   }
+  // d1_220: the connection an `external` entity names is resolved like the lines of `connections[]`, and its sibling declaration is sealed too.
+  for (const connectionId of entityConnectionIds) if (!serveIds.includes(connectionId) && !otherIds.includes(connectionId)) otherIds.push(connectionId);
   const bodies = new Map<string, string | null>();
   for (const connectionId of serveIds) bodies.set(connectionId, await platformCatalog(connectionId));
   for (const connectionId of otherIds) if (!ownIds.has(connectionId)) await platformCatalog(connectionId);
@@ -342,6 +346,22 @@ async function loadServeCatalogs(project: number, moduleName: string, integratio
         siblings.push({ moduleName: sibling, systems });
       }
     }
+  }
+  for (const connectionId of entityConnectionIds) {
+    if (platformPresent.get(connectionId) || ownIds.has(connectionId)) continue;
+    const sibling = siblings.find(item => item.systems.some(system => system.id === connectionId));
+    if (!sibling) continue;
+    // A declaration not generated yet is not sealed: the domain step refuses it by name (SIBLING_DECLARATION_MISSING).
+    const ref = `/${declarationRef(project, sibling.moduleName, connectionId)}`;
+    const info = catalogInfo(ref);
+    const body = info ? await readText(info) : null;
+    if (!body) continue;
+    catalogs.push({
+      path: ref,
+      text: body,
+      parsed: null,
+      digest: { path: ref, sha256: await sha256Text(body), bytes: new TextEncoder().encode(body).length, schemaVersion: '', state: 'present' },
+    });
   }
   for (const connectionId of serveIds) {
     const body = bodies.get(connectionId) ?? null;

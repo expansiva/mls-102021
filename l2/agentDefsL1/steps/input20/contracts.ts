@@ -308,12 +308,16 @@ export function contractPath(moduleName: string, pageId: string): string {
 
 /**
  * Catalog file an entity def cites. An `external` entity names its connection by `connectionId` and nothing else
- * (no `source`, no fallback): the file is the one `catalogFilePath` gives. Any other entity cites it by `source`.
+ * (no `source`, no fallback): the file is the one `refs` gives for that id (the resolver of `entityCatalog.ts`: the platform file, or the
+ * declaration a sibling generated), or the one `catalogFilePath` gives when nobody resolved it. Any other entity cites it by `source`.
  * Empty when there is none.
  */
-export function entityCatalogSource(body: unknown): string {
+export function entityCatalogSource(body: unknown, refs?: Readonly<Record<string, string>>): string {
   const record = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
-  if (record.kind === 'external') return catalogFilePath(externalConnectionId(record));
+  if (record.kind === 'external') {
+    const connectionId = externalConnectionId(record);
+    return (connectionId && refs?.[connectionId]) || catalogFilePath(connectionId);
+  }
   return typeof record.source === 'string' ? record.source.trim() : '';
 }
 
