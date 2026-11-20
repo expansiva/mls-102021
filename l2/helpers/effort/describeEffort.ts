@@ -766,9 +766,56 @@ function connectionEffort(input: EffortInput, defs: Record<string, string>): Eff
   return null;
 }
 
+/** The mark an inbound event line carries on its route (`<publisher>.<eventId>`); '' for a line that is not a module event. */
+function consumesMarkOf(item: EffortInput['item']): string {
+  const row = rowOf(item.op === 'removed' ? item.before : item.after ?? item.before);
+  if (row.kind !== 'event') return '';
+  const from = textOf(row.from);
+  const eventId = textOf(row.event) || textOf(row.id);
+  return from && from !== 'organization' && eventId ? `${from}.${eventId}` : '';
+}
+
+/**
+ * An `inbound` event line (d1_217): the route that receives it (a row of the request service of the publisher page, `consumes`), the
+ * usecase that route calls, and the controller of that page. A line the defs do not have yet creates the page's request service and
+ * controller. A line that is not a module event (the platform's own, or a connection) stays as it was: no forecast.
+ */
+function inboundEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
+  const item = input.item;
+  if (item.op !== 'added' && item.op !== 'removed' && item.op !== 'changed') return null;
+  const mark = consumesMarkOf(item);
+  if (!mark) return null;
+  const from = mark.split('.')[0];
+  const picked: EffortUnitRef[] = [];
+  const seen = new Set<string>();
+  const take = (unit: EffortUnitRef | null): void => { if (unit) remember(picked, seen, unit); };
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (artifactType === 'requestService' && Array.isArray(data.requests)) {
+      const rows = data.requests.filter(isRecord).filter(request => request.consumes === mark);
+      if (rows.length === 0) return;
+      take({ kind: 'request', id: textOf(data.pageId), path: defPath });
+      for (const row of rows) for (const used of listOf(row.uses)) take(usecaseUnit(defs, used));
+    }
+    if (artifactType === 'httpController' && data.pageId === from && picked.some(unit => unit.kind === 'request' && unit.id === from)) take({ kind: 'controller', id: from, path: defPath });
+  });
+  // The controller def may come before the request service def in the listing: look again now that the request is known.
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (artifactType === 'httpController' && data.pageId === from && picked.some(unit => unit.kind === 'request' && unit.id === from)) take({ kind: 'controller', id: from, path: defPath });
+  });
+  const units = sortUnits(picked);
+  if (units.length === 0 && item.op === 'added') {
+    const created: EffortUnitRef[] = [
+      { kind: 'request', id: from, path: `l1/${input.module}/layer_2_application/requests/${from}.defs.ts` },
+      { kind: 'controller', id: from, path: `l1/${input.module}/layer_1_external/adapters/http/controllers/${from}.defs.ts` },
+    ];
+    return computed(item.changeId, [], [], [], created);
+  }
+  return computed(item.changeId, units, units);
+}
+
 function integrationEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
   const item = input.item;
-  if (item.kind === 'inbound') return notForecast(item.changeId);
+  if (item.kind === 'inbound') return inboundEffort(input, defs) ?? notForecast(item.changeId);
   const external = connectionEffort(input, defs);
   if (external) return external;
   if (item.kind !== 'outbound') return null;
@@ -1246,7 +1293,7 @@ export function describeEffortFrom(
   contracts?: Record<string, string>,
 ): EffortAnswer {
   const item = input.item.changeId;
-  if (input.item.kind === 'inbound') return notForecast(item);
+  if (input.item.kind === 'inbound' && !consumesMarkOf(input.item)) return notForecast(item);
   if (proseOnlyChange(input.item)) {
     console.info(item);
     return computed(item, []);

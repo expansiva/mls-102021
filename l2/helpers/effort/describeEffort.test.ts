@@ -1495,3 +1495,83 @@ void test('d1_210: the three kinds never fall on the empty forecast, and inbound
   const inbound = describeEffortFrom(integrationItem('inbound:x', 'inbound', 'changed', {}, {}), defs);
   assert.deepEqual([inbound.materialize, inbound.regenerateDefs], [[], []]);
 });
+
+// ---- d1_217 s3: inbound and outbound event lines (a module that receives goods and the one that publishes the receipt) ----
+
+function eventDefs(): Record<string, string> {
+  const def = (artifactType: string, artifactId: string, data: Record<string, unknown>): string => {
+    const definition = { schemaVersion: '2026-09-24-d1-definition-v2', artifactType, artifactId, moduleName: 'stock', status: 'pending', dependencies: [], data };
+    return `export const definition = ${JSON.stringify(definition, null, 2)} as const;\n\nexport default definition;\n`;
+  };
+  return {
+    'l1/stock/layer_2_application/requests/purchasing.defs.ts': def('requestService', 'purchasing', {
+      pageId: 'purchasing',
+      requests: [{ route: 'stock.purchasing.goodsReceived', kind: 'cmd', uses: ['createStockMove'], transaction: 'single', output: [], params: [], rules: [], consumes: 'purchasing.goodsReceived' }],
+    }),
+    'l1/stock/layer_1_external/adapters/http/controllers/purchasing.defs.ts': def('httpController', 'purchasing', { pageId: 'purchasing', handlers: [] }),
+    'l1/stock/layer_2_application/usecases/createStockMove.defs.ts': def('usecase', 'createStockMove', { usecaseId: 'createStockMove', entityId: 'StockMove', operation: 'create', rulesApplied: [], effects: [] }),
+    'l1/stock/layer_2_application/usecases/confirmReceipt.defs.ts': def('usecase', 'confirmReceipt', { usecaseId: 'confirmReceipt', entityId: 'Receipt', operation: 'transition', rulesApplied: [], effects: [{ eventId: 'goodsReceived', mechanism: '' }] }),
+    'l1/stock/layer_1_external/adapters/integration/outbound.defs.ts': def('integrationOutbound', 'outbound', { integrationId: 'outbound', events: [{ eventId: 'goodsReceived', on: 'Receipt.confirm' }] }),
+  };
+}
+
+const INBOUND_LINE = { id: 'goodsReceived', kind: 'event', from: 'purchasing', event: 'goodsReceived', writes: ['StockMove'], effect: 'create', description: 'Goods arrived.' };
+
+function inboundItem(op: L4DiffItem['op'], before?: unknown, after?: unknown, id = 'goodsReceived'): EffortInput {
+  const item: L4DiffItem = { changeId: `inbound:${id}`, kind: 'inbound', op, entity: '', source: 'integration.defs.ts' };
+  if (before !== undefined) item.before = before;
+  if (after !== undefined) item.after = after;
+  return input(item, 'stock');
+}
+
+void test('d1_217: an inbound event line touches the route that receives it, the usecase it calls and the controller of the publisher page', () => {
+  const defs = eventDefs();
+  const changedLine = { ...INBOUND_LINE, effect: 'update' };
+  const changed = describeEffortFrom(inboundItem('changed', changedLine, INBOUND_LINE), defs);
+  assert.equal(changed.status, 'computed');
+  assert.deepEqual(unitKeys(changed.materialize), ['controller:purchasing', 'request:purchasing', 'usecase:createStockMove']);
+  assert.deepEqual(unitKeys(changed.regenerateDefs), unitKeys(changed.materialize));
+  const removed = describeEffortFrom(inboundItem('removed', INBOUND_LINE), defs);
+  assert.deepEqual(unitKeys(removed.materialize), ['controller:purchasing', 'request:purchasing', 'usecase:createStockMove']);
+  // The line is already in the defs: an `added` item finds the units; one the defs do not have yet creates the page's service and controller.
+  const present = describeEffortFrom(inboundItem('added', undefined, INBOUND_LINE), defs);
+  assert.deepEqual(unitKeys(present.materialize), ['controller:purchasing', 'request:purchasing', 'usecase:createStockMove']);
+  const fresh = describeEffortFrom(inboundItem('added', undefined, { ...INBOUND_LINE, from: 'sales', id: 'orderClosed', event: 'orderClosed' }, 'orderClosed'), defs);
+  assert.deepEqual(fresh.materialize, []);
+  assert.deepEqual(fresh.create.map(unit => [unit.kind, unit.id, unit.path]), [
+    ['request', 'sales', 'l1/stock/layer_2_application/requests/sales.defs.ts'],
+    ['controller', 'sales', 'l1/stock/layer_1_external/adapters/http/controllers/sales.defs.ts'],
+  ]);
+});
+
+void test('d1_217: an inbound line that is not a module event stays unforecast; a text-only change of an event line stays empty', () => {
+  const defs = eventDefs();
+  const info = mock.method(console, 'info', () => undefined);
+  try {
+    for (const line of [{ ...INBOUND_LINE, kind: 'external' }, { ...INBOUND_LINE, from: 'organization' }]) {
+      const answer = describeEffortFrom(inboundItem('changed', { ...line, effect: 'update' }, line), defs);
+      assert.deepEqual([answer.materialize, answer.regenerateDefs, answer.create, answer.remove], [[], [], [], []]);
+    }
+    assert.equal(info.mock.calls.length, 2, 'each one says it is not forecast');
+  } finally {
+    info.mock.restore();
+  }
+  const text = describeEffortFrom(inboundItem('changed', INBOUND_LINE, { ...INBOUND_LINE, description: 'Goods arrived, in plain words.' }), defs);
+  assert.deepEqual([text.materialize, text.regenerateDefs], [[], []]);
+});
+
+void test('d1_217: an outbound event line touches the publisher def and the usecase linked to the event', () => {
+  const defs = eventDefs();
+  const before = { id: 'goodsReceived', kind: 'event', on: 'Receipt.confirm', to: 'any', title: 'Receipt', description: 'Confirmed.' };
+  const answer = describeEffortFrom(inputOf(outboundLine('changed', before, { ...before, to: 'purchasing' })), defs);
+  assert.equal(answer.status, 'computed');
+  assert.deepEqual(unitKeys(answer.materialize), ['events:outbound', 'usecase:confirmReceipt']);
+});
+
+function outboundLine(op: L4DiffItem['op'], before: unknown, after: unknown): L4DiffItem {
+  return { changeId: 'outbound:goodsReceived', kind: 'outbound', op, entity: '', source: 'integration.defs.ts', before, after };
+}
+
+function inputOf(item: L4DiffItem): EffortInput {
+  return input(item, 'stock');
+}
