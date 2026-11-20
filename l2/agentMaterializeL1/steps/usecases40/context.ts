@@ -15,6 +15,7 @@ import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeR
 import { identityField, versionField } from '/_102021_/l2/agentMaterializeL1/emitters/domainOptional.js';
 import { dependencyUnits, recipeDraft, rulesToEnforce, rulesUnbound, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { connectionRowsOf, externalEntityIds, externalRepositoryPort, gatewayNameOf, moduleGatewayNames, repositoryPortNames, usecaseGate, type M12ChildRecord, type M12ConsumerCall, type M12EventPublisher, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { MDM_LIST_USERS_PAGE_SIZE_MAX } from '/_102021_/l2/agentMaterializeL1/helpers/mdmPlatformLimits.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -990,7 +991,7 @@ function boundCallText(moduleName: string, call: MdmBoundCall, facadeSource: str
     'entity.attachRole': '- `ctx.mdm.entity.attachRole(mdmId, \'' + moduleName + '.<Entity>\', branch?)` makes the record one of this module\'s and may write the module branch.',
     'entity.update': '- `ctx.mdm.entity.update({ mdmId, expectedVersion, patch })`: `patch` is flat (and `' + moduleName + '` for the module branch); `expectedVersion` is the version that was read, unchanged.',
     'collection.listByType': '- `ctx.mdm.collection.listByType({ type: \'' + moduleName + '.<Entity>\', name?, status?, page, pageSize })` returns `{ items, page, pageSize, total }`. `name` is already a case-insensitive "contains" search. Each item is an index row with flat `details` and NO `version`: when the output needs the version, `get` the record. `hasMore` is `page * pageSize < total`.',
-    'identity.listUsers': '- `ctx.mdm.identity.listUsers({ name?, pageSize?, cursor? })` returns `{ items, nextCursor }`. The input is `name`, `pageSize` and `cursor`. Each item has `mdmId`, `version`, `name`, `status` and `tags`.',
+    'identity.listUsers': `- \`ctx.mdm.identity.listUsers({ name?, pageSize?, cursor? })\` returns \`{ items, nextCursor }\`. The input is \`name\`, \`pageSize\` and \`cursor\`. \`pageSize\` is an integer from 1 to ${MDM_LIST_USERS_PAGE_SIZE_MAX}: the MDM answers 400 above that, so never ask for more. To list everyone, follow \`nextCursor\` until it is empty. Each item has \`mdmId\`, \`version\`, \`name\`, \`status\` and \`tags\`.`,
   };
   const line = known[key] ?? `- \`ctx.mdm.${call.target}.${call.method}(\``;
   return signature ? `${line}\n  Facade: \`${signature}\`.` : line;

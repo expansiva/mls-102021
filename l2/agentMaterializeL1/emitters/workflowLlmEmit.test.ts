@@ -16,6 +16,7 @@ import { createMemoryOccurrencePort } from '/_102034_/l1/workflow/memoryOccurren
 import { parseRegistrationRows, renderRegistration } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { bindHumanPages, moduleTickSource, workflowEngineSource, workflowTablesFromL4 } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { workflowRecoverName, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { MDM_LIST_USERS_PAGE_SIZE_MAX } from '/_102021_/l2/agentMaterializeL1/helpers/mdmPlatformLimits.js';
 
 function l4(processId: string, tasks: unknown[]): string {
   return `export const workflows = ${JSON.stringify({ moduleName: 'pedido', processes: [{ processId, title: 'Processo do pedido', tasks }] })} as const;`;
@@ -265,7 +266,7 @@ test('resolveStepPerson follows the caller, then who already acted as that actor
   try {
     const first = await generated.resolveStepPerson(ctx([]), { actorRef: 'solicitante', step: 'preencher', history: [otherActor] });
     assert.equal(first, 'mdm-b', 'the alpha shortcut skips an agent member');
-    assert.deepEqual(listed, [{ pageSize: 200 }]);
+    assert.deepEqual(listed, [{ pageSize: MDM_LIST_USERS_PAGE_SIZE_MAX }]);
     people = { items: [{ mdmId: 'mdm-agent', kind: 'agent' }] };
     await assert.rejects(
       () => generated.resolveStepPerson(ctx([]), { actorRef: 'solicitante', step: 'preencher', history: [otherActor] }),

@@ -4,6 +4,7 @@
 // step tables every process function uses, and the module tick that runs the scheduled processes. The functions
 // themselves are written by the model from the l4 prose (steps/workflows45).
 
+import { MDM_LIST_USERS_PAGE_SIZE_MAX } from '/_102021_/l2/agentMaterializeL1/helpers/mdmPlatformLimits.js';
 import { workflowRecoverName, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
@@ -223,7 +224,7 @@ function resolveStepPersonSource(moduleName: string): string[] {
     '  if (lastActorNow) return lastActorNow;',
     '  if (isAlphaAllAuthorities()) {',
     '    // The first member that is not an agent: an agent member is never the person of a human step.',
-    '    const page = await ctx.mdm.identity.listUsers({ pageSize: 200 });',
+    `    const page = await ctx.mdm.identity.listUsers({ pageSize: ${MDM_LIST_USERS_PAGE_SIZE_MAX} });`,
     "    const first = page.items.find(item => (item as { kind?: string }).kind !== 'agent')?.mdmId;",
     '    if (first) return first;',
     '  }',

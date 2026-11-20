@@ -1,0 +1,71 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/listOrganizationUser.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { OrganizationUser } from '/_102047_/l1/agents/layer_3_domain/entities/organizationUser.js';
+
+export interface ListOrganizationUserInput {
+  details?: {
+    identification?: {
+      name?: string;
+    };
+  };
+  page: number;
+  pageSize: number;
+}
+
+export interface ListOrganizationUserOutput {
+  items: OrganizationUser[];
+  hasMore: boolean;
+}
+
+function normalizeText(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+export async function listOrganizationUser(input: ListOrganizationUserInput, ctx: RequestContext): Promise<ListOrganizationUserOutput> {
+  const rawPage = Number(input.page);
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1;
+  const rawSize = Number(input.pageSize);
+  const pageSize = Number.isFinite(rawSize) && rawSize >= 1 ? Math.min(Math.floor(rawSize), 200) : 20;
+
+  const nameTerm = input.details?.identification?.name;
+  const term = nameTerm == null || String(nameTerm).trim() === '' ? '' : normalizeText(String(nameTerm).trim());
+
+  // Collect every user from the platform (cursor based), then search by name and paginate here.
+  const kept: OrganizationUser[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined = undefined;
+  for (;;) {
+    const result = await ctx.mdm.identity.listUsers(cursor === undefined ? { pageSize: 200 } : { pageSize: 200, cursor });
+    for (const item of result.items) {
+      // onlyActiveUsersRestricted: only active users are offered.
+      if (String(item.status) !== 'Active') continue;
+      const name = item.name == null ? '' : String(item.name);
+      if (term !== '' && !normalizeText(name).includes(term)) continue;
+      const tags: string[] = Array.isArray(item.tags) ? item.tags.map((tag) => String(tag)) : [];
+      kept.push({
+        id: String(item.mdmId),
+        version: Number(item.version),
+        details: {
+          identification: {
+            name,
+            status: 'Active',
+            tags,
+          },
+        },
+      });
+    }
+    const next = result.nextCursor;
+    if (next == null || String(next) === '') break;
+    const nextKey = String(next);
+    if (seenCursors.has(nextKey)) {
+      throw new AppError('INVALID_CURSOR', 'The platform user list returned a repeated cursor.', 500);
+    }
+    seenCursors.add(nextKey);
+    cursor = nextKey;
+  }
+
+  const start = (page - 1) * pageSize;
+  const items = kept.slice(start, start + pageSize);
+  return { items, hasMore: start + pageSize < kept.length };
+}

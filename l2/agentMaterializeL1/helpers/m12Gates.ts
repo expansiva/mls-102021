@@ -5,6 +5,7 @@
 
 import { isCatalogImport } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { maskCode } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
+import { MDM_LIST_USERS_PAGE_SIZE_MAX } from '/_102021_/l2/agentMaterializeL1/helpers/mdmPlatformLimits.js';
 import type { M12InputField } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
 
 export interface M12CodeGateInput {
@@ -733,6 +734,32 @@ export function mdmBoundCallProblems(code: string, calls: readonly { target: str
   return problems;
 }
 
+/**
+ * d1_245: `identity.listUsers` takes `pageSize` from 1 to the MDM cap and answers 400 above it. A literal above the cap
+ * inside the call (a ternary or a spread of options included) is refused. A number that is not a literal is not read.
+ */
+export function listUsersPageSizeProblems(code: string): string[] {
+  const clean = blankComments(code);
+  const problems: string[] = [];
+  const opener = 'ctx.mdm.identity.listUsers(';
+  for (let at = clean.indexOf(opener); at >= 0; at = clean.indexOf(opener, at + opener.length)) {
+    let depth = 1;
+    let end = at + opener.length;
+    while (end < clean.length && depth > 0) {
+      const ch = clean[end];
+      if (ch === '(') depth += 1;
+      else if (ch === ')') depth -= 1;
+      end += 1;
+    }
+    for (const match of clean.slice(at, end).matchAll(/\bpageSize\s*:\s*(\d+)\b/gu)) {
+      if (Number(match[1]) > MDM_LIST_USERS_PAGE_SIZE_MAX) {
+        problems.push(`LIST_USERS_PAGE_SIZE: \`identity.listUsers\` takes \`pageSize\` from 1 to ${MDM_LIST_USERS_PAGE_SIZE_MAX} (PAGE_SIZE_MAX of identityUsersContracts.ts); the MDM answers 400 for ${match[1]}. Ask for at most ${MDM_LIST_USERS_PAGE_SIZE_MAX} and follow \`nextCursor\` to read the rest.`);
+      }
+    }
+  }
+  return problems;
+}
+
 /** Problems of a model-written usecase file. Empty = the gate passes. */
 export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   const problems: string[] = [];
@@ -775,6 +802,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...recordCastProblems(code));
   problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
   problems.push(...mdmBoundCallProblems(code, input.mdmCalls ?? []));
+  problems.push(...listUsersPageSizeProblems(code));
   // The rules of a write on an external entity are met by the external system: the call answers (or refuses) with them.
   for (const ruleId of input.externalEntity ? [] : input.ruleIds) {
     if (!code.includes(`'${ruleId}'`) && !code.includes(`"${ruleId}"`)) problems.push(`Rule ${ruleId} is not enforced: no AppError carries ruleId '${ruleId}'.`);
