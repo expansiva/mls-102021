@@ -13,7 +13,7 @@ import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { flatFieldsOf, usecaseInputsOf } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
 import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
 import { identityField, versionField } from '/_102021_/l2/agentMaterializeL1/emitters/domainOptional.js';
-import { dependencyUnits, recipeDraft, rulesToEnforce, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
+import { dependencyUnits, recipeDraft, rulesToEnforce, rulesUnbound, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { connectionRowsOf, externalEntityIds, externalRepositoryPort, gatewayNameOf, moduleGatewayNames, repositoryPortNames, usecaseGate, type M12ChildRecord, type M12ConsumerCall, type M12EventPublisher, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
@@ -461,9 +461,11 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
   const scaffold = scaffoldResult.source;
   const header = scaffold.split('\n')[0];
   const ruleIds = rulesToEnforce(unit.definition);
+  const unboundIds = rulesUnbound(unit.definition);
   const externalWrite = externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')) && String(unit.definition.data.operation ?? '') !== 'list' && String(unit.definition.data.operation ?? '') !== 'get';
   const rulesSource = await readOptional(rulesFile(ctx.run.project, ctx.run.module));
   const rules = ruleTexts(rulesSource, ruleIds);
+  const unbound = ruleTexts(rulesSource, unboundIds);
 
   const parts: string[] = [];
   parts.push(section('Task', [
@@ -472,7 +474,7 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
     ruleIds.length && externalWrite
       ? `The entity is external: the external system meets the rules listed under "Rules" through the call, so no local check duplicates them. Let the error of the gateway through with its own code, message and status (\`conflict\`, \`refused\`…); do not replace it. If you catch an AppError of the gateway only to add context, rethrow \`new AppError(error.code, error.message, error.statusCode, { ruleIds: [${ruleIds.map(ruleId => JSON.stringify(ruleId)).join(', ')}] })\`: the code and the message stay the system's, and the details carry the rule ids of this write. Return notApplicable: [].`
       : ruleIds.length
-      ? `Enforce every rule listed under "Rules". Each one throws \`new AppError(<code>, <message>, <status>, { ruleId: "<ruleId>" })\` when it is broken, with the rule id written as that exact string literal. A listed rule that does not concern this operation (its text is about another entity or operation) goes to \`notApplicable\` with the reason, instead of a check that makes no sense.`
+      ? `Enforce each rule listed under "Rules this usecase must apply". Each one throws \`new AppError(<code>, <message>, <status>, { ruleId: "<ruleId>" })\` when it is broken, with the rule id written as that exact string literal. A rule in that list that does not concern this operation (its text is about another entity or operation) goes to \`notApplicable\` with the reason, instead of a check that makes no sense. A rule under "Rules of this entity that no transition binds" is not listed in \`notApplicable\`.`
       : 'The def has no rule to enforce beyond its operation. Return notApplicable: [].',
   ].join('\n')));
   const entityRef = ontologyRef(unit.definition, unit.outputRef);
@@ -486,12 +488,17 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
     ? ['The deterministic recipe produced this file. Keep what is right; it is a draft, not the answer.', fence('ts', draft.source.slice(0, 16000))].join('\n\n')
     : `The deterministic recipe could not produce this usecase: ${draft.refusal.slice(0, 16000)}`));
   if (rules.length) parts.push(section('Rules this usecase must apply (rulesApplied, with the l4 text; enforce each one, or declare it notApplicable with the reason)', rules.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
+  if (unbound.length) parts.push(section('Rules of this entity that no transition binds', [
+    'Honor those this operation governs; an `AppError` with `ruleId` only when the rule refuses something here.',
+    ...unbound.map(rule => `- ${rule.ruleId}: ${rule.text}`),
+  ].join('\n')));
   const authority = ctx.units.find(item => item.definition.artifactType === 'authorityMap');
   if (authority) {
     const authoritySource = await readOptional(authority.output) ?? JSON.stringify(authority.definition.data);
     parts.push(section('Actors of the authorityMap', authorityActorsText(authorityActorIds(authoritySource))));
   }
-  const others = ruleTexts(rulesSource, allRuleIds(rulesSource).filter(ruleId => !ruleIds.includes(ruleId)));
+  const shownRuleIds = new Set([...ruleIds, ...unboundIds]);
+  const others = ruleTexts(rulesSource, allRuleIds(rulesSource).filter(ruleId => !shownRuleIds.has(ruleId)));
   if (others.length) parts.push(section('Other rules of the module (l4 text: a rule about this entity and operation that the def missed is enforced here too)', others.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
   const dependencies = dependencyUnits(ctx, unit);
   const externalIds = externalEntityIds(ctx.units);

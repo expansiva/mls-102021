@@ -8,6 +8,8 @@ import test from 'node:test';
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { parseDefinitionExport, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
+import { usecaseGate } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { rulesNotEmitted, rulesToEnforce, rulesUnbound } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { derivedReadSection, derivedReadValue, entityNames, loadUsecaseContext, usecaseAnswerProblems } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 
 const PROJECT = 102099;
@@ -430,10 +432,11 @@ test('the Task section of a write on an external entity says the external system
     const externalTask = taskOf((await loadUsecaseContext(external.ctx as never, external.usecase)).human);
     assert.match(externalTask, /The entity is external/u);
     assert.match(externalTask, /ruleIds: \["nameRequired"\]/u);
-    assert.equal(externalTask.includes('Enforce every rule'), false);
+    assert.equal(externalTask.includes('Enforce each rule listed under "Rules this usecase must apply"'), false);
     const local = build('Tarefa', 'moduleDatabase');
     const localTask = taskOf((await loadUsecaseContext(local.ctx as never, local.usecase)).human);
-    assert.match(localTask, /Enforce every rule/u);
+    assert.match(localTask, /Enforce each rule listed under "Rules this usecase must apply"/u);
+    assert.match(localTask, /goes to `notApplicable`/u);
     assert.equal(localTask.includes('The entity is external'), false);
   } finally {
     (globalThis as { mls: unknown }).mls = previous;
@@ -525,21 +528,95 @@ test('createExecutionSummary of agents: a reason waives the rules that do not go
       .filter(line => !line.startsWith('// Rules '))
       .join('\n');
     const code = `${loaded.header}\n${body}`;
-    const waived = [
-      { ruleId: 'activityNewestFirst', reason: 'This rule governs the activity list, not this create.' },
-      { ruleId: 'executionNeverEdited', reason: 'This rule governs a later edit, not this create.' },
-    ];
-    const released = await usecaseAnswerProblems(ctx as never, usecase, code, waived);
-    assert.equal(released.some(problem => problem.includes('activityNewestFirst')), false, released.join('\n'));
-    assert.equal(released.some(problem => problem.includes('executionNeverEdited')), false, released.join('\n'));
+    const unboundSection = loaded.human.split('## Rules of this entity that no transition binds')[1]?.split('\n## ')[0] ?? '';
+    assert.match(unboundSection, /Honor those this operation governs/u);
+    assert.match(unboundSection, /activityNewestFirst: An agent's activity is listed newest first\./u);
+    assert.equal(unboundSection.includes('notApplicable'), false);
+    const unbound = (planned.definition.data.rulePlan as Array<{ ruleId: string; enforcement: string; gap: string }>)
+      .filter(row => row.enforcement === 'pending' && row.gap === 'RULE_UNBOUND').map(row => row.ruleId);
+    assert.ok(unbound.includes('activityNewestFirst') && unbound.includes('executionNeverEdited'), unbound.join(','));
+    const localId = 'zzLocalRuleMissing';
+    const rulePlan = planned.definition.data.rulePlan as Array<Record<string, string>>;
+    rulePlan.push({ ruleId: localId, origin: 'l4/agents/rules.defs.ts#executionRecordedOnce', consumer: 'usecase:createExecutionSummary', enforcement: 'local', gap: '' });
+    const released = await usecaseAnswerProblems(ctx as never, usecase, code + `\nthrow new AppError('x', 'y', 409, { ruleId: '${localId}' });`, [{ ruleId: localId, reason: 'This local rule does not govern this write.' }]);
+    assert.equal(released.some(problem => problem.includes(localId)), false, released.join('\n'));
     const held = await usecaseAnswerProblems(ctx as never, usecase, code, []);
-    assert.ok(held.some(problem => problem.includes("ruleId 'activityNewestFirst'")), held.join('\n'));
-    assert.ok(held.some(problem => problem.includes("ruleId 'executionNeverEdited'")), held.join('\n'));
-    const empty = await usecaseAnswerProblems(ctx as never, usecase, code, [{ ruleId: 'activityNewestFirst', reason: '' }]);
-    assert.ok(empty.some(problem => problem.startsWith('notApplicable activityNewestFirst needs a reason') && problem.includes('got ""')), empty.join('\n'));
+    assert.ok(held.some(problem => problem.includes(`ruleId '${localId}'`)), held.join('\n'));
+    assert.equal(held.some(problem => problem.includes("ruleId 'activityNewestFirst'")), false, held.join('\n'));
+    assert.equal(held.some(problem => problem.includes("ruleId 'executionNeverEdited'")), false, held.join('\n'));
+    const empty = await usecaseAnswerProblems(ctx as never, usecase, code, [{ ruleId: localId, reason: '' }]);
+    assert.ok(empty.some(problem => problem.startsWith(`notApplicable ${localId} needs a reason`) && problem.includes('got ""')), empty.join('\n'));
     const foreign = await usecaseAnswerProblems(ctx as never, usecase, code, [{ ruleId: 'notARule', reason: 'long enough reason' }]);
     assert.ok(foreign.some(problem => problem === 'notApplicable "notARule" is not a rule of this module.'), foreign.join('\n'));
   } finally {
     (globalThis as { mls: unknown }).mls = previous;
+  }
+});
+
+test('createTool of agents: unbound rules are in the context and out of the gate', async () => {
+  // Recorded at 399835c1 (20/11/2026). A test never reads the live bench.
+  const recorded = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures/agentsCreateTool.recorded.json'), 'utf8')) as Record<string, string>;
+  const read = async (ref: string): Promise<string | null> => recorded[ref] ?? null;
+  const declared = parseDefinitionExport(await read('_102047_/l1/agents/layer_2_application/usecases/createTool.defs.ts') ?? '');
+  assert.ok(declared);
+  const planned = await usecasePlan(declared, read);
+  assert.equal(planned.detail, '');
+  assert.deepEqual(rulesToEnforce(planned.definition), []);
+  const unbound = rulesUnbound(planned.definition);
+  assert.ok(unbound.includes('toolNeverDeleted') && unbound.includes('noTechnicalIdsOnScreen'), unbound.join(','));
+  const outputRef = '_102047_/l1/agents/layer_2_application/usecases/createTool.ts';
+  const usecase = {
+    definition: planned.definition,
+    declared,
+    outputRef,
+    defRef: outputRef.replace(/\.ts$/u, '.defs.ts'),
+    output: { project: 102047, level: 1, folder: 'agents/layer_2_application/usecases', shortName: 'createTool', extension: '.ts' },
+  } as unknown as M12Unit;
+  const previous = globalThis.mls;
+  const rulesText = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures/agentsRules.recorded.txt'), 'utf8');
+  const rulesFile = { project: 102047, level: 4, folder: 'agents', shortName: 'rules', extension: '.defs.ts', getContent: async () => rulesText };
+  (globalThis as { mls: unknown }).mls = { actualProject: 102047, stor: { files: { [keyOf(rulesFile)]: rulesFile }, getKeyToFile: keyOf } };
+  const ctx = { run: { project: 102047, module: 'agents' }, units: [usecase], read };
+  try {
+    const human = (await loadUsecaseContext(ctx as never, usecase)).human;
+    const section = human.split('## Rules of this entity that no transition binds')[1]?.split('\n## ')[0] ?? '';
+    assert.match(section, /toolNeverDeleted: A tool is never deleted from the catalog/u);
+    assert.match(section, /Honor those this operation governs/u);
+    assert.equal(section.includes('notApplicable'), false);
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});
+
+test('the five hand-fixed agents drafts pass the rule gate without the hand comments', () => {
+  // Copies of pipeline/agentMaterializeL1/drafts/usecases at the l4_p4_138 bench (399835c1, 20/11/2026).
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
+  const ids = ['createAgentTool', 'updateAgentTool', 'createExecutionSummary', 'createTool', 'updateTool'];
+  for (const id of ids) {
+    const code = readFileSync(path.join(dir, `${id}_code.recorded.txt`), 'utf8')
+      .split('\n')
+      .filter(line => !line.startsWith('// Rules '))
+      .join('\n');
+    const problems = usecaseGate(code, {
+      header: code.split('\n')[0],
+      functionName: id,
+      project: 102047,
+      moduleName: 'agents',
+      ruleIds: ['localRuleMissing'],
+      operation: id.startsWith('update') ? 'update' : 'create',
+    }).filter(problem => problem.startsWith('Rule '));
+    assert.deepEqual(problems, [`Rule localRuleMissing is not enforced: no AppError carries ruleId 'localRuleMissing'.`], id);
+    const clear = usecaseGate(code, {
+      header: code.split('\n')[0],
+      functionName: id,
+      project: 102047,
+      moduleName: 'agents',
+      ruleIds: [],
+      operation: id.startsWith('update') ? 'update' : 'create',
+    }).filter(problem => problem.startsWith('Rule '));
+    assert.deepEqual(clear, [], id);
+    assert.deepEqual(rulesNotEmitted({ data: { rulePlan: [
+      { ruleId: 'toolNeverDeleted', enforcement: 'pending', gap: 'RULE_UNBOUND' },
+    ] } } as never, code), [], id);
   }
 });

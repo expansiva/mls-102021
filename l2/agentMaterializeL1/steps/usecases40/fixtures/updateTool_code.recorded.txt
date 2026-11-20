@@ -1,0 +1,165 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/updateTool.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { ToolRepository } from '/_102047_/l1/agents/layer_2_application/ports/toolRepository.js';
+import type { Tool } from '/_102047_/l1/agents/layer_3_domain/entities/tool.js';
+
+export interface UpdateToolInput {
+  toolKey: string;
+  origin: string;
+  moduleName: string;
+  subject: string;
+  name: string;
+  status: string;
+  details: {
+    moduleTitle: string;
+    subjectTitle: string;
+    description: string;
+    releaseLabel?: string;
+    addedAt: string;
+    removedAt?: string;
+    catalogItem: string;
+  };
+  id: string;
+  version: number;
+}
+
+export interface UpdateToolOutput {
+  id: string;
+  version: number;
+  toolKey: string;
+  origin: string;
+  moduleName: string;
+  subject: string;
+  name: string;
+  status: string;
+  details: {
+    moduleTitle: string;
+    subjectTitle: string;
+    description: string;
+    releaseLabel?: string;
+    addedAt: string;
+    removedAt?: string;
+    usedByAgents?: number;
+    catalogItem: string;
+  };
+}
+
+function requiredText(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new AppError('INVALID_INPUT', `${field} is required.`, 400);
+  }
+  return value;
+}
+
+export async function updateTool(input: UpdateToolInput, ctx: RequestContext): Promise<UpdateToolOutput> {
+  const repository = resolveRepository<ToolRepository>(ctx, 'ToolRepository');
+  const raw: Record<string, unknown> = { ...input };
+  const rawDetails: Record<string, unknown> | undefined =
+    input.details !== undefined && input.details !== null ? { ...input.details } : undefined;
+
+  const id = requiredText(raw.id, 'id');
+  const inputVersion = Number(raw.version);
+  if (!Number.isFinite(inputVersion)) {
+    throw new AppError('INVALID_INPUT', 'version is required.', 400);
+  }
+
+  const found = await repository.list({ id });
+  const existing = found.find((tool) => tool.id === id);
+  if (!existing) {
+    throw new AppError('NOT_FOUND', 'Tool not found.', 404);
+  }
+  if (existing.version !== inputVersion) {
+    throw new AppError('CONCURRENCY_CONFLICT', 'Version does not match the stored row.', 409);
+  }
+
+  // A tool is never deleted nor removed through an update: leaving or returning to the release is a transition.
+  if (raw.status !== undefined && raw.status !== null && raw.status !== existing.status) {
+    throw new AppError(
+      'TOOL_STATUS_NOT_UPDATABLE',
+      'The situation of a tool is changed only by the release transitions; a tool is never deleted.',
+      409,
+      { ruleId: 'toolNeverDeleted' },
+    );
+  }
+
+  const toolKey = requiredText(raw.toolKey, 'toolKey');
+  if (toolKey !== existing.toolKey) {
+    const sameKey = await repository.list({ toolKey });
+    if (sameKey.some((tool) => tool.id !== existing.id && tool.toolKey === toolKey)) {
+      throw new AppError('TOOL_KEY_DUPLICATE', 'Another tool already has this tool key.', 409, { ruleId: 'toolKeyUnique' });
+    }
+  }
+
+  if (rawDetails === undefined) {
+    throw new AppError('INVALID_INPUT', 'details is required.', 400);
+  }
+
+  // The catalog item is replaced with the whole item as the platform delivers it.
+  const catalogItem = rawDetails.catalogItem;
+  if (typeof catalogItem !== 'string' || catalogItem.trim() === '') {
+    throw new AppError('INVALID_INPUT', 'The whole catalog item is required to update a tool.', 400, { ruleId: 'toolKeepsWholeCatalogItem' });
+  }
+
+  const originText = requiredText(raw.origin, 'origin');
+  if (originText !== 'appModule' && originText !== 'cm') {
+    throw new AppError('INVALID_INPUT', 'origin must be appModule or cm.', 400);
+  }
+  const origin: Tool['origin'] = originText === 'appModule' ? 'appModule' : 'cm';
+
+  const details: Tool['details'] = {
+    moduleTitle: requiredText(rawDetails.moduleTitle, 'details.moduleTitle'),
+    subjectTitle: requiredText(rawDetails.subjectTitle, 'details.subjectTitle'),
+    description: requiredText(rawDetails.description, 'details.description'),
+    addedAt: existing.details.addedAt,
+    catalogItem,
+  };
+  if (typeof rawDetails.releaseLabel === 'string') {
+    details.releaseLabel = rawDetails.releaseLabel;
+  }
+  if (existing.details.removedAt !== undefined) {
+    details.removedAt = existing.details.removedAt;
+  }
+
+  const record: Tool = {
+    id: existing.id,
+    version: existing.version,
+    toolKey,
+    origin,
+    moduleName: requiredText(raw.moduleName, 'moduleName'),
+    subject: requiredText(raw.subject, 'subject'),
+    name: requiredText(raw.name, 'name'),
+    status: existing.status,
+    details,
+  };
+
+  const saved = await repository.update(record);
+
+  // On every rebuild the stored catalog item must be the one just delivered, never a stale one.
+  if (saved.details.catalogItem !== catalogItem) {
+    throw new AppError('CATALOG_ITEM_STALE', 'The stored catalog item was not replaced by the delivered item.', 409, { ruleId: 'catalogRebuiltOnRelease' });
+  }
+
+  const out: UpdateToolOutput = {
+    id: saved.id,
+    version: saved.version,
+    toolKey: saved.toolKey,
+    origin: saved.origin,
+    moduleName: saved.moduleName,
+    subject: saved.subject,
+    name: saved.name,
+    status: saved.status,
+    details: {
+      moduleTitle: saved.details.moduleTitle,
+      subjectTitle: saved.details.subjectTitle,
+      description: saved.details.description,
+      addedAt: saved.details.addedAt,
+      catalogItem: saved.details.catalogItem,
+    },
+  };
+  if (saved.details.releaseLabel !== undefined) out.details.releaseLabel = saved.details.releaseLabel;
+  if (saved.details.removedAt !== undefined) out.details.removedAt = saved.details.removedAt;
+  if (saved.details.usedByAgents !== undefined) out.details.usedByAgents = saved.details.usedByAgents;
+  return out;
+}

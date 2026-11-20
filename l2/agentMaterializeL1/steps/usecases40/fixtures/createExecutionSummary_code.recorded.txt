@@ -1,0 +1,155 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { ExecutionSummaryRepository } from '/_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.js';
+import type { ExecutionSummary } from '/_102047_/l1/agents/layer_3_domain/entities/executionSummary.js';
+
+export interface CreateExecutionSummaryInput {
+  agentId: string;
+  personId?: string;
+  executionRef: string;
+  startedAt: string;
+  details: {
+    durationMs: number;
+    cost?: string;
+    tookOver: boolean;
+    conversationLink?: string;
+    actions: {
+      toolName: string;
+      result: string;
+      resultNote?: string;
+    }[];
+  };
+}
+
+export interface CreateExecutionSummaryOutput {
+  id: string;
+  version: number;
+  agentId: string;
+  personId?: string;
+  executionRef: string;
+  startedAt: string;
+  details: {
+    durationMs: number;
+    cost?: string;
+    tookOver: boolean;
+    conversationLink?: string;
+    actions: {
+      toolName: string;
+      result: string;
+      resultNote?: string;
+    }[];
+  };
+}
+
+type ActionResult = 'succeeded' | 'failed' | 'refused';
+
+function toActionResult(value: unknown): ActionResult {
+  if (value === 'succeeded' || value === 'failed' || value === 'refused') return value;
+  throw new AppError('INVALID_ACTION_RESULT', 'Each action result must be succeeded, failed or refused.', 400);
+}
+
+export async function createExecutionSummary(input: CreateExecutionSummaryInput, ctx: RequestContext): Promise<CreateExecutionSummaryOutput> {
+  // onlyInboundWritesExecution: a summary comes from what the cm sends, never from a screen request.
+  if (ctx.requestMeta?.source === 'http') {
+    throw new AppError('ONLY_INBOUND_WRITES_EXECUTION', 'Execution summaries are recorded only from what the cm sends.', 409, { ruleId: 'onlyInboundWritesExecution' });
+  }
+
+  const agentId = typeof input.agentId === 'string' ? input.agentId.trim() : '';
+  if (!agentId) throw new AppError('INVALID_INPUT', 'agentId is required.', 400);
+
+  const executionRef = typeof input.executionRef === 'string' ? input.executionRef.trim() : '';
+  if (!executionRef) throw new AppError('INVALID_INPUT', 'executionRef is required.', 400);
+  if (executionRef.length > 120) throw new AppError('INVALID_INPUT', 'executionRef must have at most 120 characters.', 400);
+
+  const startedAt = typeof input.startedAt === 'string' ? input.startedAt.trim() : '';
+  if (!startedAt || Number.isNaN(Date.parse(startedAt))) {
+    throw new AppError('INVALID_INPUT', 'startedAt must be a valid timestamp.', 400);
+  }
+
+  const details = input.details;
+  if (!details) throw new AppError('INVALID_INPUT', 'details is required.', 400);
+  const durationMs = Number(details.durationMs);
+  if (!Number.isInteger(durationMs) || durationMs < 0) {
+    throw new AppError('INVALID_INPUT', 'details.durationMs must be an integer of at least 0.', 400);
+  }
+  if (typeof details.tookOver !== 'boolean') {
+    throw new AppError('INVALID_INPUT', 'details.tookOver is required.', 400);
+  }
+  if (!Array.isArray(details.actions)) {
+    throw new AppError('INVALID_INPUT', 'details.actions must be a list.', 400);
+  }
+
+  const actions: ExecutionSummary['details']['actions'] = [];
+  for (const action of details.actions) {
+    const toolName = typeof action.toolName === 'string' ? action.toolName.trim() : '';
+    if (!toolName) throw new AppError('INVALID_INPUT', 'Each action needs a toolName.', 400);
+    if (toolName.length > 200) throw new AppError('INVALID_INPUT', 'toolName must have at most 200 characters.', 400);
+    const entry: ExecutionSummary['details']['actions'][number] = {
+      toolName,
+      result: toActionResult(action.result),
+    };
+    if (action.resultNote !== undefined && action.resultNote !== null) {
+      const note = String(action.resultNote);
+      if (note.length > 1000) throw new AppError('INVALID_INPUT', 'resultNote must have at most 1000 characters.', 400);
+      entry.resultNote = note;
+    }
+    actions.push(entry);
+  }
+  if (details.conversationLink !== undefined && details.conversationLink !== null && String(details.conversationLink).length > 500) {
+    throw new AppError('INVALID_INPUT', 'conversationLink must have at most 500 characters.', 400);
+  }
+
+  const repository = resolveRepository<ExecutionSummaryRepository>(ctx, 'ExecutionSummaryRepository');
+
+  // executionRecordedOnce: the same execution reference is never recorded twice.
+  // A recorded summary is never changed (executionNeverEdited), so an arriving duplicate is refused, not merged.
+  const existing = await repository.list({ executionRef });
+  if (existing.some((item) => item.executionRef === executionRef)) {
+    throw new AppError('EXECUTION_ALREADY_RECORDED', 'This execution was already recorded.', 409, { ruleId: 'executionRecordedOnce' });
+  }
+
+  const record: ExecutionSummary = {
+    id: ctx.idGenerator.newId(),
+    version: 1,
+    agentId,
+    executionRef,
+    startedAt,
+    details: {
+      durationMs,
+      tookOver: details.tookOver,
+      actions,
+    },
+  };
+  if (input.personId !== undefined && input.personId !== null && String(input.personId).trim() !== '') {
+    record.personId = String(input.personId).trim();
+  }
+  if (details.cost !== undefined && details.cost !== null) record.details.cost = String(details.cost);
+  if (details.conversationLink !== undefined && details.conversationLink !== null) {
+    record.details.conversationLink = String(details.conversationLink);
+  }
+
+  const saved = await repository.create(record);
+
+  const output: CreateExecutionSummaryOutput = {
+    id: saved.id,
+    version: saved.version,
+    agentId: saved.agentId,
+    executionRef: saved.executionRef,
+    startedAt: saved.startedAt,
+    details: {
+      durationMs: saved.details.durationMs,
+      tookOver: saved.details.tookOver,
+      actions: saved.details.actions.map((a) => {
+        const out: { toolName: string; result: string; resultNote?: string } = { toolName: a.toolName, result: a.result };
+        if (a.resultNote !== undefined) out.resultNote = a.resultNote;
+        return out;
+      }),
+    },
+  };
+  if (saved.personId !== undefined) output.personId = saved.personId;
+  if (saved.details.cost !== undefined) output.details.cost = saved.details.cost;
+  if (saved.details.conversationLink !== undefined) output.details.conversationLink = saved.details.conversationLink;
+  return output;
+}

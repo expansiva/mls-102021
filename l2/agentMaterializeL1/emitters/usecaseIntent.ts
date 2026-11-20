@@ -112,9 +112,7 @@ async function externalPlan(definition: M1Definition, entityDep: string, read: R
         ports: [],
         portCalls: [],
         uses: [],
-        rulePlan: stringList(data.rulesApplied).map(ruleId => ({
-          ruleId, origin: `l4/${definition.moduleName}/rules.defs.ts#${ruleId}`, consumer: `usecase:${usecaseId}`, enforcement: 'local', gap: '',
-        })),
+        rulePlan: appliedRulePlan(data, definition.moduleName, usecaseId, new Set()),
         transactional: false,
         transaction: { boundary: 'none' },
       },
@@ -123,17 +121,20 @@ async function externalPlan(definition: M1Definition, entityDep: string, read: R
   };
 }
 
-/** The transition `transitionId` of an l4 ontology: its payload paths; null when the ontology has no such transition. */
-export function transitionPayload(ontologySource: string | null, transitionId: string): string[] | null {
+function ontologyRoot(ontologySource: string | null): unknown {
   if (!ontologySource) return null;
   const match = /=\s*(\{[\s\S]*\})\s*as const/u.exec(ontologySource);
   if (!match) return null;
-  let value: unknown;
   try {
-    value = JSON.parse(match[1]);
+    return JSON.parse(match[1]);
   } catch {
     return null;
   }
+}
+
+function transitionNode(ontologySource: string | null, transitionId: string): Record<string, unknown> | null {
+  const value = ontologyRoot(ontologySource);
+  if (value === null) return null;
   const found: unknown[] = [];
   const walk = (node: unknown): void => {
     if (Array.isArray(node)) { node.forEach(walk); return; }
@@ -142,8 +143,47 @@ export function transitionPayload(ontologySource: string | null, transitionId: s
     Object.values(node).forEach(walk);
   };
   walk(value);
-  const transition = found.find(isRecord);
+  return found.find(isRecord) ?? null;
+}
+
+/** The transition `transitionId` of an l4 ontology: its payload paths; null when the ontology has no such transition. */
+export function transitionPayload(ontologySource: string | null, transitionId: string): string[] | null {
+  const transition = transitionNode(ontologySource, transitionId);
   return transition ? stringList(transition.payload) : null;
+}
+
+/** Rule ids the transition cites (`ruleRefs`). Empty when the ontology has no such transition. */
+export function transitionRuleRefs(ontologySource: string | null, transitionId: string): string[] {
+  const transition = transitionNode(ontologySource, transitionId);
+  return transition ? stringList(transition.ruleRefs) : [];
+}
+
+/**
+ * Rows the recipes read. A def that already stored a `pending`/`RULE_UNBOUND` row keeps it (the materializer
+ * does not enforce it). The saved def omits `rulePlan` (§10) and keeps those ids in `rulesApplied`: an id the
+ * transition cites is `local`; one no transition binds is `pending`/`RULE_UNBOUND`. A def that does carry a
+ * `rulePlan` and has no such row for the id stays `local`.
+ */
+function appliedRulePlan(data: Record<string, unknown>, moduleName: string, usecaseId: string, cited: ReadonlySet<string>): Array<Record<string, string>> {
+  const rulesFile = `l4/${moduleName}/rules.defs.ts`;
+  const stored = Array.isArray(data.rulePlan) ? data.rulePlan.filter(isRecord) : null;
+  const byId = new Map((stored ?? []).map(row => [text(row.ruleId), row]));
+  return stringList(data.rulesApplied).map(ruleId => {
+    const prior = byId.get(ruleId);
+    if (prior && prior.enforcement === 'pending' && prior.gap === 'RULE_UNBOUND') {
+      return {
+        ruleId,
+        origin: text(prior.origin) || `${rulesFile}#${ruleId}`,
+        consumer: text(prior.consumer) || `usecase:${usecaseId}`,
+        enforcement: 'pending',
+        gap: 'RULE_UNBOUND',
+      };
+    }
+    if (stored !== null || cited.has(ruleId)) {
+      return { ruleId, origin: `${rulesFile}#${ruleId}`, consumer: `usecase:${usecaseId}`, enforcement: 'local', gap: '' };
+    }
+    return { ruleId, origin: `${rulesFile}#${ruleId}`, consumer: `operation:${text(data.operation)}`, enforcement: 'pending', gap: 'RULE_UNBOUND' };
+  });
 }
 
 /**
@@ -173,6 +213,7 @@ export async function usecasePlan(definition: M1Definition, read: Read): Promise
   let output: SignatureRow[] = all;
   let uses: Array<Record<string, string>> = [];
   let lifecycle: Record<string, unknown> | undefined;
+  let citedRuleIds: string[] = [];
   if (operation === 'get') {
     input = named(['id']);
     uses = [{ path: 'id', role: 'filter', source: 'input' }];
@@ -191,8 +232,10 @@ export async function usecasePlan(definition: M1Definition, read: Read): Promise
     if (!transitionId) return { definition, detail: `${usecaseId} is a transition with no transitionRef.` };
     const ontology = definition.dependencies.find(path => path.includes('/l4/') && path.includes('/ontology/') && !path.endsWith('/mdm.defs.ts'))
       ?? `${projectOf(entityDep)}/l4/${definition.moduleName}/ontology/${entityId}.defs.ts`;
-    const payload = transitionPayload(await read(ontology), transitionId);
+    const ontologySource = await read(ontology);
+    const payload = transitionPayload(ontologySource, transitionId);
     if (payload === null) return { definition, detail: `${ontology} has no transition ${transitionId}.` };
+    citedRuleIds = transitionRuleRefs(ontologySource, transitionId);
     input = [...named(['id', 'version']), ...named(payload)];
     uses = [
       { path: 'id', role: 'selector', source: 'input' },
@@ -210,10 +253,7 @@ export async function usecasePlan(definition: M1Definition, read: Read): Promise
   const portName = port ? text(port.data.interfaceName) || `${entityId}Repository` : '';
   const ports = portName ? [portName] : [];
 
-  const rulesFile = `l4/${definition.moduleName}/rules.defs.ts`;
-  const rulePlan: Array<Record<string, string>> = stringList(data.rulesApplied).map(ruleId => ({
-    ruleId, origin: `${rulesFile}#${ruleId}`, consumer: `usecase:${usecaseId}`, enforcement: 'local', gap: '',
-  }));
+  const rulePlan = appliedRulePlan(data, definition.moduleName, usecaseId, new Set(citedRuleIds));
   // The unique keys of a create are the table's (`uniqueKeys`); the storage row points at the table def.
   if (operation === 'create' && ports.length) {
     const tableRef = `${projectOf(entityDep)}/l1/${definition.moduleName}/layer_1_external/adapters/persistence/${lowerFirst(entityId)}.defs.ts`;

@@ -73,9 +73,10 @@ declared filter that is never applied returns the records of every parent (the i
 - A record that is not found is `new AppError('NOT_FOUND', …, 404)`.
 - No silent fallback: no empty `catch`, no invented default value. An error names its cause.
 
-- The rules under "Rules this usecase must apply" are the def's `rulesApplied`: a commitment. One whose text is
-  plainly about another operation or entity is not checked: list it in `notApplicable` with the reason. A rule of
-  the module whose text is about this entity and operation is enforced even when the definition did not attach it.
+- The rules under "Rules this usecase must apply" are mandatory. One whose text is
+  plainly about another operation or entity is not checked: list it in `notApplicable` with the reason.
+  A rule under "Rules of this entity that no transition binds" is not mandatory and is not listed in `notApplicable`.
+  A rule of the module whose text is about this entity and operation is enforced even when the definition did not attach it.
 
 ## Typing (no compiler checks this file before it runs: write it so it compiles under `strict`)
 
@@ -129,4 +130,4 @@ declared filter that is never applied returns the records of every parent (the i
 
 ## Answer
 
-Return only the `writeUsecase` tool: the whole file in `code`, and `notApplicable` (empty when every rule applies).
+Return only the `writeUsecase` tool: the whole file in `code`, and `notApplicable` (empty when every mandatory rule under "Rules this usecase must apply" applies).

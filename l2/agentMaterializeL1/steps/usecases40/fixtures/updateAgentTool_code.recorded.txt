@@ -1,0 +1,151 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { AgentToolRepository } from '/_102047_/l1/agents/layer_2_application/ports/agentToolRepository.js';
+import type { ToolRepository } from '/_102047_/l1/agents/layer_2_application/ports/toolRepository.js';
+import type { AgentTool } from '/_102047_/l1/agents/layer_3_domain/entities/agentTool.js';
+import type { Tool } from '/_102047_/l1/agents/layer_3_domain/entities/tool.js';
+
+export interface UpdateAgentToolInput {
+  agentId: string;
+  toolId: string;
+  enabled: boolean;
+  choiceSource: string;
+  details: {
+    decidedBy?: string;
+    automaticOrigin?: string;
+  };
+  id: string;
+  version: number;
+}
+
+export interface UpdateAgentToolOutput {
+  id: string;
+  version: number;
+  agentId: string;
+  toolId: string;
+  enabled: boolean;
+  choiceSource: string;
+  details: {
+    decidedAt: string;
+    decidedBy?: string;
+    automaticOrigin?: string;
+    toolName?: string;
+    toolRemoved?: boolean;
+  };
+}
+
+// toolName and toolRemoved are derived: they are calculated from the catalog tool every time, never stored.
+function toOutput(record: AgentTool, tool: Tool): UpdateAgentToolOutput {
+  const details: UpdateAgentToolOutput['details'] = {
+    decidedAt: record.details.decidedAt,
+    toolName: tool.name,
+    toolRemoved: tool.status === 'removed',
+  };
+  if (record.details.decidedBy !== undefined) details.decidedBy = record.details.decidedBy;
+  if (record.details.automaticOrigin !== undefined) details.automaticOrigin = record.details.automaticOrigin;
+  return {
+    id: record.id,
+    version: record.version,
+    agentId: record.agentId,
+    toolId: record.toolId,
+    enabled: record.enabled,
+    choiceSource: record.choiceSource,
+    details,
+  };
+}
+
+export async function updateAgentTool(input: UpdateAgentToolInput, ctx: RequestContext): Promise<UpdateAgentToolOutput> {
+  const repository = resolveRepository<AgentToolRepository>(ctx, 'AgentToolRepository');
+  const toolRepository = resolveRepository<ToolRepository>(ctx, 'ToolRepository');
+
+  const id = String(input.id ?? '');
+  if (id === '') {
+    throw new AppError('INVALID_INPUT', 'The id of the tool choice is required.', 400);
+  }
+  if (typeof input.enabled !== 'boolean') {
+    throw new AppError('INVALID_INPUT', 'The on value of the tool choice is required.', 400);
+  }
+  const rawSource = String(input.choiceSource ?? '');
+  if (rawSource !== 'admin' && rawSource !== 'automatic') {
+    throw new AppError('INVALID_INPUT', 'The choice source must be admin or automatic.', 400);
+  }
+  const choiceSource: 'admin' | 'automatic' = rawSource;
+  const enabled: boolean = input.enabled;
+
+  const found = await repository.list({ id });
+  const existing = found.find((item) => item.id === id);
+  if (!existing) {
+    throw new AppError(
+      'NOT_FOUND',
+      'Agent tool choice not found; a mark on an action without a choice creates the choice, it does not update one.',
+      404,
+      { ruleId: 'markingWithoutChoiceCreatesAdminChoice' },
+    );
+  }
+  if (input.version !== undefined && Number(input.version) !== existing.version) {
+    throw new AppError('CONCURRENCY_CONFLICT', 'Version does not match the stored row.', 409);
+  }
+
+  // The tool of this choice, read from the catalog.
+  const tools = await toolRepository.list({ id: existing.toolId });
+  const tool = tools.find((item) => item.id === existing.toolId);
+  if (!tool) {
+    throw new AppError('NOT_FOUND', 'The tool of this choice is not in the catalog.', 404, { ruleId: 'oneChoicePerAgentAndTool' });
+  }
+
+  // One choice per agent and tool: an update only turns the choice on or off, never moves the pair.
+  if (input.agentId !== undefined && String(input.agentId) !== existing.agentId) {
+    throw new AppError('AGENT_TOOL_PAIR_IMMUTABLE', 'The agent of a tool choice cannot be changed.', 400, { ruleId: 'oneChoicePerAgentAndTool' });
+  }
+  if (input.toolId !== undefined && String(input.toolId) !== existing.toolId) {
+    throw new AppError('AGENT_TOOL_PAIR_IMMUTABLE', 'The tool of a tool choice cannot be changed.', 400, { ruleId: 'oneChoicePerAgentAndTool' });
+  }
+
+  if (choiceSource === 'automatic') {
+    // An admin's choice (on or off) is never changed by an automatic step.
+    if (existing.choiceSource === 'admin') {
+      throw new AppError('ADMIN_CHOICE_PROTECTED', 'A choice made by the admin cannot be changed by the automatic choice.', 409, { ruleId: 'adminChoiceNeverOverridden' });
+    }
+    // A removed tool is never turned on for an agent by an automatic step, since it is never sent.
+    if (enabled && tool.status === 'removed') {
+      throw new AppError('TOOL_REMOVED', 'A removed tool cannot be turned on automatically.', 409, { ruleId: 'removedToolNeverSent' });
+    }
+    // Tools suggested in a ready draft are turned on, never off.
+    if (input.details?.automaticOrigin === 'draftSuggestion' && !enabled) {
+      throw new AppError('DRAFT_SUGGESTION_MUST_BE_ON', 'A tool suggested in a ready draft is turned on, not off.', 400, { ruleId: 'draftSuggestedToolsTurnedOn' });
+    }
+    // A notice already handled changes nothing when it arrives again.
+    if (existing.enabled === enabled) {
+      return toOutput(existing, tool);
+    }
+  }
+
+  const details: AgentTool['details'] = { decidedAt: ctx.clock.nowIso() };
+  if (choiceSource === 'admin') {
+    const decidedBy = ctx.sessionContext.person?.mdmId ?? input.details?.decidedBy;
+    if (decidedBy !== undefined && decidedBy !== '') details.decidedBy = decidedBy;
+  } else {
+    const origin = input.details?.automaticOrigin;
+    if (origin === 'draftSuggestion' || origin === 'catalogRefresh') {
+      details.automaticOrigin = origin;
+    } else if (origin !== undefined) {
+      throw new AppError('INVALID_INPUT', 'The automatic origin must be draftSuggestion or catalogRefresh.', 400);
+    } else if (existing.details.automaticOrigin !== undefined) {
+      details.automaticOrigin = existing.details.automaticOrigin;
+    }
+  }
+
+  const next: AgentTool = {
+    id: existing.id,
+    version: existing.version,
+    agentId: existing.agentId,
+    toolId: existing.toolId,
+    enabled,
+    choiceSource,
+    details,
+  };
+  const saved = await repository.update(next);
+  return toOutput(saved, tool);
+}

@@ -1,0 +1,139 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/createTool.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { ToolRepository } from '/_102047_/l1/agents/layer_2_application/ports/toolRepository.js';
+import type { Tool } from '/_102047_/l1/agents/layer_3_domain/entities/tool.js';
+
+export interface CreateToolInput {
+  toolKey: string;
+  origin: string;
+  moduleName: string;
+  subject: string;
+  name: string;
+  details: {
+    moduleTitle: string;
+    subjectTitle: string;
+    description: string;
+    releaseLabel?: string;
+    catalogItem: string;
+  };
+}
+
+export interface CreateToolOutput {
+  id: string;
+  version: number;
+  toolKey: string;
+  origin: string;
+  moduleName: string;
+  subject: string;
+  name: string;
+  status: string;
+  details: {
+    moduleTitle: string;
+    subjectTitle: string;
+    description: string;
+    releaseLabel?: string;
+    addedAt: string;
+    removedAt?: string;
+    usedByAgents?: number;
+    catalogItem: string;
+  };
+}
+
+function requiredText(value: unknown, field: string, maxLength?: number): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new AppError('VALIDATION_ERROR', `${field} is required.`, 400);
+  }
+  if (maxLength !== undefined && value.length > maxLength) {
+    throw new AppError('VALIDATION_ERROR', `${field} must have at most ${maxLength} characters.`, 400);
+  }
+  return value;
+}
+
+export async function createTool(input: CreateToolInput, ctx: RequestContext): Promise<CreateToolOutput> {
+  const repository = resolveRepository<ToolRepository>(ctx, 'ToolRepository');
+
+  if (input.details === undefined || input.details === null || typeof input.details !== 'object') {
+    throw new AppError('VALIDATION_ERROR', 'details is required.', 400);
+  }
+  const raw: Record<string, unknown> = { ...input };
+  const rawDetails: Record<string, unknown> = { ...input.details };
+
+  const toolKey = requiredText(raw.toolKey, 'toolKey', 200);
+  const originValue = String(raw.origin);
+  if (originValue !== 'appModule' && originValue !== 'cm') {
+    throw new AppError('VALIDATION_ERROR', 'origin must be appModule or cm.', 400);
+  }
+  const origin: Tool['origin'] = originValue;
+  const moduleName = requiredText(raw.moduleName, 'moduleName', 100);
+  const subject = requiredText(raw.subject, 'subject', 100);
+  const name = requiredText(raw.name, 'name', 150);
+  const moduleTitle = requiredText(rawDetails.moduleTitle, 'details.moduleTitle', 150);
+  const subjectTitle = requiredText(rawDetails.subjectTitle, 'details.subjectTitle', 150);
+  const description = requiredText(rawDetails.description, 'details.description');
+
+  // toolKeepsWholeCatalogItem: the whole catalog item must be delivered and stored.
+  const catalogRaw: unknown = rawDetails.catalogItem;
+  if (catalogRaw === undefined || catalogRaw === null || catalogRaw === '') {
+    throw new AppError('VALIDATION_ERROR', 'The whole catalog item is required.', 400, { ruleId: 'toolKeepsWholeCatalogItem' });
+  }
+  const catalogItem: string = typeof catalogRaw === 'string' ? catalogRaw : JSON.stringify(catalogRaw);
+
+  let releaseLabel: string | undefined;
+  if (rawDetails.releaseLabel !== undefined && rawDetails.releaseLabel !== null && rawDetails.releaseLabel !== '') {
+    releaseLabel = requiredText(rawDetails.releaseLabel, 'details.releaseLabel', 60);
+  }
+
+  // toolKeyUnique: one tool per stable code.
+  const existing = await repository.list({ toolKey });
+  if (existing.some((tool: Tool) => tool.toolKey === toolKey)) {
+    throw new AppError('CONFLICT', 'A tool with this tool key already exists in the catalog.', 409, { ruleId: 'toolKeyUnique' });
+  }
+
+  const details: Tool['details'] = {
+    moduleTitle,
+    subjectTitle,
+    description,
+    addedAt: ctx.clock.nowIso(),
+    catalogItem,
+  };
+  if (releaseLabel !== undefined) details.releaseLabel = releaseLabel;
+
+  const tool: Tool = {
+    id: ctx.idGenerator.newId(),
+    version: 1,
+    toolKey,
+    origin,
+    moduleName,
+    subject,
+    name,
+    status: 'available',
+    details,
+  };
+
+  const created = await repository.create(tool);
+
+  const outDetails: CreateToolOutput['details'] = {
+    moduleTitle: created.details.moduleTitle,
+    subjectTitle: created.details.subjectTitle,
+    description: created.details.description,
+    addedAt: created.details.addedAt,
+    catalogItem: created.details.catalogItem,
+  };
+  if (created.details.releaseLabel != null) outDetails.releaseLabel = created.details.releaseLabel;
+  if (created.details.removedAt != null) outDetails.removedAt = created.details.removedAt;
+  if (created.details.usedByAgents != null) outDetails.usedByAgents = created.details.usedByAgents;
+
+  return {
+    id: created.id,
+    version: created.version,
+    toolKey: created.toolKey,
+    origin: created.origin,
+    moduleName: created.moduleName,
+    subject: created.subject,
+    name: created.name,
+    status: created.status,
+    details: outDetails,
+  };
+}

@@ -252,17 +252,26 @@ export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: reado
   return hashParts(parts);
 }
 
-/** rulePlan rows the generated code must name: local rules (storage rows excluded) and RULE_UNBOUND ones. */
+function ruleRows(definition: M1Definition): Array<Record<string, unknown>> {
+  return Array.isArray(definition.data.rulePlan) ? definition.data.rulePlan.filter(isRecord) : [];
+}
+
+/** rulePlan rows the generated code must name: local rules. Storage rows (`#uniqueKeys`) and `RULE_UNBOUND` stay out. */
 export function rulesToEnforce(definition: M1Definition): string[] {
-  const rows = Array.isArray(definition.data.rulePlan) ? definition.data.rulePlan.filter(isRecord) : [];
-  const ids = rows
+  const ids = ruleRows(definition)
     .filter(row => {
       const ruleId = String(row.ruleId ?? '');
-      if (!ruleId) return false;
-      const origin = String(row.origin ?? '');
-      if (row.enforcement === 'local') return !origin.endsWith('#uniqueKeys');
-      return row.enforcement === 'pending' && row.gap === 'RULE_UNBOUND';
+      if (!ruleId || row.enforcement !== 'local') return false;
+      return !String(row.origin ?? '').endsWith('#uniqueKeys');
     })
+    .map(row => String(row.ruleId));
+  return [...new Set(ids)].sort();
+}
+
+/** Rules no transition binds (`pending` / `RULE_UNBOUND`): shown in the usecase context, not required by the gate. */
+export function rulesUnbound(definition: M1Definition): string[] {
+  const ids = ruleRows(definition)
+    .filter(row => String(row.ruleId ?? '') && row.enforcement === 'pending' && row.gap === 'RULE_UNBOUND')
     .map(row => String(row.ruleId));
   return [...new Set(ids)].sort();
 }

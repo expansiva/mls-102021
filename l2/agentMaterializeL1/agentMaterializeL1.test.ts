@@ -250,8 +250,9 @@ void test('rule ids are read from the def and searched as literals in the source
     { ruleId: 'b', enforcement: 'pending', gap: 'RULE_UNBOUND' },
     { ruleId: 'c', enforcement: 'pending', gap: 'APPLICABILITY_UNDECLARED' },
   ] } } as never;
-  assert.deepEqual(rulesToEnforce(definition), ['a', 'b']);
-  assert.deepEqual(rulesNotEmitted(definition, 'throw x({ ruleId: "a" })'), ['b']);
+  assert.deepEqual(rulesToEnforce(definition), ['a'], 'a RULE_UNBOUND row is not required');
+  assert.deepEqual(rulesNotEmitted(definition, 'throw x({ ruleId: "a" })'), []);
+  assert.deepEqual(rulesNotEmitted(definition, 'throw x({ ruleId: "b" })'), ['a']);
   assert.deepEqual(rulesNotEmitted(definition, "throw x({ ruleId: 'a' }); throw y({ ruleId: 'b' })"), [], 'single quotes, as the prompt asks, count');
   assert.deepEqual(ruleTexts('"rules": { "a": "Texto \\"A\\"." }', ['a', 'z']), [{ ruleId: 'a', text: 'Texto "A".' }, { ruleId: 'z', text: '(text not found in rules.defs.ts)' }]);
   assert.match(exportSignatures('export interface X {\n  a: string;\n}\nconst y = 1;\nexport function f(a: string): number {\n  return 1;\n}'), /export interface X \{\n  a: string;\n\}\nexport function f\(a: string\): number \{ … \}/u);
@@ -970,7 +971,7 @@ test('a usecase def with only its intent gets its function, port, selector, payl
       { name: 'status', type: 'enum' }, { name: 'details', type: 'object' }, { name: 'details.motivoDevolucao', type: 'text' }, { name: 'details.atrasada', type: 'boolean', derived: true }] }),
     def(`${P}/layer_2_application/ports/tarefaRepository.defs.ts`, 'repositoryPort', { entityId: 'Tarefa', interfaceName: 'TarefaRepository', methods: ['get'] }),
     def(`${P}/layer_1_external/adapters/persistence/tarefa.defs.ts`, 'table', { tableId: 'tarefa', entityId: 'Tarefa', physicalName: 't', primaryKey: ['id'], uniqueKeys: [['chaveCriacao']], indexes: [] }),
-    ['_102047_/l4/tarefas/ontology/Tarefa.defs.ts', 'export const tarefa = ' + JSON.stringify({ lifecycle: { transitions: [{ transitionId: 'devolver', from: ['emRevisao'], to: 'devolvida', payload: ['details.motivoDevolucao'] }] } }) + ' as const;'],
+    ['_102047_/l4/tarefas/ontology/Tarefa.defs.ts', 'export const tarefa = ' + JSON.stringify({ lifecycle: { transitions: [{ transitionId: 'devolver', from: ['emRevisao'], to: 'devolvida', payload: ['details.motivoDevolucao'], ruleRefs: ['somenteCriadorRevisa'] }] } }) + ' as const;'],
   ]);
   const read = async (ref: string) => files.get(ref) ?? null;
   const deps = [`${P}/layer_2_application/ports/tarefaRepository.defs.ts`, `${P}/layer_3_domain/entities/tarefa.defs.ts`, '_102047_/l4/tarefas/ontology/Tarefa.defs.ts'];
@@ -978,14 +979,21 @@ test('a usecase def with only its intent gets its function, port, selector, payl
   const parseIntent = (source: string) => JSON.parse(/export const definition = (\{[\s\S]*\}) as const;/u.exec(source)![1]);
   const names = (rows: unknown) => (rows as Array<{ name: string }>).map(row => row.name);
 
-  const devolver = (await usecasePlan(intent('devolver', 'transition', { transitionRef: 'devolver', rulesApplied: ['somenteCriadorRevisa'] }), read)).definition.data;
+  const devolver = (await usecasePlan(intent('devolver', 'transition', { transitionRef: 'devolver', rulesApplied: ['somenteCriadorRevisa', 'regraSolta'] }), read)).definition.data;
   const fn = (devolver.functions as Array<{ functionName: string; input: unknown; output: unknown }>)[0];
   assert.equal(fn.functionName, 'devolver');
   assert.deepEqual(names(fn.input), ['id', 'version', 'details.motivoDevolucao'], 'selector, concurrency and the l4 payload');
   assert.deepEqual(devolver.ports, ['TarefaRepository']);
   assert.deepEqual(devolver.portCalls, ['transition']);
   assert.deepEqual((devolver.lifecycle as { payload: string[] }).payload, ['details.motivoDevolucao']);
-  assert.deepEqual(rulesToEnforce({ data: devolver } as never), ['somenteCriadorRevisa'], 'rulesApplied is the list the code must enforce');
+  assert.deepEqual(rulesToEnforce({ data: devolver } as never), ['somenteCriadorRevisa'], 'a rule the transition cites is enforced');
+  const solta = (devolver.rulePlan as Array<{ ruleId: string; enforcement: string; gap: string }>).find(row => row.ruleId === 'regraSolta');
+  assert.deepEqual(solta && { enforcement: solta.enforcement, gap: solta.gap }, { enforcement: 'pending', gap: 'RULE_UNBOUND' }, 'a rule no transition cites stays unbound');
+  const kept = (await usecasePlan(intent('devolver', 'transition', { transitionRef: 'devolver', rulesApplied: ['regraSolta'], rulePlan: [{ ruleId: 'regraSolta', origin: 'l4/tarefas/rules.defs.ts#regraSolta', consumer: 'operation:transition', enforcement: 'pending', gap: 'RULE_UNBOUND' }] }), read)).definition.data;
+  const keptRow = (kept.rulePlan as Array<{ ruleId: string; enforcement: string; gap: string; consumer: string }>).find(row => row.ruleId === 'regraSolta');
+  assert.equal(keptRow?.enforcement, 'pending');
+  assert.equal(keptRow?.gap, 'RULE_UNBOUND');
+  assert.equal(keptRow?.consumer, 'operation:transition');
 
   const create = (await usecasePlan(intent('createTarefa', 'create'), read)).definition.data;
   assert.deepEqual(names((create.functions as Array<{ input: unknown }>)[0].input), ['titulo', 'status', 'details', 'details.motivoDevolucao'], 'no derived field is an input');
