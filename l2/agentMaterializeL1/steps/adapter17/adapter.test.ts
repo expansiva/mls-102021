@@ -24,6 +24,7 @@ const TYPES = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/conne
 const RESULTS = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/connections/types.ts'), 'utf8');
 const DECLARATION = readFileSync(path.join(HERE, '../external15/fixtures/repoHostDeclaration.recorded.txt'), 'utf8');
 const ADAPTER = readFileSync(path.join(HERE, 'fixtures/repoHostAdapter.recorded.txt'), 'utf8');
+const GITHUB_HEAD = readFileSync(path.join(HERE, 'fixtures/repoHostGithubAdapter.head.txt'), 'utf8');
 
 const system = declaredSystemsOf(parseD1Source(L4, 'defs'))[0];
 const outputRef = `_${PROJECT}_/l1/${MODULE}/layer_1_external/connections/${system.id}Adapter.ts`;
@@ -153,4 +154,14 @@ void test('d1_209 s2: an error of the door is returned as it came, and an answer
   assert.deepEqual([notJson.ok, notJson.code], [false, 'invalid']);
   const wrongShape = await adapter.listChanges({}, contextFor({ 'https://git.example.test/changes': { status: 200, headers: {}, body: '{"items":[]}' } }));
   assert.deepEqual([wrongShape.ok, wrongShape.code], [false, 'invalid']);
+});
+
+void test('d1_241 s1: an empty setting answered with invalid is refused, and disabled with missing passes', async () => {
+  const problems = async (code: string) => (await adapterAnswerProblems(ctx, unit(), code)).join('\n');
+  const inject = (line: string) => ADAPTER.replace('    const typed = input as', `    ${line}\n    const typed = input as`);
+  const emptyInvalid = "const address = ctx.setting('repositoryAddress');\n    if (!address || !address.trim()) return { ok: false, code: 'invalid', message: 'repositoryAddress is not configured' };";
+  const emptyDisabled = "const address = ctx.setting('repositoryAddress');\n    if (!address || !address.trim()) return { ok: false, code: 'disabled', message: 'repositoryAddress is not configured', missing: ['repositoryAddress'] };";
+  assert.match(await problems(inject(emptyInvalid)), /Setting repositoryAddress is empty: return \{ ok: false, code: 'disabled', message: 'repositoryAddress is not configured', missing: \['repositoryAddress'\] \}/u);
+  assert.deepEqual(await adapterAnswerProblems(ctx, unit(), inject(emptyDisabled)), [], 'disabled with missing is the answer for an empty setting');
+  assert.match(await problems(GITHUB_HEAD), /Setting repositorio is empty/u);
 });

@@ -124,6 +124,40 @@ test('updateAgent requires expectVersion and readAgent stays unchanged', async (
   assert.equal((fake.calls[1]?.opts as { expectVersion?: unknown } | undefined)?.expectVersion, undefined);
 });
 
+const REPO_HOST_DECLARATION = readFileSync(path.join(ROOT, 'mls-102021/l2/agentMaterializeL1/steps/external15/fixtures/repoHostDeclaration.recorded.txt'), 'utf8');
+const REPO_HOST_L4 = readFileSync(path.join(ROOT, 'mls-102021/l2/helpers/connections/fixtures/repoInsideModule.integration.recorded.txt'), 'utf8');
+const REPO_HOST_FILES: Record<string, string> = {
+  '_102047_/l4/repoHost/integration.defs.ts': REPO_HOST_L4,
+  '_102047_/l1/repoHost/layer_1_external/connections/repoHost.ts': REPO_HOST_DECLARATION,
+};
+
+test('d1_241: repoHost outbound puts missing on AppError when the call is disabled', async () => {
+  const output = '_102047_/l1/repoHost/layer_1_external/adapters/integration/outbound.ts';
+  const emitted = await emitPersistence('persistence.integrationOutbound', {
+    ...definition([{ connectionId: 'repoHost', operationId: 'listChanges', consumer: 'listChanges' }]),
+    moduleName: 'repoHost',
+  }, output, async ref => REPO_HOST_FILES[ref.replace(/^\//u, '')] ?? null);
+  assert.equal('code' in emitted, false, JSON.stringify(emitted));
+  if ('code' in emitted) return;
+  assert.match(emitted.source, /result\.code === 'disabled' && result\.missing \? \{ missing: result\.missing \} : undefined/);
+  const disabled = await loadGateway(emitted.source, "{ ok: false, code: 'disabled', message: 'repositorio is not configured', missing: ['repositorio'] }");
+  const ctx = { sessionContext: { person: { mdmId: 'person-1' } } } as RequestContext;
+  await assert.rejects(disabled.createRepoHostGateway(ctx).listChanges({}, ctx), (error: unknown) => {
+    assert.ok(error instanceof AppError);
+    assert.equal(error.code, 'disabled');
+    assert.equal(error.statusCode, 409);
+    assert.deepEqual(error.details, { missing: ['repositorio'] });
+    return true;
+  });
+  const bare = await loadGateway(emitted.source, "{ ok: false, code: 'disabled', message: 'repositorio is not configured' }");
+  await assert.rejects(bare.createRepoHostGateway(ctx).listChanges({}, ctx), (error: unknown) => {
+    assert.ok(error instanceof AppError);
+    assert.equal(error.details, undefined);
+    return true;
+  });
+  // The proof that the emitted file compiles in the app tree wrote into the live bench; it was run once and not kept (d1_241 Andamento).
+});
+
 test('each connector code keeps the status of the table', async () => {
   const emitted = await emitPersistence('persistence.integrationOutbound', definition([
     { connectionId: 'cm', operationId: 'readAgent', consumer: 'read' },
@@ -222,6 +256,18 @@ function checkTypes(source: string): { clean: string; injected: string } {
   const injected = tsc(dir);
   rmSync(dir, { recursive: true, force: true });
   return { clean, injected };
+}
+
+async function loadGateway(source: string, answer: string): Promise<{ createRepoHostGateway: (ctx: RequestContext) => { listChanges: (input: { limit?: number }, ctx: RequestContext) => Promise<{ changes: unknown[] }> } }> {
+  const dir = mkdtempSync(path.join('/tmp', 'outbound-missing-'));
+  const connector = '/_102034_/l1/server/layer_1_external/connections/callConnection.js';
+  writeFileSync(path.join(dir, 'outboundFake.ts'), `export async function callConnection() { return ${answer}; }\n`);
+  writeFileSync(path.join(dir, 'outbound.ts'), source.replace(`from '${connector}'`, `from './outboundFake.js'`));
+  try {
+    return await import(pathToFileURL(path.join(dir, 'outbound.ts')).href);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function tsc(dir: string): string {

@@ -1,0 +1,175 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/connections/githubAdapter.ts" enhancement="_blank"/>
+import type { ExternalSystemAdapter, ExternalAdapterContext } from '/_102034_/l1/server/layer_1_external/connections/external/types.js';
+import type {
+  ListarConteudoInput,
+  ListarConteudoItem,
+  ListarConteudoOutput,
+  LerArquivoInput,
+  LerArquivoOutput,
+  GravarArquivoInput,
+  GravarArquivoOutput,
+} from '/_102047_/l1/repoHost/layer_1_external/connections/github.js';
+
+type Fail = { ok: false; code: 'invalid'; message: string };
+
+function fail(message: string): Fail {
+  return { ok: false, code: 'invalid', message };
+}
+
+function baseHeaders(): Record<string, string> {
+  return {
+    Authorization: 'Bearer {{secret:chaveAcesso}}',
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'repoHost-module',
+  };
+}
+
+function encodePath(path: string): string {
+  return path
+    .split('/')
+    .filter((s) => s.length > 0)
+    .map((s) => encodeURIComponent(s))
+    .join('/');
+}
+
+function contentsPath(ctx: ExternalAdapterContext, caminho: string): string | undefined {
+  const repo = ctx.setting('repositorio');
+  if (!repo || !repo.trim()) return undefined;
+  const repoPath = encodePath(repo.trim());
+  const filePath = encodePath(caminho);
+  return '/repos/' + repoPath + '/contents' + (filePath ? '/' + filePath : '');
+}
+
+function parseJson(body: string): { ok: true; value: unknown } | { ok: false } {
+  try {
+    return { ok: true, value: JSON.parse(body) };
+  } catch (e) {
+    return { ok: false };
+  }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function toBase64Utf8(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+async function listarConteudo(input: ListarConteudoInput, ctx: ExternalAdapterContext) {
+  const i = (input ?? {}) as ListarConteudoInput;
+  const path = contentsPath(ctx, typeof i.caminho === 'string' ? i.caminho : '');
+  if (!path) return fail('Configuração "repositorio" não definida.');
+  const query: Record<string, string> = {};
+  if (i.ramo) query.ref = i.ramo;
+  const res = await ctx.send('listarConteudo', { method: 'GET', path, query, headers: baseHeaders() });
+  if (!res.ok) return res;
+  const parsed = parseJson(res.output.body);
+  if (!parsed.ok) return fail('Resposta do GitHub não é um JSON válido.');
+  if (!Array.isArray(parsed.value)) return fail('O caminho informado não é uma pasta.');
+  const itens: ListarConteudoItem[] = [];
+  for (const raw of parsed.value) {
+    if (!isRecord(raw)) return fail('Item da lista com formato inesperado.');
+    const nome = raw.name;
+    const caminho = raw.path;
+    const type = raw.type;
+    if (typeof nome !== 'string' || typeof caminho !== 'string' || typeof type !== 'string') {
+      return fail('Item da lista com campos ausentes.');
+    }
+    if (type !== 'file' && type !== 'dir') continue;
+    const item: ListarConteudoItem = {
+      nome,
+      caminho,
+      tipo: type === 'dir' ? 'pasta' : 'arquivo',
+    };
+    if (type === 'file' && typeof raw.size === 'number') item.tamanho = raw.size;
+    if (typeof raw.sha === 'string') item.identificador = raw.sha;
+    itens.push(item);
+  }
+  const output: ListarConteudoOutput = { itens };
+  return { ok: true as const, output };
+}
+
+async function lerArquivo(input: LerArquivoInput, ctx: ExternalAdapterContext) {
+  const i = (input ?? {}) as LerArquivoInput;
+  if (typeof i.caminho !== 'string' || !i.caminho.replace(/\//g, '').trim()) return fail('Caminho do arquivo não informado.');
+  const path = contentsPath(ctx, i.caminho);
+  if (!path) return fail('Configuração "repositorio" não definida.');
+  const query: Record<string, string> = {};
+  if (i.ramo) query.ref = i.ramo;
+  const res = await ctx.send('lerArquivo', { method: 'GET', path, query, headers: baseHeaders() });
+  if (!res.ok) return res;
+  const parsed = parseJson(res.output.body);
+  if (!parsed.ok) return fail('Resposta do GitHub não é um JSON válido.');
+  const v = parsed.value;
+  if (!isRecord(v) || v.type !== 'file') return fail('O caminho informado não é um arquivo.');
+  if (
+    typeof v.path !== 'string' ||
+    typeof v.name !== 'string' ||
+    typeof v.sha !== 'string' ||
+    typeof v.size !== 'number' ||
+    typeof v.content !== 'string'
+  ) {
+    return fail('Resposta do GitHub com campos ausentes para o arquivo.');
+  }
+  if (v.encoding !== 'base64') return fail('Conteúdo do arquivo não veio em base64 (arquivo possivelmente grande demais).');
+  const output: LerArquivoOutput = {
+    caminho: v.path,
+    nome: v.name,
+    conteudo: v.content.replace(/\s+/g, ''),
+    codificacao: 'base64',
+    tamanho: v.size,
+    identificador: v.sha,
+  };
+  return { ok: true as const, output };
+}
+
+async function gravarArquivo(input: GravarArquivoInput, ctx: ExternalAdapterContext) {
+  const i = (input ?? {}) as GravarArquivoInput;
+  if (typeof i.caminho !== 'string' || !i.caminho.replace(/\//g, '').trim()) return fail('Caminho do arquivo não informado.');
+  if (typeof i.conteudo !== 'string') return fail('Conteúdo do arquivo não informado.');
+  if (typeof i.mensagemRegistro !== 'string' || !i.mensagemRegistro.trim()) return fail('Mensagem de registro não informada.');
+  const path = contentsPath(ctx, i.caminho);
+  if (!path) return fail('Configuração "repositorio" não definida.');
+  const payload: Record<string, string> = {
+    message: i.mensagemRegistro,
+    content: toBase64Utf8(i.conteudo),
+  };
+  if (i.ramo) payload.branch = i.ramo;
+  if (i.identificadorAnterior) payload.sha = i.identificadorAnterior;
+  const headers = baseHeaders();
+  headers['Content-Type'] = 'application/json';
+  const res = await ctx.send('gravarArquivo', {
+    method: 'PUT',
+    path,
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return res;
+  const parsed = parseJson(res.output.body);
+  if (!parsed.ok) return fail('Resposta do GitHub não é um JSON válido.');
+  const v = parsed.value;
+  if (!isRecord(v) || !isRecord(v.content) || !isRecord(v.commit)) return fail('Resposta do GitHub com formato inesperado.');
+  const sha = v.content.sha;
+  const cpath = v.content.path;
+  const commitSha = v.commit.sha;
+  if (typeof sha !== 'string' || typeof commitSha !== 'string') return fail('Resposta do GitHub sem identificador ou registro.');
+  const output: GravarArquivoOutput = {
+    caminho: typeof cpath === 'string' ? cpath : i.caminho,
+    identificador: sha,
+    registro: commitSha,
+  };
+  return { ok: true as const, output };
+}
+
+const adapter: ExternalSystemAdapter = {
+  listarConteudo: (input, ctx) => listarConteudo(input as ListarConteudoInput, ctx),
+  lerArquivo: (input, ctx) => lerArquivo(input as LerArquivoInput, ctx),
+  gravarArquivo: (input, ctx) => gravarArquivo(input as GravarArquivoInput, ctx),
+};
+
+export default adapter;
