@@ -552,3 +552,29 @@ void test('d1_225: a line with writes keeps its usecase and still needs an effec
   const snapshot = await assembleD1Input(PROJECT, 'controleEstoque');
   assert.equal(snapshot.problems.some(problem => problem.code === 'CONSUMES_EFFECT_UNKNOWN'), true);
 });
+
+void test('d1_231: a connection with a call line before its serve line still gives its catalog to the serve route (the first line did not decide the side)', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'controleEstoque-39a5166', PROJECT);
+  const catalog = readFileSync(path.join(HERE, '../../../../../mls-102034/l2/shared/contracts/connections/cm.ts'), 'utf8');
+  seed(host, { project: 102034, level: 2, folder: 'shared/contracts/connections', shortName: 'cm', extension: '.ts' }, catalog);
+  const info = fileInfoFromDisplay(PROJECT, 'l4/controleEstoque/integration.defs.ts')!;
+  const original = host.files[fileKey(info)].content;
+  const match = /(export const \w+ = )(\{[\s\S]*\})( as const[^;]*;)/u.exec(original)!;
+  const body = JSON.parse(match[2]) as Record<string, unknown> & { connections?: unknown[] };
+  const callLine = { connectionId: 'cm', operationId: 'listAgents', direction: 'call', usedBy: ['registerCustomer.pick'], entityRefs: ['Produto'], effect: 'list', description: 'Lists.' };
+  const serveLine = { connectionId: 'cm', operationId: 'record', direction: 'serve', usedBy: ['Records one run.'], entityRefs: ['Produto'], effect: 'create', description: 'Records.' };
+  const serveRoute = async (connections: unknown[]) => {
+    body.connections = connections;
+    seed(host, info, `${original.slice(0, match.index)}${match[1]}${JSON.stringify(body, null, 2)}${match[3]}${original.slice(match.index + match[0].length)}`);
+    const snapshot = await assembleD1Input(PROJECT, 'controleEstoque');
+    return { snapshot, route: snapshot.selection.requests.find(item => item.serves === 'cm.record') };
+  };
+  const serveFirst = await serveRoute([serveLine, callLine]);
+  const callFirst = await serveRoute([callLine, serveLine]);
+  assert.equal(serveFirst.snapshot.problems.some(item => item.code === 'CONNECTION_CATALOG_MISSING'), false);
+  assert.equal(callFirst.snapshot.problems.some(item => item.code === 'CONNECTION_CATALOG_MISSING'), false, 'the order of the lines does not change what is read');
+  assert.ok(callFirst.route);
+  assert.deepEqual(callFirst.route, serveFirst.route);
+  assert.equal(callFirst.snapshot.sources.some(item => item.path === '/_102034_/l2/shared/contracts/connections/cm.ts' && item.state === 'present'), true);
+});

@@ -22,7 +22,7 @@ import { resolverAnswers } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver
 import { fieldsByEntity, readContractV2 as readContractV2Source, requestServiceProblems, serviceRowsFor, serviceSourceOf } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
 import { CHAIN_STEP_IDS } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
 import { buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
-import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { defPathsToRead, parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { capabilityNames } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { mdmForOperation } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 
@@ -745,4 +745,21 @@ void test('a ddm panel reads through its planned list; a tdm and an ownerless ag
   const solto = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.solto');
   assert.equal(solto?.outputs.some(item => item.key === 'solto'), false);
   assert.equal(solto?.unresolved?.some(item => item.kind === 'computedRule' && item.path === 'output.solto.fantasma'), true);
+});
+
+void test('d1_231: the defs input20 reads for their hash include the file of a removed item, which the plan does not list', () => {
+  const spare: PoolRow = { usecaseId: 'spareNote', entity: 'DeskNote', operation: 'custom', status: 'toCreate', existing: '' };
+  const priorArtifacts = deskOf([listNote, spare], null);
+  priorArtifacts.contractTexts = {};
+  const prior = deskBuild(priorArtifacts);
+  const planned = prior.files.find(file => file.identity === 'spareNote' || file.ownerRefs.includes('usecase:spareNote'));
+  assert.ok(planned);
+  const artifacts = deskOf([listNote, spare], [qryRoute('ledgerDesk.board.load', 'notes', 'DeskNote', true)]);
+  artifacts.presentDefs = [{ path: planned.defPath, sha256: 'sha256:spare-note' }];
+  const draft = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, artifacts, { ...prior, files: prior.files.map(file => file === planned ? { ...file, contentHash: 'sha256:spare-note' } : file) }, resolverAnswers(artifacts));
+  assert.equal(draft.files.some(file => file.defPath === planned.defPath), false, 'a removed usecase is not in the plan');
+  const paths = defPathsToRead(draft, prior);
+  assert.equal(paths.includes(planned.defPath), true);
+  assert.equal(new Set(paths).size, paths.length);
+  assert.deepEqual(defPathsToRead(draft, null), draft.files.map(file => file.defPath), 'no previous snapshot: only the planned ones');
 });

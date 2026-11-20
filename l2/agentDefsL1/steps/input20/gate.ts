@@ -860,6 +860,11 @@ function collectRemoved(
   return out;
 }
 
+/** The file of the previous snapshot a removed item was written to. */
+export function previousFileOfRemoved(previous: D1InputSnapshot | null, item: Pick<D1RemovedItem, 'kind' | 'id'>): D1InputSnapshot['files'][number] | undefined {
+  return previous?.files.find(file => file.identity === item.id || file.ownerRefs.includes(`${item.kind}:${item.id}`) || file.ownerRefs.includes(`endpoint:${item.id}`));
+}
+
 function noteRemovals(
   problems: D1InputProblem[],
   removed: D1RemovedItem[],
@@ -868,7 +873,7 @@ function noteRemovals(
   receipts: WriterIndex,
 ): void {
   for (const item of removed) {
-    const receipt = previous?.files.find(file => file.identity === item.id || file.ownerRefs.includes(`${item.kind}:${item.id}`) || file.ownerRefs.includes(`endpoint:${item.id}`));
+    const receipt = previousFileOfRemoved(previous, item);
     const hash = receipt ? present.get(receipt.defPath) : '';
     const view = receipt ? receiptView(previous, receipt.defPath, receipts) : null;
     if (receipt && hash && view && view.agrees && view.hash === hash) {

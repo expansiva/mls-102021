@@ -36,7 +36,7 @@ import {
   type D1RequestGapAnswer,
   type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { buildD1InputSnapshot, contractPageIds } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
+import { buildD1InputSnapshot, contractPageIds, previousFileOfRemoved } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import { readContractAst, type D1ContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
 interface Loaded {
@@ -81,7 +81,7 @@ export async function assembleD1Input(
   const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope, [], []);
   const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous, answers));
   const writerReceipts = await readWriterReceipts(project, moduleName);
-  const present = await readPresent(project, draft.files.map(file => file.defPath), writerReceipts);
+  const present = await readPresent(project, defPathsToRead(draft, previous), writerReceipts);
   const marker = await readRederive(project, moduleName);
   const sealed = seal(buildD1InputSnapshot(
     { project, moduleName },
@@ -91,6 +91,15 @@ export async function assembleD1Input(
   ));
   sealed.snapshotHash = await sha256Text(stableStringify(withoutHash(sealed)));
   return sealed;
+}
+
+/**
+ * The defs whose hash input20 reads: the planned ones, and (d1_231) the ones an item the plan removes was written to. A removed item has no
+ * planned file, so without its path the removal could never be inventoried and every plan that drops a usecase stopped on REMOVE_WITHOUT_RECEIPT.
+ */
+export function defPathsToRead(draft: Pick<D1InputSnapshot, 'files' | 'removed'>, previous: D1InputSnapshot | null): string[] {
+  const removedPaths = draft.removed.flatMap(item => previousFileOfRemoved(previous, item)?.defPath ?? []);
+  return [...new Set([...draft.files.map(file => file.defPath), ...removedPaths])];
 }
 
 /**
@@ -324,10 +333,16 @@ async function loadServeCatalogs(project: number, moduleName: string, integratio
   };
   const serveIds: string[] = [];
   const otherIds: string[] = [];
-  for (const row of rows(rec(integration).connections)) {
+  // d1_231: a connection with any serve line is a serve connection, whichever line comes first (a platform connection may also be called).
+  const connectionRows = rows(rec(integration).connections);
+  for (const row of connectionRows) {
+    const connectionId = text(row.connectionId);
+    if (isSafeToken(connectionId) && text(row.direction) === 'serve' && !serveIds.includes(connectionId)) serveIds.push(connectionId);
+  }
+  for (const row of connectionRows) {
     const connectionId = text(row.connectionId);
     if (!isSafeToken(connectionId) || serveIds.includes(connectionId) || otherIds.includes(connectionId)) continue;
-    (text(row.direction) === 'serve' ? serveIds : otherIds).push(connectionId);
+    otherIds.push(connectionId);
   }
   // d1_220: the connection an `external` entity names is resolved like the lines of `connections[]`, and its sibling declaration is sealed too.
   for (const connectionId of entityConnectionIds) if (!serveIds.includes(connectionId) && !otherIds.includes(connectionId)) otherIds.push(connectionId);
