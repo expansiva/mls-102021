@@ -64,7 +64,8 @@ void test('d1_217 s2: the prompt of a route that receives an event shows the inb
   assert.match(loaded.human, /The receipt of goods was confirmed\./u);
   assert.match(loaded.human, /The entity Receipt the publisher writes/u);
   assert.match(loaded.human, /"receiptId"|receiptId/u);
-  assert.match(loaded.human, /checks every field of the message it uses \(present and of the right type\) and throws a distinct error naming the field when one is missing or wrong, never filling a default value/u);
+  assert.match(loaded.human, /checks every field of `input\.payload` it uses \(present and of the right type\) and throws a distinct error naming the field when one is missing or wrong, never filling a default value/u);
+  assert.match(loaded.human, /the ENVELOPE the runtime passes to the route: `\{ eventId: string; ref: \{ module: string; eventId: string \}; publishedAt: string; payload: \{ … \}/u);
   assert.match(loaded.human, /stock\.purchasing\.goodsReceived → createStockMove/u);
   assert.deepEqual(loaded.serveUses, [{ route: ROUTE, uses: ['createStockMove'] }]);
   assert.deepEqual(loaded.routes.map(route => [route.route, route.kind]), [[ROUTE, 'cmd']]);
@@ -122,7 +123,8 @@ void test('d1_217 s2: the controller of the route reads the message type the req
   if ('code' in emitted) return;
   assert.match(emitted.source, /import type \{ PurchasingGoodsReceivedMessage \} from '\/_102099_\/l1\/stock\/layer_2_application\/requests\/purchasing\.js';/u);
   assert.match(emitted.source, /Promise<BffResponse<\{ received: true \}>>/u);
-  assert.match(emitted.source, /\['receiptId', 'lines', 'lines\.productId', 'lines\.quantity'\]|\['receiptId'/u, 'the required fields come from the message type');
+  assert.match(emitted.source, /'payload\.receiptId', 'payload\.lines', 'payload\.lines\.productId', 'payload\.lines\.quantity'/u, 'the required fields come from the message type, under the payload');
+  assert.match(emitted.source, /validateInput\(scoped, \[[^\]]*\], \[[^\]]*\], \[[^\]]*\], \{[^}]*\}, \['payload'\]\)/u, 'a key the type does not list is accepted under the payload only');
   assert.match(emitted.source, /module_purchasing/u);
   // A request service that does not export its message type is a distinct problem, and so is an alias that is not an object.
   const missing = await withDeps(RECORDED.replace('export interface PurchasingGoodsReceivedMessage', 'interface Other'));

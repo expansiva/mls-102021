@@ -652,7 +652,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
 }
 
 /** The rows of a request service that receive a module event (d1_217): `consumes: '<publisher>.<eventId>'`. */
-function consumeMarks(data: Record<string, unknown>): { from: string; eventId: string; mark: string; row: Record<string, unknown> }[] {
+export function consumeMarks(data: Record<string, unknown>): { from: string; eventId: string; mark: string; row: Record<string, unknown> }[] {
   const requests = Array.isArray(data.requests) ? data.requests.filter(isRecord) : [];
   const out: { from: string; eventId: string; mark: string; row: Record<string, unknown> }[] = [];
   for (const row of requests) {
@@ -703,8 +703,8 @@ async function loadConsumeRequestContext(ctx: M12Context, unit: M12Unit, repair?
   parts.push(section('Task', [
     `Write the request service of the routes of module ${moduleName} that receive events of module ${pageId}, file \`${unit.outputRef}\`. There is no page contract.`,
     `It exports \`requests\`, typed exactly \`${contractsInterface}\`: one async function per route, keyed by the route string.`,
-    `Before \`requests\`, export the message type of each route: ${routes.map(item => `\`${item.messageType}\``).join(', ')}, an interface with the fields of the entity the publisher wrote that this route uses (the entity is below).`,
-    'Each function first checks every field of the message it uses (present and of the right type) and throws a distinct error naming the field when one is missing or wrong, never filling a default value; then, inside `ctx.data.moduleData.runInTransaction`, it calls the usecase of its line with what the message carries and returns `{ received: true }`. Do not call fetch or any HTTP client.',
+    `Before \`requests\`, export the message type of each route: ${routes.map(item => `\`${item.messageType}\``).join(', ')}, the ENVELOPE the runtime passes to the route: \`{ eventId: string; ref: { module: string; eventId: string }; publishedAt: string; payload: { … }; actor?: { kind: 'person' | 'agent'; id: string }; requestId?: string }\`. \`payload\` is the record the publisher wrote (the entity is below): declare in it only the fields this route uses; the record carries more and that is accepted. Never put the fields of the entity at the top level of the message: the runtime does not put them there.`,
+    'Each function first checks every field of `input.payload` it uses (present and of the right type) and throws a distinct error naming the field when one is missing or wrong, never filling a default value; then, inside `ctx.data.moduleData.runInTransaction`, it calls the usecase of its line with what `input.payload` carries and returns `{ received: true }`. Do not call fetch or any HTTP client.',
   ].join('\n')));
   for (const item of routes) {
     const published = await publisherEventSource(ctx, item.item.from, item.item.eventId);
@@ -963,6 +963,24 @@ export function serveUsecaseProblems(code: string, routes: ReadonlyArray<{ route
   return problems;
 }
 
+/**
+ * d1_225: the message type of a route that receives an event is the envelope the runtime passes (`eventId`, `ref`, `publishedAt`, `payload`), and a
+ * route that calls a usecase reads what it passes from `input.payload`. The controller refuses a key outside the type, so a message typed with the
+ * fields of the entity would be refused by its own controller with the first key of the envelope.
+ */
+export function consumeMessageProblems(code: string, names: readonly string[], callsUsecase: boolean): string[] {
+  const problems: string[] = [];
+  for (const name of names) {
+    const declared = new RegExp(String.raw`(?:interface\s+${name}\s*(?:extends[^{]*)?|type\s+${name}\s*=)\s*\{([\s\S]*?)\n\}`, 'u').exec(code)?.[1] ?? '';
+    const missing = ['eventId', 'ref', 'publishedAt', 'payload'].filter(member => !new RegExp(String.raw`(?:^|[\s{;,])${member}\??\s*:`, 'u').test(declared));
+    if (declared && missing.length) problems.push(`MESSAGE_NOT_ENVELOPE: \`${name}\` is the message of a route that receives an event, and the runtime passes the envelope: it lacks ${missing.join(', ')}. Declare \`{ eventId: string; ref: { module: string; eventId: string }; publishedAt: string; payload: { …the fields this route uses… }; actor?: …; requestId?: string }\`, and read the record from \`input.payload\`.`);
+  }
+  if (callsUsecase && names.length && !/\binput\.payload\b|\{\s*payload\b[^}]*\}\s*=\s*input\b|\bpayload\b\s*=\s*input\b/u.test(code)) {
+    problems.push('MESSAGE_PAYLOAD_UNREAD: a route that receives an event reads the record from `input.payload` (the envelope has the keys of the event, not the fields of the entity).');
+  }
+  return problems;
+}
+
 /** Problems of a model-written request service. Empty = the gate passes. */
 export function requestGate(code: string, input: {
   /** Declarations of sibling systems this module's connections name (d1_208). */
@@ -981,6 +999,8 @@ export function requestGate(code: string, input: {
   serveUses?: ReadonlyArray<{ route: string; uses: readonly string[] }>;
   /** The input fields of the usecases of the module (d1_224): a call may not fill a required one with an empty literal. */
   usecaseInputs?: ReadonlyMap<string, readonly M12InputField[]>;
+  /** Message types of the routes that receive an event (d1_225): each is the envelope the runtime passes, with `payload`. */
+  consumeMessages?: readonly string[];
 }): string[] {
   const problems: string[] = [];
   if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
@@ -1001,13 +1021,16 @@ export function requestGate(code: string, input: {
   }
   problems.push(...emptyCastProblems(code));
   problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
+  problems.push(...consumeMessageProblems(code, input.consumeMessages ?? [], (input.serveUses ?? []).length > 0));
   problems.push(...untypedInputProblems(code));
   if (/\bas\s+Parameters\s*</u.test(code)) {
     problems.push('No `as Parameters<typeof <usecase>>[0]`: it forces the contract input onto the usecase input and hides a field the usecase reads that the contract does not send (createProfissional read `input.details.person` and threw). Build the usecase input field by field from the contract input.');
   }
   for (const route of input.routes) {
     if (!code.includes(`"${route.route}"`) && !code.includes(`'${route.route}'`)) problems.push(`Route ${route.route} of the contract has no function in requests.`);
-    if (route.kind === 'cmd' && !code.includes('runInTransaction')) problems.push(`Command ${route.route} must run inside ctx.data.moduleData.runInTransaction (the contract command is atomic).`);
+    // d1_225: a route that receives an event and calls no usecase writes nothing: the delivery already runs in the transaction of the runtime, and there is nothing to make atomic.
+    const onlyConfirms = (input.consumeMessages ?? []).length > 0 && !(input.serveUses ?? []).some(item => item.route === route.route);
+    if (route.kind === 'cmd' && !onlyConfirms && !code.includes('runInTransaction')) problems.push(`Command ${route.route} must run inside ctx.data.moduleData.runInTransaction (the contract command is atomic).`);
     for (const ruleId of route.rules) {
       if (!input.waived.has(ruleId) && !code.includes(ruleId)) problems.push(`Rule ${ruleId} of ${route.route} is not applied: name it where it is applied (a ruleId of an AppError, or a comment on the calculation).`);
     }
@@ -1068,7 +1091,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const readUsecase = (name: string): Promise<string | null> => ctx.read(`_${ctx.run.project}_/l1/${ctx.run.module}/layer_2_application/usecases/${name}.ts`);
   return [
     ...waived.problems,
-    ...requestGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, usecaseInputs: await usecaseInputsOf(ctx) }),
+    ...requestGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, usecaseInputs: await usecaseInputsOf(ctx), consumeMessages: consumeMarks(unit.definition.data).map(item => consumeMessageTypeName(item.mark)) }),
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared

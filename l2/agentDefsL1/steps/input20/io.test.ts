@@ -513,3 +513,42 @@ void test('d1_217: an inbound event line of the L4 becomes a consumes route of t
   // The publisher page has no L2 contract; its request service def is planned like the one of a connection.
   assert.equal(snapshot.files.some(file => file.defPath === 'l1/controleEstoque/layer_2_application/requests/compras.defs.ts'), true);
 });
+
+const CONTEUDO_INBOUND = (JSON.parse(/=\s*(\{[\s\S]*\})\s*as const/u.exec(readFileSync(path.join(HERE, '../../../agentMaterializeL1/steps/requests50/fixtures/conteudoIntegration5a595492.recorded.txt'), 'utf8'))![1]) as { inbound: Array<Record<string, unknown>> }).inbound[0];
+
+void test('d1_225: an inbound event line that writes nothing is a route that only confirms the receipt: with an effect or without, no usecase and no problem', async () => {
+  assert.deepEqual([CONTEUDO_INBOUND.writes, CONTEUDO_INBOUND.effect], [[], 'update'], 'the real line of the L4 of conteudo (5a595492)');
+  for (const effect of ['update', 'none', 'transition'] as const) {
+    const host = installStudio(PROJECT);
+    seedD1Fixture(host, 'controleEstoque-39a5166', PROJECT);
+    const info = fileInfoFromDisplay(PROJECT, 'l4/controleEstoque/integration.defs.ts')!;
+    const text = host.files[fileKey(info)].content;
+    const found = /(export const \w+ = )(\{[\s\S]*\})( as const[^;]*;)/u.exec(text)!;
+    const body = JSON.parse(found[2]) as { inbound: Array<Record<string, unknown>> };
+    const line = { ...CONTEUDO_INBOUND };
+    if (effect === 'none') delete line.effect;
+    else line.effect = effect;
+    body.inbound = [line];
+    seed(host, info, `${text.slice(0, found.index)}${found[1]}${JSON.stringify(body, null, 2)}${found[3]}${text.slice(found.index + found[0].length)}`, 'case');
+    const snapshot = await assembleD1Input(PROJECT, 'controleEstoque');
+    assert.equal(snapshot.problems.some(problem => problem.code === 'CONSUMES_EFFECT_UNKNOWN'), false, effect);
+    assert.equal(snapshot.consumersReleased, true, effect);
+    const route = snapshot.selection.requests.find(request => request.consumes === 'repoHost.repositorioAlterado');
+    assert.ok(route, effect);
+    assert.deepEqual([route.route, route.pageId, route.uses, route.writes], ['controleEstoque.repoHost.repositorioAlterado', 'repoHost', [], ''], effect);
+    assert.equal(snapshot.files.some(file => file.defPath === 'l1/controleEstoque/layer_2_application/requests/repoHost.defs.ts'), true, effect);
+  }
+});
+
+void test('d1_225: a line with writes keeps its usecase and still needs an effect it can name', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'controleEstoque-39a5166', PROJECT);
+  const info = fileInfoFromDisplay(PROJECT, 'l4/controleEstoque/integration.defs.ts')!;
+  const text = host.files[fileKey(info)].content;
+  const found = /(export const \w+ = )(\{[\s\S]*\})( as const[^;]*;)/u.exec(text)!;
+  const body = JSON.parse(found[2]) as { inbound: Array<Record<string, unknown>> };
+  delete body.inbound[0].effect;
+  seed(host, info, `${text.slice(0, found.index)}${found[1]}${JSON.stringify(body, null, 2)}${found[3]}${text.slice(found.index + found[0].length)}`, 'case');
+  const snapshot = await assembleD1Input(PROJECT, 'controleEstoque');
+  assert.equal(snapshot.problems.some(problem => problem.code === 'CONSUMES_EFFECT_UNKNOWN'), true);
+});

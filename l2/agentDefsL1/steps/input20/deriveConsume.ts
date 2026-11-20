@@ -104,7 +104,8 @@ export function deriveConsumeRequests(input: DeriveConsumeInput): D1SelectedRequ
     const entities = line.writes;
     const operation = OPERATION_OF_EFFECT[line.effect] ?? '';
     const transition = line.effect === 'transition' && line.transitionRef !== '';
-    if (!operation && !transition) {
+    // d1_225: a line that writes nothing is a route that only confirms the receipt: no usecase, so no effect to name (and none is asked for).
+    if (!operation && !transition && entities.length > 0) {
       input.problems.push({ severity: 'error', code: 'CONSUMES_EFFECT_UNKNOWN', path, message: `Event ${consumes} has an effect (${line.effect || 'none'}) that is not create, update or a transition with a transitionRef: no usecase can be named.`, ownerRef: route } as D1InputProblem);
       continue;
     }

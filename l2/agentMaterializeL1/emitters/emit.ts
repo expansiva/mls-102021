@@ -395,6 +395,8 @@ interface AdapterRoute {
   allowedInputPaths: string[];
   nullableInputPaths: string[];
   unions: ClosedUnion[];
+  /** d1_225: paths under which a key the type does not list is accepted (the `payload` of an event: the type is the part this module uses). */
+  openPaths?: string[];
 }
 
 /**
@@ -592,7 +594,7 @@ function renderAdapter(route: AdapterRoute): string {
     '  if (held instanceof AppError) throw held;',
     // The scope field is the server's: it is set before the validation, so the page is never asked for it.
     `  const scoped = scopeParams(input.request.params, input.ctx, held, [${allowed}]);`,
-    `  const invalid = validateInput(scoped, [${required}], [${allowed}], [${nullable}], { ${unions} });`,
+    `  const invalid = validateInput(scoped, [${required}], [${allowed}], [${nullable}], { ${unions} }${route.openPaths?.length ? `, [${route.openPaths.map(item => `'${item}'`).join(', ')}]` : ''});`,
     '  if (invalid) throw invalid;',
     // A catalog type does not overlap `Record<string, unknown>`; the page contract cast stays as it was.
     `  const params = scoped as ${route.inputTypeName ? `unknown as ${inputType}` : inputType};`,
@@ -605,6 +607,10 @@ function renderAdapter(route: AdapterRoute): string {
 }
 
 const SERVE_MARK = /^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/;
+
+/** d1_225: what the runtime passes to a route that receives an event (`ModuleEventEnvelope`): the message type names these, `payload` holds the record. */
+export const CONSUME_ENVELOPE_PATHS = ['eventId', 'ref', 'ref.module', 'ref.eventId', 'publishedAt', 'payload'] as const;
+const CONSUME_OPEN_PATH = 'payload';
 
 /** `serves` on the request-service row of this route. Null when the row does not carry the mark. */
 function servesOf(serviceText: string, route: string): string | null {
@@ -649,6 +655,11 @@ async function resolveConsumeRoute(
   if (source === null) return { code: 'CONSUMES_REQUESTS_UNREAD', detail: `${requestsRef} could not be read: the request service is written before its controller.` };
   const typeName = consumeMessageTypeName(consumes);
   const members = membersOfType(source, typeName);
+  // d1_225: the runtime calls the route with the envelope of the event, not with the record: the message type is that envelope.
+  if (members) {
+    const missing = CONSUME_ENVELOPE_PATHS.filter(path => !members.allowedPaths.includes(path));
+    if (missing.length) return { code: 'CONSUMES_MESSAGE_NOT_ENVELOPE', detail: `${typeName} in ${requestsRef} is not the envelope of the event: it lacks ${missing.join(', ')}. The route is called with { eventId, ref, publishedAt, payload, actor?, requestId? }.` };
+  }
   if (!members) {
     return isNonObjectAlias(source, typeName)
       ? { code: 'CATALOG_INPUT_NOT_OBJECT', detail: `${typeName} is declared in ${requestsRef} as a type alias that is not an object literal: declare it as an interface or as \`export type ${typeName} = { … }\`.` }
@@ -668,6 +679,7 @@ async function resolveConsumeRoute(
       allowedInputPaths: members.allowedPaths,
       nullableInputPaths: members.nullablePaths,
       unions: members.unions,
+      openPaths: [CONSUME_OPEN_PATH],
     },
   };
 }
@@ -854,7 +866,7 @@ export function validateSource(): string {
   return [
     '// `null` is accepted only where the contract type declares it; elsewhere it is refused, never read as absent.',
     '// A required member is a present key. `\'\'` is a string, refused only when a closed union omits it.',
-    'function validateInput(params: unknown, fields: readonly string[], allowed: readonly string[], nullable: readonly string[] = [], unions: Readonly<Record<string, readonly string[]>> = {}): AppError | null {',
+    'function validateInput(params: unknown, fields: readonly string[], allowed: readonly string[], nullable: readonly string[] = [], unions: Readonly<Record<string, readonly string[]>> = {}, open: readonly string[] = []): AppError | null {',
     '  const body = params && typeof params === \'object\' && !Array.isArray(params) ? params as Record<string, unknown> : null;',
     `  if (!body) return new AppError('${VALIDATION_ERROR}', 'Request body must be an object.', 400);`,
     '  const invalidPath = (value: unknown, prefix: string): string => {',
@@ -862,7 +874,7 @@ export function validateSource(): string {
     '    if (!value || typeof value !== \'object\') return \'\';',
     '    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {',
     "      const path = prefix ? prefix + '.' + key : key;",
-    "      if (!allowed.includes(path)) return path + ' is not permitted.';",
+    "      if (!allowed.includes(path)) { if (open.some(root => path === root || path.startsWith(root + '.'))) continue; return path + ' is not permitted.'; }",
     "      if (child === null && !nullable.includes(path)) return path + ' must not be null.';",
     '      const permitted = unions[path];',
     '      if (permitted && child !== null && (typeof child !== \'string\' || !permitted.includes(child))) return path + \' is not a permitted value.\';',

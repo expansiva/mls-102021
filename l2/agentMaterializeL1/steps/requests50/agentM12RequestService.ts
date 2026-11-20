@@ -3,6 +3,7 @@
 import type { IAgentAsync } from '/_102027_/l2/aiAgentBase.js';
 import { M12_REQUEST_SERVICE_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { modelWorkerAgent, type M12ModelLayerSpec } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
+import { confirmOnlySource } from '/_102021_/l2/agentMaterializeL1/steps/requests50/confirmOnly.js';
 import { M12_REQUEST_TOOL, M12_REQUEST_TOOL_DESCRIPTION, loadRequestContext, normalizeRequestsTyping, requestAnswerProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 
 export const REQUEST_SPEC: M12ModelLayerSpec = {
@@ -13,6 +14,8 @@ export const REQUEST_SPEC: M12ModelLayerSpec = {
   toolDescription: M12_REQUEST_TOOL_DESCRIPTION,
   context: async (ctx, unit, repair) => (await loadRequestContext(ctx, unit, repair)).human,
   gate: requestAnswerProblems,
+  // d1_225: an event line that writes nothing is a route that only confirms the receipt; nothing is left for the model.
+  byCode: async (_ctx, unit) => confirmOnlySource(unit.definition.data, unit.outputRef),
   normalize: async (ctx, unit, code) => {
     const data = await loadRequestContext(ctx, unit);
     return normalizeRequestsTyping(code, data.contractsInterface, data.contractSpecifier);

@@ -8,6 +8,8 @@ import { M12_USECASES_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/helpers
 import { modelDispatcherAgent, modelWorkerAgent, type M12ModelLayerSpec } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import { fileRef, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { parseM12WorkerArgs } from '/_102021_/l2/agentMaterializeL1/helpers/m12Worker.js';
+import { M12_REQUESTS_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
+import { REQUEST_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/requests50/agentM12RequestService.js';
 import { USECASE_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
 
 const PROJECT = 7;
@@ -283,4 +285,41 @@ void test('a final gate problem schedules final and the approved file is the rea
   const written = await answer('export const done = 1;', 'final', 1);
   assert.equal(written.some(item => item.type === 'add-step'), false);
   assert.equal(outputFile()?.content, 'export const done = 1;\n');
+});
+
+void test('d1_225: a request service whose routes only confirm an event is written by code: no worker, the file is on disk and the unit is done', async () => {
+  const folder = `${MODULE}/layer_2_application/requests`;
+  const defInfo: M12FileInfo = { project: PROJECT, level: 1, folder, shortName: 'repoHost', extension: '.defs.ts' };
+  const l4 = (shortName: string, folder4: string): M12FileInfo => ({ project: PROJECT, level: 4, folder: folder4, shortName, extension: '.defs.ts' });
+  install([
+    {
+      info: defInfo,
+      content: defSource({
+        schemaVersion: '2026-09-24-d1-definition-v2', artifactType: 'requestService', artifactId: 'repoHost', moduleName: MODULE, status: 'generated', dependencies: [],
+        data: { pageId: 'repoHost', requests: [{ route: `${MODULE}.repoHost.changed`, kind: 'cmd', uses: [], transaction: 'single', output: [], params: [], rules: [], consumes: 'repoHost.changed' }] },
+      }),
+    },
+    { info: { ...promptMd, folder: 'agentMaterializeL1/steps/requests50' }, content: 'system rules\n' },
+    { info: { project: 102034, level: 1, folder: 'server/layer_2_controllers', shortName: 'contracts', extension: '.ts' }, content: 'export class AppError extends Error { constructor(public code: string, message: string, public statusCode: number) { super(message); } }\nexport interface RequestContext { data: unknown }\n' },
+    { info: l4('integration', MODULE), content: `export const x = ${JSON.stringify({ inbound: [{ id: 'changed', kind: 'event', from: 'repoHost', event: 'changed', writes: [], effect: 'update', description: 'The repository changed.' }] })} as const;\n` },
+    { info: l4('integration', 'repoHost'), content: `export const y = ${JSON.stringify({ outbound: [{ id: 'changed', kind: 'event', on: 'Change.create', to: 'any', description: 'A change arrived.' }] })} as const;\n` },
+    { info: l4('Change', 'repoHost/ontology'), content: `export const c = ${JSON.stringify({ entityId: 'Change', fields: [{ id: 'details', type: 'object' }] })} as const;\n` },
+  ]);
+  const agent = modelDispatcherAgent(M12_REQUESTS_AGENT_NAME, 'test', REQUEST_SPEC);
+  const intents = await agent.beforePromptStep!(
+    { agentName: 'x', agentDescription: 'x', visibility: 'private' } as IAgentMeta,
+    { message: { orderAt: 'm', threadId: 't', content: '' }, task: { PK: 'task' } } as mls.msg.ExecutionContext,
+    { stepId: 1 } as mls.msg.AIAgentStep,
+    { stepId: 2, prompt: '' } as mls.msg.AIAgentStep,
+    0,
+    JSON.stringify({ project: PROJECT, module: MODULE, scope: MODULE, target: '', force: false }),
+  ) as Array<Record<string, unknown>>;
+  assert.equal(intents.some(item => item.type === 'add-step'), false, 'no worker is dispatched');
+  const files = mls.stor.files as Record<string, FakeFile>;
+  const output = files[keyOf({ project: PROJECT, level: 1, folder, shortName: 'repoHost', extension: '.ts' })];
+  assert.ok(output, 'the request service is written');
+  assert.match(output.content, /export const requests: \{ 'modx\.repoHost\.changed': \(input: RepoHostChangedMessage, ctx: RequestContext\) => Promise<\{ received: true \}> \} = \{/u);
+  assert.equal(/usecases\//u.test(output.content), false);
+  const receipt = Object.values(files).find(item => item.extension === '.json' && item.shortName === 'repoHost');
+  assert.equal(JSON.parse(receipt?.content ?? '{}').status, 'done');
 });

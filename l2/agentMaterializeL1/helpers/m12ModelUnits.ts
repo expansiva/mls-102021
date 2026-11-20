@@ -61,6 +61,11 @@ export interface M12ModelLayerSpec {
   layer: Extract<M12Layer, 'usecases' | 'workflows' | 'requests' | 'external' | 'adapter'>;
   /** A problem no answer of the model can fix (the def or its L4 lacks something): the unit stops `blocked` with this code, the model is not called. */
   preflight?(ctx: M12Context, unit: M12Unit): Promise<{ code: string; detail: string } | null>;
+  /**
+   * A unit the code can write whole, with nothing left for a model to decide (d1_225): its source, or null when the model is needed. The same gate
+   * and the same proof as an answer of the model apply; no worker is dispatched.
+   */
+  byCode?(ctx: M12Context, unit: M12Unit): Promise<string | null>;
   /** Module-wide files the layer's units import, written before any worker is dispatched; the trace lines. */
   prepare?(ctx: M12Context, units: readonly M12Unit[]): Promise<string[]>;
   workerAgentName: string;
@@ -143,6 +148,21 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
         if (decision.kind === 'reuse') {
           await writeUnitStatus(run.project, run.module, { ...base, status: 'reused', code: '', diagnostic: '', inputHash, outputs: prior?.outputs ?? {} });
           lines.push(`${unit.unitId}: reused`);
+          continue;
+        }
+        const derived = spec.byCode ? await spec.byCode(ctx, unit) : null;
+        if (derived !== null) {
+          const source = derived.endsWith('\n') ? derived : `${derived}\n`;
+          const problems = [...await spec.gate(ctx, unit, source, []), ...await missingImports(ctx, source)];
+          if (problems.length) {
+            const diagnostic = problems.map(problem => clip(problem, 600)).slice(0, 20).join('\n');
+            await writeUnitStatus(run.project, run.module, { ...base, status: 'failed', code: 'CODE_REFUSED', diagnostic, inputHash, outputs: {} });
+            lines.push(`${unit.unitId}: the file written by code was refused: ${clip(diagnostic, 300)}`);
+            continue;
+          }
+          const proved = await writeAndProve(ctx, unit, source, inputHash, 1);
+          releaseCompileModels();
+          lines.push(`${unit.unitId}: written by code, ${proved.status === 'done' ? proved.line : `${proved.status}: ${proved.status === 'failed' ? proved.errors.join(' | ') : proved.line}`}`);
           continue;
         }
         const workerArgs: M12WorkerArgs = { project: run.project, module: run.module, unitId: unit.unitId, attempt: 1, force: run.force };
