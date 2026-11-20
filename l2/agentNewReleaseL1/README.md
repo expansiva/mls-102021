@@ -10,7 +10,7 @@ The first call runs the plan postprocess before anything is moved. A `toRemove` 
 
 The close starts with one line per correction (`postprocess: usecase <id> from toRemove to done …`), or `postprocess: no correction`, then `postprocess record: l4/<module>/pool/l1/web/postprocess.json`. If a used `toRemove` usecase is still in the plan after that, the close adds `postprocess missed: usecase <id> …`. That line is a defect notice. The creation copy still drops that usecase from `removed` so `/run` can continue. `/compare` repeats the same line from `prepared.json`.
 
-Refuses, and writes nothing else, when `l1/<module>_old/` already has a file, when `l4/<module>/pool/l4/changeEffort.json` is missing, or when `l1/<module>/` has no file.
+Refuses, and writes nothing else, when `l1/<module>_old/` already has a file or when `l1/<module>/` has no file. A missing `l4/<module>/pool/l4/changeEffort.json` does not refuse (d1_233, decision of the planner: the effort of the L1 is a forecast and a confrontation, 27/10): the close says `warning: changeEffort.json not found (…)`, and `/compare` then answers `effort check: not available`.
 
 Otherwise it copies every file under `l1/<module>/` to the same path under `l1/<module>_old/` (same text, same extension) and deletes the originals only after every copy is written. A failure in the middle undoes the copies and ends `failed`.
 

@@ -27,10 +27,12 @@ export async function prepareModule(moduleName: string): Promise<PrepareOutcome>
   if (listModuleFiles(project, oldRoot).length > 0) {
     return { ok: false, kind: 'refused', text: `l1/${oldRoot} already exists` };
   }
+  // d1_233: the effort of the L1 is a forecast and a confrontation (27/10), not a condition: without `changeEffort.json` the prepare goes on and says so,
+  // as `/compare` does (`effort check: not available`).
   const effort = changeEffortOf(moduleName);
-  if (!fileExists(effort)) {
-    return { ok: false, kind: 'refused', text: `changeEffort.json not found: ${displayPath(effort)}` };
-  }
+  const effortNotice = fileExists(effort)
+    ? []
+    : [`warning: changeEffort.json not found (${displayPath(effort)}): the effort check of /compare does not apply, and no unit is held back by the effort.`];
   const sources = listModuleFiles(project, moduleName);
   if (sources.length === 0) {
     return { ok: false, kind: 'refused', text: `l1/${moduleName} has no files` };
@@ -106,7 +108,7 @@ export async function prepareModule(moduleName: string): Promise<PrepareOutcome>
     const notice = keptLines(kept.kept);
     return {
       ok: true,
-      text: ['prepared', ...notice, `@@agentDefsL1 ${moduleName} /run`, `@@agentNewReleaseL1 ${moduleName} /compare`].join('\n'),
+      text: ['prepared', ...effortNotice, ...notice, `@@agentDefsL1 ${moduleName} /run`, `@@agentNewReleaseL1 ${moduleName} /compare`].join('\n'),
     };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);

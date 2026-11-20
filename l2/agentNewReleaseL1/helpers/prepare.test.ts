@@ -243,7 +243,7 @@ test('prepare moves every l1 file, writes a creation plan, and rewrites the plan
   assert.equal(Object.keys(restored).some(path => path.startsWith('l1/tarefas_old/')), false);
 });
 
-test('prepare refuses when _old exists, effort is missing, or l1 is empty', async (t) => {
+test('prepare refuses when _old exists or l1 is empty', async (t) => {
   const oldPresent = installStor();
   t.after(() => oldPresent.restore());
   seed(oldPresent, true);
@@ -261,7 +261,8 @@ test('prepare refuses when _old exists, effort is missing, or l1 is empty', asyn
   t.after(() => noEffort.restore());
   seed(noEffort, true);
   delete noEffort.files[keyOf({ project: PROJECT, level: 4, folder: 'tarefas/pool/l4', shortName: 'changeEffort', extension: '.json' })];
-  assert.equal(await run('@@agentNewReleaseL1 tarefas'), 'refused: changeEffort.json not found: l4/tarefas/pool/l4/changeEffort.json');
+  // d1_233: a missing changeEffort.json does not refuse any more; the close says it (see the next test for what is written).
+  assert.doesNotMatch(await run('@@agentNewReleaseL1 tarefas'), /^refused/);
 
   noEffort.restore();
   const empty = installStor();
@@ -273,6 +274,25 @@ test('prepare refuses when _old exists, effort is missing, or l1 is empty', asyn
   };
   empty.files[keyOf(effortOnly)] = effortOnly;
   assert.match(await run('@@agentNewReleaseL1 tarefas'), /^refused: postprocess: plan missing: l4\/tarefas\/pool\/l2\/web\/backend\.json/);
+});
+
+test('d1_233: prepare goes on without changeEffort.json and says so; with it, no warning', async (t) => {
+  const key = keyOf({ project: PROJECT, level: 4, folder: 'tarefas/pool/l4', shortName: 'changeEffort', extension: '.json' });
+  const withFile = installStor();
+  t.after(() => withFile.restore());
+  seed(withFile, true);
+  assert.equal((await run('@@agentNewReleaseL1 tarefas')).includes('warning:'), false);
+  withFile.restore();
+  const without = installStor();
+  t.after(() => without.restore());
+  seed(without, true);
+  delete without.files[key];
+  const result = await run('@@agentNewReleaseL1 tarefas');
+  assert.match(result, /^done: postprocess: no correction\npostprocess record: [^\n]+\nprepared\nwarning: changeEffort\.json not found \(l4\/tarefas\/pool\/l4\/changeEffort\.json\): the effort check of \/compare does not apply[^\n]*\n@@agentDefsL1 tarefas \/run\n@@agentNewReleaseL1 tarefas \/compare$/);
+  const after = without.texts();
+  assert.equal(after['l1/tarefas_old/usecases/criar.defs.ts'], 'export const def = 1;\n', 'the module is moved aside as with the file');
+  assert.equal(JSON.parse(after['l4/tarefas/pool/l2/web/backend.json']).usecases[0].status, 'toCreate');
+  assert.equal(Object.keys(after).some(path => path.startsWith('l1/tarefas/')), false);
 });
 
 test('a failure while moving rolls the copies back', async (t) => {
