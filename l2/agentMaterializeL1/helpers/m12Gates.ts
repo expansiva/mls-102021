@@ -71,6 +71,38 @@ function callArguments(text: string, open: number): { args: string[]; end: numbe
   return { args, end: text.length };
 }
 
+/** Index after the `}` that closes the block opened at `open`, with strings skipped. */
+function blockEnd(text: string, open: number): number {
+  let depth = 0;
+  let quote = '';
+  for (let index = open; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote) {
+      if (char === '\\') index += 1;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') quote = char;
+    else if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return index + 1;
+    }
+  }
+  return text.length;
+}
+
+/** The position sits in a `try { … }` block that has a `catch`: the catch would hold a refusal the transaction must see. */
+function insideTryWithCatch(text: string, position: number): boolean {
+  for (const match of text.matchAll(/\btry\s*\{/gu)) {
+    const open = (match.index ?? 0) + match[0].length - 1;
+    if (open > position) break;
+    const end = blockEnd(text, open);
+    if (position < end && /^\s*catch\b/u.test(text.slice(end))) return true;
+  }
+  return false;
+}
+
 /** `const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } }`: the context a transaction binds, with nothing else changed. */
 function boundContextDeclared(code: string, name: string): boolean {
   const escaped = name.replace(/\$/gu, '\\$');
@@ -95,8 +127,8 @@ export function eventPublishProblems(code: string, publishers: readonly M12Event
     for (const match of calls) {
       const open = (match.index ?? 0) + match[0].length - 1;
       const { args, end } = callArguments(clean, open);
-      if (!/\bawait\s+$/u.test(clean.slice(0, match.index)) || /^\s*\.\s*(catch|then)\b/u.test(clean.slice(end))) {
-        problems.push(`EVENT_PUBLISH_SWALLOWED: ${publisher.fn} must be awaited and its error must go through: a refused event throws and the transaction rolls back. No .catch, no .then, no call without await.`);
+      if (!/\bawait\s+$/u.test(clean.slice(0, match.index)) || /^\s*\.\s*(catch|then)\b/u.test(clean.slice(end)) || insideTryWithCatch(clean, match.index ?? 0)) {
+        problems.push(`EVENT_PUBLISH_SWALLOWED: ${publisher.fn} must be awaited and its error must go through: a refused event throws and the transaction rolls back. No .catch, no .then, no try/catch around the call, no call without await.`);
       }
       const context = args[1] ?? '';
       if (context === 'ctx') {

@@ -44,7 +44,7 @@ register. `seedPlan.phase` is `plan` and `materialized` is false: the def
 describes scenarios, and this step does not write `seeds.ts` or any row.
 `effectPlan.executed` is false. An outbound event keeps `on` and the usecase
 id as `consumer`. That id is the emitting usecase, not a subscriber.
-`mechanism` stays empty unless the artifact already names a symbol.
+`mechanism` of an outbound event is `publishModuleEvent` unless the artifact names a symbol; for an inbound item or a plugin it stays empty.
 `IQueueRuntime.publish` is the measured API on `RequestContext.data.pgQueue`;
 naming it is `MECHANISM_INCOMPATIBLE` because Postgres publish writes
 `mdm_outbox`. It is not a module bus and does not bind. This step does not
@@ -86,7 +86,7 @@ to create a consumer.
 
 A seed or effect error sets `awaitingStep` to `support70` and
 `steps.support70.error` to `CODE:count`. The step is `failed`, not `approved`.
-An unbound mechanism is a review. It does not stop the step.
+An unbound mechanism (inbound item, plugin) is a review. It does not stop the step. An event no usecase runs is `EVENT_WITHOUT_USECASE`, also a review.
 
 `support70-done` is minted only when the build has no error. A file whose
 receipt hash does not match the bytes on disk is not overwritten. The same

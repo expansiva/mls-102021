@@ -113,6 +113,8 @@ test('the recorded usecase that publishes passes the gate, and an answer that do
 
     const unawaited = await refused(RECORDED.replace(call, 'void publishRepositorioAlterado(saved, bound, {});'));
     assert.ok(unawaited.some(item => item.startsWith('EVENT_PUBLISH_SWALLOWED')), unawaited.join('\n'));
+    const tried = await refused(RECORDED.replace(call, `try {\n      ${call}\n    } catch (error) {\n      bound.log.error(String(error));\n    }`));
+    assert.ok(tried.some(item => item.startsWith('EVENT_PUBLISH_SWALLOWED')), tried.join('\n'));
     const caught = await refused(RECORDED.replace(call, 'await publishRepositorioAlterado(saved, bound, {}).catch(() => undefined);'));
     assert.ok(caught.some(item => item.startsWith('EVENT_PUBLISH_SWALLOWED')), caught.join('\n'));
   });

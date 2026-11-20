@@ -1,5 +1,11 @@
 # support70
 
+## 2026-11-19 (d1_216)
+
+- An outbound event with an empty mechanism takes `publishModuleEvent` and `mechanismRef` `mls-102034/l1/server/layer_1_external/events/publishModuleEvent.ts` (the E2 publisher). It is no longer `INTEGRATION_UNBOUND`. Inbound items and plugins with an empty mechanism stay unbound.
+- An event whose `on` no selected usecase runs is `EVENT_WITHOUT_USECASE` (review) and names the event id. It replaces `POOL_ABSENT` for events.
+- The publisher ref is not a read source of the def: it is not in `dependsFiles`.
+
 ## 2026-09-27 (m1_28)
 
 - `backend.json.testSupport[]` (v1.2) becomes `data.fixture` of the seeds def, the shape of `l2/helpers/l1Defs/fixture.ts`. No rows and no ids.
