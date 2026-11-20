@@ -703,7 +703,7 @@ async function loadConsumeRequestContext(ctx: M12Context, unit: M12Unit, repair?
     `Write the request service of the routes of module ${moduleName} that receive events of module ${pageId}, file \`${unit.outputRef}\`. There is no page contract.`,
     `It exports \`requests\`, typed exactly \`${contractsInterface}\`: one async function per route, keyed by the route string.`,
     `Before \`requests\`, export the message type of each route: ${routes.map(item => `\`${item.messageType}\``).join(', ')}, an interface with the fields of the entity the publisher wrote that this route uses (the entity is below).`,
-    'Each function runs inside `ctx.data.moduleData.runInTransaction`, calls the usecase of its line with what the message carries, and returns `{ received: true }`. Do not call fetch or any HTTP client.',
+    'Each function first checks every field of the message it uses (present and of the right type) and throws a distinct error naming the field when one is missing or wrong, never filling a default value; then, inside `ctx.data.moduleData.runInTransaction`, it calls the usecase of its line with what the message carries and returns `{ received: true }`. Do not call fetch or any HTTP client.',
   ].join('\n')));
   for (const item of routes) {
     const published = await publisherEventSource(ctx, item.item.from, item.item.eventId);

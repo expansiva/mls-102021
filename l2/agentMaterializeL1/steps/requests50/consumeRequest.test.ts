@@ -63,6 +63,7 @@ void test('d1_217 s2: the prompt of a route that receives an event shows the inb
   assert.match(loaded.human, /The receipt of goods was confirmed\./u);
   assert.match(loaded.human, /The entity Receipt the publisher writes/u);
   assert.match(loaded.human, /"receiptId"|receiptId/u);
+  assert.match(loaded.human, /checks every field of the message it uses \(present and of the right type\) and throws a distinct error naming the field when one is missing or wrong, never filling a default value/u);
   assert.match(loaded.human, /stock\.purchasing\.goodsReceived → createStockMove/u);
   assert.deepEqual(loaded.serveUses, [{ route: ROUTE, uses: ['createStockMove'] }]);
   assert.deepEqual(loaded.routes.map(route => [route.route, route.kind]), [[ROUTE, 'cmd']]);
