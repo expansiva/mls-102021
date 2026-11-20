@@ -10,6 +10,7 @@ import {
   type M1Status,
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
+import { MODULE_EVENT_PUBLISH } from '/_102021_/l2/helpers/l1Defs/moduleEvent.js';
 import { readOutputTree, readRequestDoc } from '/_102021_/l2/helpers/l1Defs/requestTree.js';
 
 export const D1_DEFINITION_SCHEMA = M1_DEFINITION_SCHEMA;
@@ -28,6 +29,9 @@ export const D1_MEASURED_PUBLISH = {
   delivery: 'Postgres insert into mdm_outbox. Memory keeps an array. No module consumer is registered.',
   transaction: 'Postgres publish uses the transaction executor. Memory runInTransaction does not roll back.',
 } as const;
+
+/** The platform module-event publisher (E2). The def names it when the L4 leaves an outbound event unbound. */
+export const D1_MODULE_EVENT_PUBLISH = { symbol: MODULE_EVENT_PUBLISH.symbol, path: MODULE_EVENT_PUBLISH.path } as const;
 
 /** Names that are not methods of RequestContext. Writing them would invent an API. */
 export function fictionalMechanism(value: string): boolean {
@@ -1635,6 +1639,10 @@ export function integrationMechanismIssues(data: unknown): string[] {
     if (mechanism === D1_MEASURED_PUBLISH.symbol) {
       issues.push(`MECHANISM_INCOMPATIBLE: ${eventId} names ${mechanism}. Postgres publish inserts into mdm_outbox. It is not a module bus.`);
       if (ref !== D1_MEASURED_PUBLISH.path) issues.push(`MECHANISM_REF: ${eventId} must cite ${D1_MEASURED_PUBLISH.path}.`);
+      return;
+    }
+    if (mechanism === D1_MODULE_EVENT_PUBLISH.symbol) {
+      if (ref !== D1_MODULE_EVENT_PUBLISH.path) issues.push(`MECHANISM_REF: ${eventId} must cite ${D1_MODULE_EVENT_PUBLISH.path}.`);
       return;
     }
     if (ref) issues.push(`MECHANISM_REF: ${eventId} cites a ref for an unmeasured mechanism.`);

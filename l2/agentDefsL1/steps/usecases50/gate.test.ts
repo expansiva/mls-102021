@@ -1009,3 +1009,16 @@ function declaredFieldType(
   assert.ok(field, `${route} ${name}`);
   return field.type;
 }
+
+// d1_216 s1: an event on `Entity.create` is an effect of the create usecase of that entity, and of no other.
+void test('an outbound event on an entity create is an effect of the create usecase only', () => {
+  const request = coreUsecaseRequest();
+  request.outbound = [...request.outbound, { eventId: 'consultaCriada', on: 'Consulta.create' }];
+  const build = buildD1Usecases(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  const effectsOf = (usecaseId: string): string[] =>
+    ((build.emit.find(item => item.definition.artifactId === usecaseId)?.definition.data as { effects: Array<{ eventId: string }> }).effects).map(effect => effect.eventId);
+  assert.deepEqual(effectsOf('createConsulta'), ['consultaCriada']);
+  assert.deepEqual(effectsOf('createPaciente'), []);
+  assert.deepEqual(effectsOf('registrarAtendimento'), ['atendimentoRegistrado']);
+});

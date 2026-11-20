@@ -11,11 +11,12 @@ import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, recipeDraft, rulesToEnforce, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
-import { connectionRowsOf, externalEntityIds, externalRepositoryPort, gatewayNameOf, moduleGatewayNames, repositoryPortNames, usecaseGate, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { connectionRowsOf, externalEntityIds, externalRepositoryPort, gatewayNameOf, moduleGatewayNames, repositoryPortNames, usecaseGate, type M12EventPublisher, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
+import { MODULE_EVENT_PUBLISH, publisherNameOf } from '/_102021_/l2/helpers/l1Defs/moduleEvent.js';
 
 export const M12_USECASE_TOOL = 'writeUsecase' as const;
 
@@ -290,6 +291,44 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
   return section('Connection gateways', blocks.join('\n\n'));
 }
 
+/**
+ * Events this usecase publishes (d1_216): the effects of its def that the module's `integrationOutbound` binds to the platform
+ * publisher. The publisher function of each is in the generated `outbound.ts`.
+ */
+export function eventPublishersOf(ctx: M12Context, unit: M12Unit): Array<M12EventPublisher & { on: string }> {
+  const effects = Array.isArray(unit.definition.data.effects) ? unit.definition.data.effects : [];
+  const wanted = new Set(effects.map(item => (item && typeof item === 'object' ? String((item as { eventId?: unknown }).eventId ?? '') : '')).filter(Boolean));
+  if (wanted.size === 0) return [];
+  const out: Array<M12EventPublisher & { on: string }> = [];
+  for (const item of ctx.units) {
+    if (item.definition.artifactType !== 'integrationOutbound') continue;
+    const events = Array.isArray(item.definition.data.events) ? item.definition.data.events : [];
+    for (const event of events) {
+      if (!event || typeof event !== 'object') continue;
+      const row = event as Record<string, unknown>;
+      const eventId = String(row.eventId ?? '');
+      if (!wanted.has(eventId) || row.mechanism !== MODULE_EVENT_PUBLISH.symbol || row.mechanismRef !== MODULE_EVENT_PUBLISH.path) continue;
+      if (!out.some(publisher => publisher.eventId === eventId)) out.push({ eventId, fn: publisherNameOf(eventId), on: String(row.on ?? '') });
+    }
+  }
+  return out.sort((a, b) => a.eventId.localeCompare(b.eventId));
+}
+
+/** What the model must do for each event of the usecase: publish it after the write, in the transaction, with the bound context. */
+export function eventPublishSection(ctx: M12Context, publishers: ReadonlyArray<M12EventPublisher & { on: string }>): string {
+  if (publishers.length === 0) return '';
+  const importPath = `/_${ctx.run.project}_/l1/${ctx.run.module}/layer_1_external/adapters/integration/outbound.js`;
+  const lines = publishers.map(item => `- \`${item.fn}(payload: unknown, ctx: RequestContext, opts?: { requestId?: string }): Promise<{ eventId: string }>\` publishes \`${item.eventId}\`${item.on ? `, which the module raises when ${item.on} happens` : ''}.`);
+  return section('Events this usecase publishes', [
+    `This usecase publishes the events below after it writes. Import the functions with \`import { ${publishers.map(item => item.fn).join(', ')} } from '${importPath}'\`.`,
+    ...lines,
+    'The payload is the record this usecase just saved, as stored. Do not send a partial object.',
+    'Write and publish in one transaction: `return ctx.data.moduleData.runInTransaction(async (tx) => { const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } }; … })`. Resolve the repository with `bound`, write, then `await` the publisher.',
+    'The second argument of the publisher is that `bound`. Never `ctx` outside the transaction, never an object literal, never a copy that sets `moduleId`: the platform refuses an event whose module is not the one running, and queues it in the transaction of the context it receives.',
+    'A refused event throws and the transaction rolls back. Do not catch the error, do not use `.catch`, and do not call the publisher without `await`. Do not write the queue yourself.',
+  ].join('\n\n'));
+}
+
 function fence(lang: string, text: string): string {
   return `\`\`\`${lang}\n${text.trim()}\n\`\`\``;
 }
@@ -430,6 +469,8 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
   if (companyAnchor) parts.push(companyAnchor);
   const gateways = await connectionGatewaySection(ctx, functionName, unit.definition.artifactId);
   if (gateways) parts.push(gateways);
+  const publishing = eventPublishSection(ctx, eventPublishersOf(ctx, unit));
+  if (publishing) parts.push(publishing);
   for (const ref of [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry]) {
     const text = await ctx.read(ref);
     if (text) parts.push(section(`Platform ${ref}`, [`Import from \`/${ref.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(text))].join('\n\n')));
@@ -816,7 +857,7 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const transition = await transitionOf(ctx, unit);
   return [
     ...waived.problems,
-    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')) }),
+    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit) }),
   ];
 }
 

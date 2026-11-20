@@ -1,0 +1,41 @@
+/// <mls fileReference="_102099_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { RepositoryChangeRepository } from '/_102099_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.js';
+import { publishRepositorioAlterado } from '/_102099_/l1/repoHost/layer_1_external/adapters/integration/outbound.js';
+
+export interface CreateRepositoryChangeInput {
+  changedAt: string;
+  commitMessage: string;
+}
+
+export interface CreateRepositoryChangeOutput {
+  id: string;
+  version: number;
+  changedAt: string;
+}
+
+export async function createRepositoryChange(input: CreateRepositoryChangeInput, ctx: RequestContext): Promise<CreateRepositoryChangeOutput> {
+  const changedAt = typeof input.changedAt === 'string' ? input.changedAt.trim() : '';
+  if (changedAt === '' || Number.isNaN(Date.parse(changedAt))) {
+    throw new AppError('INVALID_CHANGED_AT', 'changedAt is required and must be a valid timestamp.', 400);
+  }
+  const commitMessage = typeof input.commitMessage === 'string' ? input.commitMessage : '';
+  if (commitMessage.trim() === '') {
+    throw new AppError('INVALID_COMMIT_MESSAGE', 'commitMessage is required.', 400);
+  }
+
+  return ctx.data.moduleData.runInTransaction(async (tx) => {
+    const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+    const repository = resolveRepository<RepositoryChangeRepository>(bound, 'RepositoryChangeRepository');
+    const saved = await repository.create({
+      id: bound.idGenerator.newId(),
+      version: 1,
+      changedAt,
+      details: { commitMessage },
+    });
+    await publishRepositorioAlterado(saved, bound, { requestId: bound.requestMeta?.requestId });
+    return { id: saved.id, version: saved.version, changedAt: saved.changedAt };
+  });
+}

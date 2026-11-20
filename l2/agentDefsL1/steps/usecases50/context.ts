@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/context.ts" enhancement="_blank"/>
 
 import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
-import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
+import { outboundOnKeys, qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
@@ -461,7 +461,8 @@ function oneContext(
   const rules = rulesFor(usecase, entity, body, [], bundle);
   const port = input.ports.find(item => item.entityId === usecase.entity) || null;
   const portMethods = port && entity?.storageTarget !== 'mdm' ? methodsFor(port, usecase.operation) : [];
-  const effects = bundle.outbound.filter(event => event.on === `${usecase.entity}.${usecase.usecaseId}`);
+  const onKeys = outboundOnKeys(usecase.entity, { usecaseId: usecase.usecaseId, operation: usecase.operation, transitionRef: transitionRefOf(usecase) });
+  const effects = bundle.outbound.filter(event => onKeys.includes(event.on));
   const bound = boundMdm(usecase, entity, body, bundle);
   const capabilities = capabilitiesFor(body, bound);
   const effectiveFields = entity?.storageTarget === 'mdm' && (usecase.operation === 'update' || usecase.operation === 'create')

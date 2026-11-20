@@ -3,6 +3,7 @@
 import { declarationDefPath } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import {
   D1_MEASURED_PUBLISH,
+  D1_MODULE_EVENT_PUBLISH,
   definitionIssues,
   fictionalMechanism,
   integrationMechanismIssues,
@@ -866,7 +867,7 @@ function integrationGap(data: Record<string, unknown>): string {
   if (Array.isArray(data.events)) {
     for (const event of data.events) {
       if (!isRecord(event) || typeof event.mechanism !== 'string' || !event.mechanism.trim()) continue;
-      if (event.mechanism === D1_MEASURED_PUBLISH.symbol) continue;
+      if (event.mechanism === D1_MEASURED_PUBLISH.symbol || event.mechanism === D1_MODULE_EVENT_PUBLISH.symbol) continue;
       const eventId = typeof event.eventId === 'string' ? event.eventId : 'event';
       issues.push(`MECHANISM_UNVERIFIED: ${eventId} is not an approved module integration.`);
     }
@@ -930,7 +931,7 @@ export function emitEffects(
       error(problems, 'INTEGRATION_LINK', event.eventId || event.on, `Outbound ${event.eventId || event.on} does not name a selected usecase.`);
       continue;
     }
-    const resolved = resolveMechanism(event.mechanism, event.eventId, problems);
+    const resolved = resolveMechanism(event.mechanism, event.eventId, problems, true);
     if (!resolved) continue;
     const rules = uniqueRules(request, entityId, transition);
     if (!event.payloadDeclared && rules.length) {
@@ -945,9 +946,9 @@ export function emitEffects(
     if (!usecaseId && !operationUsecase) {
       review(
         problems,
-        'POOL_ABSENT',
+        'EVENT_WITHOUT_USECASE',
         event.eventId,
-        `Outbound ${event.eventId} fires on ${entityId}.${transition}, which no selected usecase runs. It was kept for the materializer.`,
+        `Outbound ${event.eventId} fires on ${entityId}.${transition}, which no selected usecase runs. Nothing publishes ${event.eventId}.`,
       );
     }
     const row: Record<string, unknown> = {
@@ -1075,12 +1076,14 @@ function resolveMechanism(
   raw: string,
   label: string,
   problems: D1SupportProblem[],
+  outboundEvent = false,
 ): { mechanism: string; mechanismRef: string } | null {
   const mechanism = raw.trim();
   if (fictionalMechanism(mechanism)) {
     error(problems, 'FICTIONAL_API', label, `Mechanism ${mechanism} is not on RequestContext. publishEvent and emitEvent were not written.`);
     return null;
   }
+  if (!mechanism && outboundEvent) return { mechanism: D1_MODULE_EVENT_PUBLISH.symbol, mechanismRef: D1_MODULE_EVENT_PUBLISH.path };
   if (!mechanism) {
     review(problems, 'INTEGRATION_UNBOUND', label, `${label} is preserved. No runtime mechanism is named.`);
     return { mechanism: '', mechanismRef: '' };
@@ -1273,7 +1276,8 @@ function effectsPipeline(
   const qualified = qualifyDefPath(request.project, defPath);
   const usecases = [...new Set(consumers)].filter(Boolean).sort();
   const refs = Array.isArray(data.events)
-    ? data.events.flatMap(event => isRecord(event) && typeof event.mechanismRef === 'string' ? [event.mechanismRef] : [])
+    // The platform publisher is cited by `mechanismRef` and is not a source this module reads.
+    ? data.events.flatMap(event => isRecord(event) && typeof event.mechanismRef === 'string' && event.mechanismRef !== D1_MODULE_EVENT_PUBLISH.path ? [event.mechanismRef] : [])
     : [];
   return {
     id: pipelineId(request.project, request.moduleName, 'integrationOutbound', 'outbound'),

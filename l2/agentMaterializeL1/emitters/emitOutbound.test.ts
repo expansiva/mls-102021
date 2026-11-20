@@ -14,7 +14,9 @@ import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/helpers/l1
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/emitters/registry.js';
 import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
 import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { recordedModuleEvents } from '/_102034_/testing/events/eventFixtures.js';
 import { CONNECTION_CODES, createFakeCallConnection } from '/_102034_/testing/connections/connectionFixtures.js';
+import { MODULE_EVENT_PUBLISH } from '/_102021_/l2/helpers/l1Defs/moduleEvent.js';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../..');
 const TSC = path.join(ROOT, 'node_modules', '.bin', 'tsc');
@@ -141,6 +143,72 @@ test('each connector code keeps the status of the table', async () => {
   }
 });
 
+// d1_216 s2: an event the def binds to the platform publisher gets one publisher function, written by code.
+const EVENT_OUTPUT = '_102099_/l1/repoHost/layer_1_external/adapters/integration/outbound.ts';
+const REPO_EVENT = {
+  eventId: 'repositorioAlterado',
+  on: 'RepositoryChange.create',
+  entityId: 'RepositoryChange',
+  mechanism: MODULE_EVENT_PUBLISH.symbol,
+  mechanismRef: MODULE_EVENT_PUBLISH.path,
+  consumer: 'createRepositoryChange',
+};
+
+function eventDefinition(events: unknown[], connections: unknown[] = []): M1Definition {
+  return { ...definition(connections, events), moduleName: 'repoHost' };
+}
+
+test('a bound event gets a publisher function that compiles against the platform publisher and hands over identity, payload and request id', async () => {
+  const emitted = await emitPersistence('persistence.integrationOutbound', eventDefinition([REPO_EVENT]), EVENT_OUTPUT, readCatalog);
+  assert.equal('code' in emitted, false);
+  if ('code' in emitted) return;
+  assert.equal(emitted.evidences.length, 0);
+  assert.match(emitted.source, new RegExp(`import \\{ ${MODULE_EVENT_PUBLISH.symbol} \\} from '${MODULE_EVENT_PUBLISH.importPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`));
+  assert.match(emitted.source, /export async function publishRepositorioAlterado\(payload: unknown, ctx: RequestContext, opts\?: \{ requestId\?: string \}\)/);
+  assert.match(emitted.source, /publishModuleEvent\(\{ module: "repoHost", eventId: "repositorioAlterado" \}, payload, ctx, opts\)/);
+  assert.equal(emitted.source.includes('callConnection'), false);
+  assert.equal(checkTypes(emitted.source).clean, '');
+  const loaded = await loadPublishers(emitted.source);
+  const ctx = { moduleId: 'repoHost' } as RequestContext;
+  const published = await loaded.publishRepositorioAlterado({ id: 'r1' }, ctx, { requestId: 'req-1' });
+  assert.deepEqual(published, { eventId: 'recorded' });
+  const call = recordedModuleEvents().at(-1);
+  assert.deepEqual(call?.ref, { module: 'repoHost', eventId: 'repositorioAlterado' });
+  assert.deepEqual(call?.payload, { id: 'r1' });
+  assert.equal(call?.context, ctx);
+  assert.deepEqual(call?.opts, { requestId: 'req-1' });
+});
+
+test('a refusal of the platform publisher is thrown, so the transaction of the use case rolls back', async () => {
+  const emitted = await emitPersistence('persistence.integrationOutbound', eventDefinition([REPO_EVENT]), EVENT_OUTPUT, readCatalog);
+  assert.equal('code' in emitted, false);
+  if ('code' in emitted) return;
+  const loaded = await loadPublishers(emitted.source, `export async function publishModuleEvent() { return { ok: false, code: 'forbidden', message: 'the caller does not publish this event' }; }\n`);
+  await assert.rejects(loaded.publishRepositorioAlterado({ id: 'r1' }, { moduleId: 'other' } as RequestContext), (error: unknown) => {
+    assert.ok(error instanceof AppError);
+    assert.equal(error.code, 'forbidden');
+    assert.equal(error.statusCode, 403);
+    return true;
+  });
+});
+
+test('publishers and gateways share one file, and an event with another mechanism stays a gap beside them', async () => {
+  const emitted = await emitPersistence('persistence.integrationOutbound', eventDefinition([
+    REPO_EVENT,
+    { eventId: 'outroEvento', on: 'X.create', entityId: 'X', mechanism: '', consumer: 'createX' },
+  ], CONNECTIONS), EVENT_OUTPUT, readCatalog);
+  assert.equal('code' in emitted, false);
+  if ('code' in emitted) return;
+  assert.match(emitted.source, /export interface CmGateway/);
+  assert.match(emitted.source, /export async function publishRepositorioAlterado/);
+  assert.equal(emitted.source.includes('publishOutroEvento'), false);
+  assert.equal(emitted.evidences.some(item => !item.passed && item.detail.startsWith('MECHANISM_UNBOUND: outroEvento') && item.detail.endsWith('Connection gateways and event publishers were written.')), true);
+  assert.equal(checkTypes(emitted.source).clean, '');
+
+  const unbound = await emitPersistence('persistence.integrationOutbound', eventDefinition([{ ...REPO_EVENT, mechanismRef: 'mls-102034/l1/other.ts' }]), EVENT_OUTPUT, readCatalog);
+  assert.equal('code' in unbound && unbound.code, 'MECHANISM_INCOMPATIBLE');
+});
+
 function checkTypes(source: string): { clean: string; injected: string } {
   const dir = mkdtempSync(path.join(ROOT, '.outbound-proof-'));
   writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({
@@ -173,6 +241,19 @@ async function loadEmitted(source: string, fake: ReturnType<typeof createFakeCal
   writeFileSync(path.join(dir, 'outboundFake.ts'), `export async function callConnection(...args) { return globalThis.__outboundProof(...args); }\n`);
   writeFileSync(path.join(dir, 'outbound.ts'), source.replace(`from '${connector}'`, `from './outboundFake.js'`));
   (globalThis as { __outboundProof?: typeof fake }).__outboundProof = fake;
+  try {
+    return await import(pathToFileURL(path.join(dir, 'outbound.ts')).href);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Loads the emitted publishers. The platform publisher import is pointed at the fake of the platform, or at an inline stub. */
+async function loadPublishers(source: string, stub?: string): Promise<{ publishRepositorioAlterado: (payload: unknown, ctx: RequestContext, opts?: { requestId?: string }) => Promise<{ eventId: string }> }> {
+  const dir = mkdtempSync(path.join(ROOT, '.outbound-proof-'));
+  const fixtures = '/_102034_/testing/events/eventFixtures.js';
+  if (stub) writeFileSync(path.join(dir, 'publishStub.ts'), stub);
+  writeFileSync(path.join(dir, 'outbound.ts'), source.replace(`from '${MODULE_EVENT_PUBLISH.importPath}'`, stub ? `from './publishStub.js'` : `from '${fixtures}'`));
   try {
     return await import(pathToFileURL(path.join(dir, 'outbound.ts')).href);
   } finally {

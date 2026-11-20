@@ -27,6 +27,88 @@ export interface M12CodeGateInput {
   externalPort?: string;
   /** The usecase writes an external entity: the system outside meets its rules through the call (d1_196). */
   externalEntity?: boolean;
+  /** Events the def lists as effects of this usecase and binds to the platform publisher (d1_216): the file must publish each one. */
+  publishers?: readonly M12EventPublisher[];
+}
+
+/** One event a usecase publishes, and the function of the generated `outbound.ts` that does it. */
+export interface M12EventPublisher {
+  eventId: string;
+  fn: string;
+}
+
+function withoutComments(code: string): string {
+  return code.replace(/\/\*[\s\S]*?\*\//gu, ' ').replace(/(^|[^:\\])\/\/[^\n]*/gu, '$1 ');
+}
+
+/** The arguments of the call whose `(` is at `open`, split at the top level, and the index after its `)`. */
+function callArguments(text: string, open: number): { args: string[]; end: number } {
+  const args: string[] = [];
+  let depth = 0;
+  let quote = '';
+  let start = open + 1;
+  for (let index = open; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote) {
+      if (char === '\\') index += 1;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') quote = char;
+    else if (char === '(' || char === '[' || char === '{') depth += 1;
+    else if (char === ')' || char === ']' || char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        const last = text.slice(start, index).trim();
+        if (last) args.push(last);
+        return { args, end: index + 1 };
+      }
+    } else if (char === ',' && depth === 1) {
+      args.push(text.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  return { args, end: text.length };
+}
+
+/** `const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } }`: the context a transaction binds, with nothing else changed. */
+function boundContextDeclared(code: string, name: string): boolean {
+  const escaped = name.replace(/\$/gu, '\\$');
+  return new RegExp(`(?:const|let)\\s+${escaped}\\b[^=]*=\\s*\\{\\s*\\.\\.\\.ctx\\s*,\\s*data\\s*:\\s*\\{\\s*\\.\\.\\.ctx\\.data\\s*,\\s*moduleData\\s*:\\s*[\\w$]+\\s*\\}\\s*\\}`, 'u').test(code);
+}
+
+/**
+ * d1_216: the usecase that does the `on` of an event publishes it. The call must be in the file (an import does not count), awaited and
+ * not caught, with the context the transaction binds. The platform refuses an event whose module is not the one running, and queues it
+ * in the transaction of that context: `ctx` outside the transaction, a literal or a copy that sets `moduleId` would break one or the other.
+ */
+export function eventPublishProblems(code: string, publishers: readonly M12EventPublisher[]): string[] {
+  const clean = withoutComments(code);
+  const problems: string[] = [];
+  const inTransaction = /\.runInTransaction\s*\(/u.test(clean);
+  for (const publisher of publishers) {
+    const calls = [...clean.matchAll(new RegExp(`(?<![\\w$.])${publisher.fn}\\s*\\(`, 'gu'))];
+    if (calls.length === 0) {
+      problems.push(`EVENT_NOT_PUBLISHED: the usecase must publish ${publisher.eventId}: call \`await ${publisher.fn}(record, bound)\` after the write, inside \`ctx.data.moduleData.runInTransaction\`. Importing ${publisher.fn} is not a call.`);
+      continue;
+    }
+    for (const match of calls) {
+      const open = (match.index ?? 0) + match[0].length - 1;
+      const { args, end } = callArguments(clean, open);
+      if (!/\bawait\s+$/u.test(clean.slice(0, match.index)) || /^\s*\.\s*(catch|then)\b/u.test(clean.slice(end))) {
+        problems.push(`EVENT_PUBLISH_SWALLOWED: ${publisher.fn} must be awaited and its error must go through: a refused event throws and the transaction rolls back. No .catch, no .then, no call without await.`);
+      }
+      const context = args[1] ?? '';
+      if (context === 'ctx') {
+        problems.push(`EVENT_OUTSIDE_TRANSACTION: ${publisher.fn} must receive the \`bound\` context of the transaction, not \`ctx\`: the event commits or rolls back with the write only through it.`);
+      } else if (!/^[A-Za-z_$][\w$]*$/u.test(context) || !boundContextDeclared(clean, context)) {
+        problems.push(`EVENT_CONTEXT_FORGED: the context argument of ${publisher.fn} must be the variable \`const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } }\` of the runInTransaction callback. Not a literal, not a copy that sets moduleId.`);
+      } else if (!inTransaction) {
+        problems.push(`EVENT_OUTSIDE_TRANSACTION: ${publisher.fn} runs outside ctx.data.moduleData.runInTransaction.`);
+      }
+    }
+  }
+  return [...new Set(problems)];
 }
 
 /**
@@ -443,6 +525,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...parentRuleProblems(code, input.parentRules ?? []));
   problems.push(...transitionTargetProblems(code, input.transition));
   problems.push(...undeclaredInputProblems(code));
+  problems.push(...eventPublishProblems(code, input.publishers ?? []));
   // The rules of a write on an external entity are met by the external system: the call answers (or refuses) with them.
   for (const ruleId of input.externalEntity ? [] : input.ruleIds) {
     if (!code.includes(`'${ruleId}'`) && !code.includes(`"${ruleId}"`)) problems.push(`Rule ${ruleId} is not enforced: no AppError carries ruleId '${ruleId}'.`);

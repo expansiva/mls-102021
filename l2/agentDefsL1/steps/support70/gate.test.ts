@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { D1_MEASURED_PUBLISH, reconstructAccessPolicy, seedScenarioIssues, type D1PolicyUnit } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { D1_MEASURED_PUBLISH, D1_MODULE_EVENT_PUBLISH, integrationMechanismIssues, reconstructAccessPolicy, seedScenarioIssues, type D1PolicyUnit } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { readFixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import { M1_DEFINITION_SCHEMA, renderDefinition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
@@ -1254,7 +1254,7 @@ void test('an outbound event binds the usecase of its entity transition, not a u
   const systemProblems: D1SupportProblem[] = [];
   const kept = emitEffects(system, systemProblems);
   assert.equal(systemProblems.some(item => item.code === 'INTEGRATION_LINK'), false, JSON.stringify(systemProblems));
-  assert.equal(systemProblems.some(item => item.code === 'POOL_ABSENT' && item.severity === 'review'), true);
+  assert.equal(systemProblems.some(item => item.code === 'EVENT_WITHOUT_USECASE' && item.severity === 'review'), true);
   const keptOutbound = kept.emit.find(item => item.definition.artifactType === 'integrationOutbound');
   const keptEvents = (keptOutbound?.definition.data as { events: Array<{ consumer: string }> }).events;
   assert.deepEqual(keptEvents.map(item => item.consumer), ['Inscricao.promover']);
@@ -1302,7 +1302,7 @@ void test('an outbound event on an entity operation binds that usecase, or keeps
   const absentProblems: D1SupportProblem[] = [];
   const absentResult = emitEffects(absent, absentProblems);
   assert.equal(absentProblems.some(item => item.code === 'INTEGRATION_LINK'), false, JSON.stringify(absentProblems));
-  assert.equal(absentProblems.some(item => item.code === 'POOL_ABSENT' && item.severity === 'review'), true);
+  assert.equal(absentProblems.some(item => item.code === 'EVENT_WITHOUT_USECASE' && item.severity === 'review'), true);
   const absentOutbound = absentResult.emit.find(item => item.definition.artifactType === 'integrationOutbound');
   const absentEvents = (absentOutbound?.definition.data as { events: Array<{ consumer: string }> }).events;
   assert.deepEqual(absentEvents.map(item => item.consumer), ['X.create']);
@@ -1549,4 +1549,61 @@ void test('d1_208: the catalog of a call resolves on the platform, in this modul
   seed(host, info('l1/integrations/layer_1_external/connections/zipLookup.ts'), 'export default {};');
   const second = await connectionCatalogs(project, 'codeReview', rows, own);
   assert.equal(second.problems.zipLookup, undefined);
+});
+
+// d1_216 s1: an outbound event the L4 leaves unbound takes the platform module-event publisher (E2) and is linked to the usecase that does the `on`.
+void test('an unbound outbound event takes the module-event publisher and an event no usecase runs is its own problem (d1_216 s1)', () => {
+  const created = effectsRequest();
+  created.moduleName = 'repoHost';
+  created.models = [{
+    entityId: 'RepositoryChange', storageTarget: 'local', kind: 'entity', namespace: '', fields: [],
+    states: [], initialState: '', uniqueKeys: [], noteField: '', transitions: [],
+  }];
+  created.usecaseIds = ['createRepositoryChange'];
+  created.operationUsecases = [{ entity: 'RepositoryChange', operation: 'create', usecaseId: 'createRepositoryChange' }];
+  created.selectedEventIds = ['repositorioAlterado'];
+  created.outbound = [{ eventId: 'repositorioAlterado', on: 'RepositoryChange.create', mechanism: '', payloadDeclared: false }];
+  const createdProblems: D1SupportProblem[] = [];
+  const createdResult = emitEffects(created, createdProblems);
+  assert.equal(createdProblems.some(item => item.code === 'INTEGRATION_UNBOUND' || item.code === 'EVENT_WITHOUT_USECASE'), false, JSON.stringify(createdProblems));
+  const createdOutbound = createdResult.emit.find(item => item.definition.artifactType === 'integrationOutbound');
+  const createdData = createdOutbound?.definition.data as { events: Array<Record<string, string>> };
+  assert.deepEqual(createdData.events, [{
+    eventId: 'repositorioAlterado',
+    on: 'RepositoryChange.create',
+    entityId: 'RepositoryChange',
+    mechanism: D1_MODULE_EVENT_PUBLISH.symbol,
+    consumer: 'createRepositoryChange',
+    mechanismRef: D1_MODULE_EVENT_PUBLISH.path,
+  }]);
+  assert.deepEqual(integrationMechanismIssues(createdData), []);
+  assert.equal(createdOutbound?.definition.status, 'pending');
+  assert.equal((createdOutbound?.pipeline.flatMap(item => item.dependsFiles) || []).includes(D1_MODULE_EVENT_PUBLISH.path), false);
+
+  const wrongRef = { events: [{ eventId: 'repositorioAlterado', on: 'RepositoryChange.create', entityId: 'RepositoryChange', mechanism: D1_MODULE_EVENT_PUBLISH.symbol, consumer: 'createRepositoryChange', mechanismRef: 'mls-102034/l1/other.ts' }] };
+  assert.equal(integrationMechanismIssues(wrongRef).some(item => item.startsWith('MECHANISM_REF: repositorioAlterado')), true);
+
+  const transition = effectsRequest();
+  transition.moduleName = 'compras';
+  transition.models = [{
+    entityId: 'PedidoCompra', storageTarget: 'local', kind: 'entity', namespace: '', fields: [],
+    states: [], initialState: '', uniqueKeys: [], noteField: '',
+    transitions: [{ transitionId: 'concluirRecebimento', to: 'recebido', ruleRefs: [] }],
+  }];
+  transition.selectedEventIds = ['pedidoCompraRecebido'];
+  transition.outbound = [{ eventId: 'pedidoCompraRecebido', on: 'PedidoCompra.concluirRecebimento', mechanism: '', payloadDeclared: false }];
+  const alone: D1SupportProblem[] = [];
+  emitEffects(transition, alone);
+  const named = alone.filter(item => item.code === 'EVENT_WITHOUT_USECASE');
+  assert.deepEqual(named.map(item => item.path), ['pedidoCompraRecebido']);
+  assert.equal(named[0]?.message.includes('pedidoCompraRecebido'), true);
+  assert.equal(named[0]?.severity, 'review');
+
+  transition.usecaseIds = ['concluirRecebimento'];
+  transition.transitionUsecases = [{ entity: 'PedidoCompra', transitionRef: 'concluirRecebimento', usecaseId: 'concluirRecebimento' }];
+  const bound: D1SupportProblem[] = [];
+  const boundResult = emitEffects(transition, bound);
+  assert.equal(bound.some(item => item.code === 'EVENT_WITHOUT_USECASE'), false);
+  const boundData = boundResult.emit.find(item => item.definition.artifactType === 'integrationOutbound')?.definition.data as { events: Array<Record<string, string>> };
+  assert.deepEqual(boundData.events.map(item => `${item.consumer}:${item.mechanism}`), [`concluirRecebimento:${D1_MODULE_EVENT_PUBLISH.symbol}`]);
 });

@@ -23,6 +23,7 @@ import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/helpers/l1Defs
 import { auditImports, importSpecifier, ontologyCollections, ontologyRef, type EmitFailure, type StructureRead } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { actorMdmSeedRows, l4ActorsOf, seedOntologyRef } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
 import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
+import { MODULE_EVENT_PUBLISH, publisherNameOf } from '/_102021_/l2/helpers/l1Defs/moduleEvent.js';
 
 const CONTRACTS = '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
 const DATA_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
@@ -381,7 +382,8 @@ interface ConnectionRow {
 }
 
 /**
- * Events with no mechanism stay a gap. A def that also lists `connections` still writes the gateways:
+ * An event bound to the platform module-event publisher (d1_216) gets one publisher function in this file. Events with no other
+ * mechanism stay a gap. A def that also lists `connections` writes the gateways in the same file:
  * the receipt carries the same gap beside the file (one return cannot be both a failure and a source).
  */
 async function emitOutbound(definition: M1Definition, output: string, read: StructureRead): Promise<PersistenceEmit | EmitFailure> {
@@ -389,31 +391,39 @@ async function emitOutbound(definition: M1Definition, output: string, read: Stru
   const pending = events.map(event => text(event.pending)).find(Boolean) || pendingOf(definition.data);
   if (pending) return { code: pending, detail: `${definition.artifactId} is pending ${pending}. No publisher was written.` };
   const connections = connectionRows(definition.data.connections);
-  const unbound = events.filter(event => !text(event.mechanism)).map(event => text(event.eventId) || '(unnamed)');
-  const named = events.map(event => `${text(event.eventId) || '(unnamed)'}:${text(event.mechanism)}`);
-  if (connections.length === 0) {
+  const publishing = events.filter(isModuleEventBinding);
+  const others = events.filter(event => !publishing.includes(event));
+  const unbound = others.filter(event => !text(event.mechanism)).map(event => text(event.eventId) || '(unnamed)');
+  const named = others.map(event => `${text(event.eventId) || '(unnamed)'}:${text(event.mechanism)}`);
+  if (connections.length === 0 && publishing.length === 0) {
     if (unbound.length > 0) return { code: 'MECHANISM_UNBOUND', detail: `${unbound.join(', ')} have no mechanism. No publisher was written.` };
     return { code: 'MECHANISM_INCOMPATIBLE', detail: `${named.join(', ')} is not a binding. No publisher was written.` };
   }
-  const rendered = await renderConnectionGateways(output, connections, read);
+  const rendered = await renderConnectionGateways(output, connections, read, definition.moduleName, publishing);
   if ('code' in rendered) return rendered;
+  const what = connections.length > 0 && publishing.length > 0 ? 'Connection gateways and event publishers were' : publishing.length > 0 ? 'Event publishers were' : 'Connection gateways were';
   const evidences: M1Verification[] = [];
   if (unbound.length > 0) {
     evidences.push({
       id: 'outboundEvents',
       kind: 'schema',
       passed: false,
-      detail: `MECHANISM_UNBOUND: ${unbound.join(', ')} have no mechanism. Connection gateways were written.`,
+      detail: `MECHANISM_UNBOUND: ${unbound.join(', ')} have no mechanism. ${what} written.`,
     });
-  } else if (events.length > 0) {
+  } else if (others.length > 0) {
     evidences.push({
       id: 'outboundEvents',
       kind: 'schema',
       passed: false,
-      detail: `MECHANISM_INCOMPATIBLE: ${named.join(', ')} is not a binding. Connection gateways were written.`,
+      detail: `MECHANISM_INCOMPATIBLE: ${named.join(', ')} is not a binding. ${what} written.`,
     });
   }
   return { ...rendered, evidences };
+}
+
+/** The def binds the event to the platform publisher: symbol and ref are the ones of the platform, and the id is a name. */
+function isModuleEventBinding(event: Record<string, unknown>): boolean {
+  return text(event.mechanism) === MODULE_EVENT_PUBLISH.symbol && text(event.mechanismRef) === MODULE_EVENT_PUBLISH.path && ident(text(event.eventId));
 }
 
 function connectionRows(value: unknown): ConnectionRow[] {
@@ -433,7 +443,13 @@ function connectionRows(value: unknown): ConnectionRow[] {
   return out;
 }
 
-async function renderConnectionGateways(output: string, rows: readonly ConnectionRow[], read: StructureRead): Promise<PersistenceEmit | EmitFailure> {
+async function renderConnectionGateways(
+  output: string,
+  rows: readonly ConnectionRow[],
+  read: StructureRead,
+  moduleName: string,
+  publishing: readonly Record<string, unknown>[],
+): Promise<PersistenceEmit | EmitFailure> {
   const byConnection = new Map<string, ConnectionRow[]>();
   for (const row of rows) {
     const list = byConnection.get(row.connectionId) ?? [];
@@ -441,7 +457,9 @@ async function renderConnectionGateways(output: string, rows: readonly Connectio
     byConnection.set(row.connectionId, list);
   }
   const blocks: string[] = [];
-  const imports = [APP_CONTRACTS, CALL_CONNECTION];
+  const imports = [APP_CONTRACTS];
+  if (rows.length > 0) imports.push(CALL_CONNECTION);
+  if (publishing.length > 0) imports.push(MODULE_EVENT_PUBLISH.importPath);
   for (const connectionId of [...byConnection.keys()].sort()) {
     // The platform file, or the declaration of a system this module or a sibling declares (d1_208).
     const owner = l1OwnerOfRef(output);
@@ -476,10 +494,12 @@ async function renderConnectionGateways(output: string, rows: readonly Connectio
       '}',
     ].join('\n'));
   }
+  for (const event of [...publishing].sort((a, b) => text(a.eventId).localeCompare(text(b.eventId)))) blocks.push(eventPublisher(moduleName, event));
   const source = [
     header(output),
     `import { AppError, type RequestContext } from '${APP_CONTRACTS}';`,
-    `import { callConnection, type CallConnectionOptions } from '${CALL_CONNECTION}';`,
+    ...(rows.length > 0 ? [`import { callConnection, type CallConnectionOptions } from '${CALL_CONNECTION}';`] : []),
+    ...(publishing.length > 0 ? [`import { ${MODULE_EVENT_PUBLISH.symbol} } from '${MODULE_EVENT_PUBLISH.importPath}';`] : []),
     '',
     `const STATUS: Record<string, number> = ${JSON.stringify(CONNECTION_STATUS)};`,
     '',
@@ -489,6 +509,25 @@ async function renderConnectionGateways(output: string, rows: readonly Connectio
   const bad = auditImports(source, imports);
   if (bad) return { code: 'IMPORT_UNDECLARED', detail: bad };
   return { source, imports, runsStub: false, seeds: false, evidences: [] };
+}
+
+/**
+ * One function per event the module publishes. The use case that does the `on` calls it with the `bound` context of its
+ * transaction: the platform checks the event is declared by the module and queues it in that transaction. A refusal is thrown,
+ * so the transaction rolls back.
+ */
+function eventPublisher(moduleName: string, event: Record<string, unknown>): string {
+  const eventId = text(event.eventId);
+  const name = publisherNameOf(eventId);
+  const on = text(event.on);
+  return [
+    `/** ${eventId}${on ? `: published by ${moduleName} when ${on} happens` : ''}. */`,
+    `export async function ${name}(payload: unknown, ctx: RequestContext, opts?: { requestId?: string }): Promise<{ eventId: string }> {`,
+    `  const result = await ${MODULE_EVENT_PUBLISH.symbol}({ module: ${JSON.stringify(moduleName)}, eventId: ${JSON.stringify(eventId)} }, payload, ctx, opts);`,
+    '  if (!result.ok) throw new AppError(result.code, result.message, STATUS[result.code]);',
+    '  return result.output;',
+    '}',
+  ].join('\n');
 }
 
 function gatewayMethod(connectionId: string, item: CatalogOperation): string {

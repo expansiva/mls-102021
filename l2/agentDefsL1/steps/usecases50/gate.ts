@@ -12,6 +12,7 @@ import {
   qualifyDefPath,
   skillPaths,
   type D1PipelineItem,
+  outboundOnKeys,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
@@ -213,8 +214,8 @@ function resolveEffects(
   entity: D1UsecaseEntity,
   usecase: D1UsecaseSelection,
 ): string[] {
-  const on = `${entity.entityId}.${usecase.usecaseId}`;
-  return request.outbound.filter(event => event.on === on).map(event => event.eventId);
+  const keys = outboundOnKeys(entity.entityId, { usecaseId: usecase.usecaseId, operation: usecase.operation, transitionRef: transitionRefOf(usecase) });
+  return request.outbound.filter(event => keys.includes(event.on)).map(event => event.eventId);
 }
 
 function resolveMdm(

@@ -142,6 +142,21 @@ export function futureOutputPath(defPath: string): string {
   return defPath.endsWith('.defs.ts') ? defPath.replace(/\.defs\.ts$/, '.ts') : '';
 }
 
+/**
+ * The `on` values of an L4 outbound line that a usecase answers to (d1_216): `<Entity>.<usecaseId>`, `<Entity>.<operation>` for a plain
+ * operation (`Receipt.create`) and `<Entity>.<transition>` for a transition. The L4 names the creation or the transition, not the id
+ * the generator gave the usecase.
+ */
+export function outboundOnKeys(entityId: string, usecase: { usecaseId: string; operation: string; transitionRef?: string }): string[] {
+  const keys = new Set<string>([`${entityId}.${usecase.usecaseId}`]);
+  if (usecase.operation === 'transition') {
+    if (usecase.transitionRef) keys.add(`${entityId}.${usecase.transitionRef}`);
+  } else if (L1_OPERATION_EVENTS.has(usecase.operation)) {
+    keys.add(`${entityId}.${usecase.operation}`);
+  }
+  return [...keys];
+}
+
 export function skillPaths(type: string): string[] {
   // No skill file of its own. Support types that have one still name it.
   if (type === 'workflowProcess' || type === 'externalConnection') return [];

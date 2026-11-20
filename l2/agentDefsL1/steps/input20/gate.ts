@@ -258,7 +258,6 @@ export function buildD1InputSnapshot(
   noteChanges(problems, paths, backend, effort);
   notePayload(problems, moduleName, selectedUsecases, artifacts.entities, entityKind);
   noteAccess(problems, paths.access, access, relationships);
-  noteIntegration(problems, paths.integration, outbound);
   // One usecase per call for an external entity (d1_195): the plan names the entity and the operation, the call is the L4's.
   const split = splitExternalUsecases({
     journeys: artifacts.journeys,
@@ -953,12 +952,6 @@ function noteAccess(
     if (!others.length) continue;
     const names = others.map(rel => text(rel.relationshipId)).join(', ');
     review(problems, 'ACCESS_ANCHOR', path, `Grant ${grantId} anchors on ${anchor}. Relationship ${names} binds another required target.`, grantId);
-  }
-}
-
-function noteIntegration(problems: D1InputProblem[], path: string, outbound: Array<{ id: string }>): void {
-  for (const event of outbound) {
-    review(problems, 'INTEGRATION_UNBOUND', path, `Outbound ${event.id} is preserved. No runtime mechanism is named on the integration artifact.`, event.id);
   }
 }
 
