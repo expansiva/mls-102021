@@ -658,6 +658,7 @@ export const D1_FIELD_READERS = {
   'requestService.requests.output.reason': 'requestServiceIssues',
   'requestService.requests.rules': 'requestServiceIssues',
   'requestService.requests.serves': 'requestServiceIssues',
+  'requestService.requests.consumes': 'requestServiceIssues',
   'requestService.requests.doc': 'requestServiceIssues',
   'requestService.requests.doc.raw': 'requestServiceIssues',
   'requestService.requests.doc.purpose': 'requestServiceIssues',

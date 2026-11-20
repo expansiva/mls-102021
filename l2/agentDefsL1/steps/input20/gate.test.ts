@@ -170,7 +170,8 @@ void test('integration v2 and v3 are accepted; an external entity plans no table
 void test('the v2 seed is cut by the contract routes, not by backend endpoints', () => {
   const snapshot = build(loadHead());
   assert.equal('routes' in snapshot.selection, false);
-  assert.deepEqual(snapshot.selection.pages.map(page => page.pageId), ['movimentacoes', 'produtos']);
+  // d1_217: the inbound event line from compras is a route on a pseudo-page named by the publisher.
+  assert.deepEqual(snapshot.selection.pages.map(page => page.pageId), ['compras', 'movimentacoes', 'produtos']);
   const requestRoutes = snapshot.selection.requests.map(item => item.route).sort();
   assert.deepEqual(snapshot.selection.pages.flatMap(page => page.routes).sort(), requestRoutes);
   assert.equal(requestRoutes.includes('controleEstoque.movimentacoes.load'), true);
@@ -178,8 +179,8 @@ void test('the v2 seed is cut by the contract routes, not by backend endpoints',
   assert.deepEqual(snapshot.selection.usecases.map(item => item.usecaseId).sort(), [
     'createMovimentacaoEstoque', 'createProduto', 'listMovimentacaoEstoque', 'listProduto',
   ]);
-  assert.equal(snapshot.files.filter(file => file.artifactType === 'httpController').length, 2);
-  assert.equal(snapshot.files.filter(file => file.artifactType === 'requestService').length, 2);
+  assert.equal(snapshot.files.filter(file => file.artifactType === 'httpController').length, 3);
+  assert.equal(snapshot.files.filter(file => file.artifactType === 'requestService').length, 3);
   for (const pageId of ['movimentacoes', 'produtos']) {
     const service = snapshot.files.find(file => file.id === `requestService:${pageId}`);
     const controller = snapshot.files.find(file => file.id === `controller:${pageId}`);

@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/controllers60/gate.ts" enhancement="_blank"/>
 
+import { isMarkedRoute } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
 import {
   definitionIssues,
   pendingDefinition,
@@ -159,9 +160,9 @@ function sealRoute(
   const ownerless = row.output.flatMap(node => node.kind === 'computed' && !node.entity ? [node.path] : []);
   // A route with no entity of its own takes the grants its L2 contract declares, each checked against the L4 access
   // artifact and the actors of the page (L4 stays the source): never an open route.
-  const routeGrants = ownerless.length || (entities.length === 0 && !row.serves) ? routeGrantIds(request, contract?.source || '', path, page, problems) : [];
+  const routeGrants = ownerless.length || (entities.length === 0 && !isMarkedRoute(row)) ? routeGrantIds(request, contract?.source || '', path, page, problems) : [];
   // A serve route has no L2 contract. Its grant is the connection actor on the pseudo-page.
-  const serves = Boolean(row.serves);
+  const serves = isMarkedRoute(row);
   const matched: string[] = [];
   if (serves) {
     for (const grant of request.grants) {
@@ -292,7 +293,7 @@ function bindAdapter(
   const contractPath = contract?.path || `l2/${request.moduleName}/web/contracts/${route.page}.defs.ts`;
   const contractInterface = contract ? contractInterfaceName(contract.source) : '';
   const serviceFunction = row.route;
-  const serves = Boolean(row.serves);
+  const serves = isMarkedRoute(row);
   if (!kind) error(problems, 'KIND', path, `Route ${path} kind ${route.kind} is not query or command.`);
   // A handler omits the L2 contract only when its request-service row serves a catalog operation.
   if (!serves && !contractInterface) {
@@ -575,7 +576,7 @@ function requestServices(request: D1ControllerRequest, problems: D1ControllerPro
     if (!blocked) fillService(request, item, problems);
     services.push(item);
   }
-  const servedPages = [...new Set(selected.filter(item => item.serves).map(item => item.pageId))]
+  const servedPages = [...new Set(selected.filter(item => isMarkedRoute(item)).map(item => item.pageId))]
     .filter(pageId => !request.contracts.some(contract => contract.pageId === pageId))
     .sort();
   for (const pageId of servedPages) {

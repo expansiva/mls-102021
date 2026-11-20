@@ -313,7 +313,7 @@ function parseObject(text: string): Record<string, unknown> | null {
 export function accessGrantsOf(
   access: unknown,
   entities: Record<string, unknown>,
-  requests: readonly { serves?: string }[] = [],
+  requests: readonly { serves?: string; consumes?: string }[] = [],
 ): { grants: D1ControllerGrant[]; problems: D1ControllerProblem[] } {
   const grants: D1ControllerGrant[] = [];
   const problems: D1ControllerProblem[] = [];

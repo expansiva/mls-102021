@@ -34,6 +34,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { requestServiceDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { applyResolutions } from '/_102021_/l2/agentDefsL1/steps/input20/deriveRequest.js';
+import { consumeLinesOf, deriveConsumeRequests } from '/_102021_/l2/agentDefsL1/steps/input20/deriveConsume.js';
 import { deriveServeRequests, processTriggerServes, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
 import { externalCallsOf, routeCallsOf, splitExternalUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import type {
@@ -319,6 +320,17 @@ export function buildD1InputSnapshot(
     processTriggers: processTriggerServes(workflows),
     declaredSystems: Object.fromEntries((artifacts.connectionScope?.own ?? []).map(system => [system.id, system.operations])),
   }));
+  // d1_217: an inbound event line is a route the platform delivers the event to, on a pseudo-page named by the publisher module.
+  requests.push(...deriveConsumeRequests({
+    moduleName,
+    lines: consumeLinesOf(integration),
+    usecases: selectedUsecases,
+    problems,
+    entities: artifacts.entities,
+    plannedIds: planned.ids,
+    removedIds: planned.removed,
+    takenPages: new Set([...pageIds, ...serveLines.map(line => line.connectionId)]),
+  }));
   for (const usecase of selectedUsecases) {
     usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
   }
@@ -500,7 +512,7 @@ function planFiles(input: {
   }
 
   const scopeId = 'scope:access';
-  const serveRoutes = input.requests.filter(request => request.serves).map(request => request.route);
+  const serveRoutes = input.requests.filter(request => request.serves || request.consumes).map(request => request.route);
   const planScope = input.grants.length > 0 || serveRoutes.length > 0;
   const scopeOwners = input.grants.length
     ? input.grants.map(grant => `grant:${grant}`)

@@ -972,19 +972,30 @@ export function requestServiceIssues(data: unknown): string[] {
   return issues;
 }
 
+/** A present `consumes` mark must be `<publisherModule>.<eventId>` (d1_217). Absent is allowed. */
+function consumesMark(value: unknown, path: string, issues: string[]): boolean {
+  if (value === undefined) return false;
+  if (typeof value !== 'string' || !SERVES_MARK.test(value)) {
+    issues.push(`Invalid field ${path}.consumes.`);
+    return false;
+  }
+  return true;
+}
+
 function requestRowIssues(row: unknown, path: string, issues: string[]): void {
   if (!isRecord(row)) {
     issues.push(`Missing field ${path}.`);
     return;
   }
-  unknownKeys(row, ['route', 'kind', 'uses', 'transaction', 'output', 'params', 'rules', 'doc', 'serves'], path, issues);
+  unknownKeys(row, ['route', 'kind', 'uses', 'transaction', 'output', 'params', 'rules', 'doc', 'serves', 'consumes'], path, issues);
   needString(row, 'route', path, issues);
   const kind = needString(row, 'kind', path, issues);
   oneOf(kind, ['qry', 'cmd'], `${path}.kind`, issues);
   stringList(row.uses, `${path}.uses`, issues);
   const transaction = needString(row, 'transaction', path, issues);
   oneOf(transaction, ['single', 'none'], `${path}.transaction`, issues);
-  const serves = servesMark(row.serves, path, issues);
+  const serves = servesMark(row.serves, path, issues) || consumesMark(row.consumes, path, issues);
+  if (row.serves !== undefined && row.consumes !== undefined) issues.push(`Invalid field ${path}: a route serves a connection or consumes an event, not both.`);
   // d1_61: the classified output tree. It replaces the flat `outputs`, which this schema no longer accepts.
   // A row that serves a catalog operation may carry an empty tree; the type comes from the catalog.
   if (!Array.isArray(row.output) || (row.output.length === 0 && !serves)) issues.push(`Missing field ${path}.output.`);
@@ -1098,7 +1109,7 @@ export function accessScopeIssues(data: unknown): string[] {
     needString(grant, 'actorRef', path, issues);
     if (grant.anchorEntity !== undefined) needString(grant, 'anchorEntity', path, issues);
     const refs = stringList(grant.entityRefs, `${path}.entityRefs`, issues);
-    const technicalCaller = typeof grant.actorRef === 'string' && grant.actorRef.startsWith('connection:');
+    const technicalCaller = typeof grant.actorRef === 'string' && (grant.actorRef.startsWith('connection:') || grant.actorRef.startsWith('module:'));
     if (Array.isArray(grant.entityRefs) && refs.length === 0 && !technicalCaller) issues.push(`Missing field ${path}.entityRefs.`);
     const disclosure = needString(grant, 'disclosure', path, issues);
     oneOf(disclosure, ['fieldsOnly', 'fullRecord'], `${path}.disclosure`, issues);
@@ -1234,7 +1245,7 @@ function readSerializedGrant(
   const entityRefs = Array.isArray(grant.entityRefs) ? grant.entityRefs.filter((item): item is string => typeof item === 'string' && !!item) : [];
   const disclosure = grant.disclosure === 'fieldsOnly' || grant.disclosure === 'fullRecord' ? grant.disclosure : '';
   // A connection's technical caller has no entity of its own (A2, d1_189): its grant names none.
-  const technicalCaller = typeof grant.actorRef === 'string' && grant.actorRef.startsWith('connection:');
+  const technicalCaller = typeof grant.actorRef === 'string' && (grant.actorRef.startsWith('connection:') || grant.actorRef.startsWith('module:'));
   if (!grantId || typeof grant.actorRef !== 'string' || !grant.actorRef || (!entityRefs.length && !technicalCaller) || !disclosure) {
     return { issue: `Grant ${grantId || '(missing)'} is not a complete policy.` };
   }

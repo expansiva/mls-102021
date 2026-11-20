@@ -36,6 +36,8 @@ import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/
 import { runResolve25, type D1TestResolver } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
 import { D1_GAP_NONE } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { assembleD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { consumeLinesOf } from '/_102021_/l2/agentDefsL1/steps/input20/deriveConsume.js';
+import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/source.js';
 import { answersByRoute } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
 import { readResolveReceipt } from '/_102021_/l2/agentDefsL1/steps/resolve25/io.js';
 
@@ -161,11 +163,17 @@ function assertInputClosed(host: TestHost, moduleName: string, fixtureId: string
 
 /** One request service per contract page that declares a route; a page without routes has none. */
 function requestServicePaths(id: string, moduleName: string): string[] {
-  return Object.entries(loadD1Fixture(id))
+  const fixture = loadD1Fixture(id);
+  const pages = Object.entries(fixture)
     .filter(([file, text]) => file.startsWith(`l2/${moduleName}/web/contracts/`) && file.endsWith('.defs.ts')
       && parseD2ContractV2(text).routes.length > 0)
     .map(([file]) => file)
-    .map(file => file.slice(file.lastIndexOf('/') + 1, -'.defs.ts'.length))
+    .map(file => file.slice(file.lastIndexOf('/') + 1, -'.defs.ts'.length));
+  // d1_217: an inbound event line of the L4 is a route on a pseudo-page named by the publisher module, with its own request service.
+  const integration = fixture[`l4/${moduleName}/integration.defs.ts`];
+  const parsed = integration ? parseD1Source(integration, 'defs') : null;
+  const consumed = consumeLinesOf((parsed && typeof parsed === 'object' ? parsed : {}) as Record<string, unknown>).map(line => line.from);
+  return [...new Set([...pages, ...consumed])]
     .sort()
     .map(pageId => `l1/${moduleName}/layer_2_application/requests/${pageId}.defs.ts`);
 }

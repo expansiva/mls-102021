@@ -22,6 +22,8 @@ void test('a contract v2 page controller is an adapter over one request service 
     for (const service of build.services) {
       const selected = snapshot.selection.requests.filter(item => item.pageId === service.pageId);
       assert.deepEqual([...service.requests.map(item => item.route)].sort(), selected.map(item => item.route).sort(), id);
+      // A pseudo-page (the publisher of a consumed event, d1_217) has no L2 contract and no output tree: its own test is deriveConsume.
+      if (selected.some(item => item.consumes)) continue;
       for (const row of service.requests) {
         const source = selected.find(item => item.route === row.route);
         assert.deepEqual(row.uses, source?.uses, `${id} ${row.route}`);

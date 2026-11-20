@@ -592,12 +592,13 @@ function checkCoverage(
   }
 }
 
-/** A connection pseudo-page is the `pageId` of a serve request: the connection id (`serves` = `<pageId>.<operation>`). */
+/** A connection pseudo-page is the `pageId` of a serve request (the connection id, `serves` = `<pageId>.<operation>`) or of a consume request (the publisher module, d1_217). */
 export function connectionPageIds(snapshot: D1InputSnapshot | null | undefined): Set<string> {
   const ids = new Set<string>();
   if (!snapshot) return ids;
   for (const row of snapshot.selection.requests || []) {
-    if (!row.pageId || !row.serves || !row.serves.startsWith(`${row.pageId}.`)) continue;
+    const mark = row.serves || row.consumes;
+    if (!row.pageId || !mark || !mark.startsWith(`${row.pageId}.`)) continue;
     ids.add(row.pageId);
   }
   return ids;

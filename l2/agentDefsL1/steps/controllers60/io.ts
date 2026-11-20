@@ -21,7 +21,7 @@ import {
   type D1RemovedRoute,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { serviceSourceOf } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
-import { serveControllerGrants } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
+import { isMarkedRoute, serveControllerGrants, technicalCaller, type D1RouteMark } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
 import { D1_USECASE_VERSION } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { resolveAllowedFields } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 
@@ -129,7 +129,7 @@ async function controllerRequest(
   ])].filter(Boolean).sort();
   // A connection page is not in needs.pages. Its types come from the catalog, not an L2 contract.
   const connectionPages = new Set(
-    selectedRequests.filter(request => request.serves && !actors.has(request.pageId)).map(request => request.pageId),
+    selectedRequests.filter(request => isMarkedRoute(request) && !actors.has(request.pageId)).map(request => request.pageId),
   );
   const contracts = [];
   for (const pageId of pageIds) {
@@ -154,7 +154,7 @@ async function controllerRequest(
       moduleName,
       pages: pageIds.map(pageId => ({
         pageId,
-        actors: connectionPages.has(pageId) ? [`connection:${pageId}`] : (actors.get(pageId) || []),
+        actors: connectionPages.has(pageId) ? [technicalActorOfPage(pageId, selectedRequests)] : (actors.get(pageId) || []),
         defPath: controllerPath.get(pageId) || `l1/${moduleName}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`,
       })),
       usecases: snapshot.selection.usecases.map(usecase => ({
@@ -232,7 +232,7 @@ function actorsOf(needs: unknown): Map<string, string[]> {
 export function accessGrantsOf(
   access: unknown,
   ontology: Record<string, unknown>,
-  requests: readonly { serves?: string }[] = [],
+  requests: readonly D1RouteMark[] = [],
 ): { grants: D1ControllerGrant[]; problems: D1ControllerProblem[] } {
   const synthetic = serveControllerGrants(requests);
   if (!isRecord(access) || !Array.isArray(access.grants)) return { grants: synthetic, problems: [] };
@@ -325,4 +325,10 @@ async function readLogical(project: number, logicalPath: string): Promise<string
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+}
+
+/** The technical actor of a pseudo-page: `module:<publisher>` when its routes consume a module event, `connection:<id>` when they are served. */
+function technicalActorOfPage(pageId: string, requests: ReadonlyArray<D1RouteMark & { pageId: string }>): string {
+  const caller = requests.filter(request => request.pageId === pageId).map(request => technicalCaller(request)).find(Boolean);
+  return caller?.actorRef ?? `connection:${pageId}`;
 }

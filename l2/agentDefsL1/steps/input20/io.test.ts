@@ -500,3 +500,16 @@ void test('d1_208: a connection no platform file and no own system owns seals th
   const after = await assembleD1Input(PROJECT, 'controleEstoque');
   assert.notEqual(after.snapshotHash, withSibling.snapshotHash);
 });
+
+void test('d1_217: an inbound event line of the L4 becomes a consumes route of the publisher page, with its usecase', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'controleEstoque-39a5166', PROJECT);
+  const snapshot = await assembleD1Input(PROJECT, 'controleEstoque');
+  const route = snapshot.selection.requests.find(request => request.consumes === 'compras.recebimentoRegistrado');
+  assert.ok(route, JSON.stringify(snapshot.selection.requests.map(request => request.route)));
+  assert.deepEqual([route.route, route.pageId, route.kind, route.params, route.serves], ['controleEstoque.compras.recebimentoRegistrado', 'compras', 'cmd', [], undefined]);
+  assert.equal(route.uses.length, 1, 'the usecase that creates the written entity');
+  assert.match(route.uses[0], /MovimentacaoEstoque/u);
+  // The publisher page has no L2 contract; its request service def is planned like the one of a connection.
+  assert.equal(snapshot.files.some(file => file.defPath === 'l1/controleEstoque/layer_2_application/requests/compras.defs.ts'), true);
+});

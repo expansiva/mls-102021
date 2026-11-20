@@ -304,7 +304,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["route", "kind", "uses", "transaction", "output", "params", "rules"],
-      "if": { "required": ["serves"] },
+      "if": { "anyOf": [{ "required": ["serves"] }, { "required": ["consumes"] }] },
       "then": { "properties": { "params": { "items": { "$ref": "#/$defs/serveParam" } } } },
       "properties": {
         "route": { "type": "string", "minLength": 1 },
@@ -315,6 +315,7 @@
         "params": { "type": "array", "items": { "$ref": "#/$defs/serviceParam" } },
         "rules": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "serves": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*\\.[a-z][A-Za-z0-9]*$" },
+        "consumes": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*\\.[a-z][A-Za-z0-9]*$" },
         "doc": { "$ref": "#/$defs/serviceDoc" }
       }
     },

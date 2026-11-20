@@ -186,6 +186,8 @@ export interface D1SelectedRequest {
   uses: string[];
   /** `<connectionId>.<operationId>` when the request comes from a serve line. Absent on a contract request. */
   serves?: string;
+  /** `<publisherModule>.<eventId>` when the request comes from an `inbound` event line (d1_217). The platform delivers the event to it. */
+  consumes?: string;
   /** Readonly values tied to a route rule by a resolve25 answer (d1_62). Present only when there is one. */
   computedBy?: D1RequestComputedBy[];
   /** Present only when something was left unresolved (d1_60). */

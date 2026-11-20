@@ -53,6 +53,7 @@ export function serviceSourceOf(request: D1SelectedRequest): D1ServiceRequestSou
     ...(request.computedBy?.length ? { computedBy: request.computedBy.map(item => ({ ...item })) } : {}),
     ...(request.unresolved?.length ? { unresolved: request.unresolved.map(item => ({ path: item.path, reason: item.reason })) } : {}),
     ...(request.serves ? { serves: request.serves } : {}),
+    ...(request.consumes ? { consumes: request.consumes } : {}),
   };
 }
 
@@ -194,7 +195,7 @@ export function serveRowsFor(
 ): D1ServiceRow[] {
   const rows: D1ServiceRow[] = [];
   for (const source of selected) {
-    if (source.pageId !== pageId || !source.serves) continue;
+    if (source.pageId !== pageId || (!source.serves && !source.consumes)) continue;
     rows.push({
       route: source.route,
       kind: source.kind,
@@ -203,7 +204,8 @@ export function serveRowsFor(
       output: [],
       params: source.params.map(copyParam),
       rules: [],
-      serves: source.serves,
+      ...(source.serves ? { serves: source.serves } : {}),
+      ...(source.consumes ? { consumes: source.consumes } : {}),
     });
   }
   rows.sort((left, right) => (left.route < right.route ? -1 : left.route > right.route ? 1 : 0));

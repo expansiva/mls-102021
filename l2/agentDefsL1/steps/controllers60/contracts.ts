@@ -123,6 +123,8 @@ export interface D1ServiceRequestSource {
   unresolved?: Array<Pick<D1RequestUnresolved, 'path' | 'reason'>>;
   /** `<connectionId>.<operationId>` when the request comes from a serve line. */
   serves?: string;
+  /** `<publisherModule>.<eventId>` when the request comes from an inbound event line (d1_217). */
+  consumes?: string;
 }
 
 export interface D1ServiceParam {
@@ -148,6 +150,8 @@ export interface D1ServiceRow {
   doc?: RequestDoc;
   /** `<connectionId>.<operationId>` on a serve route. The runtime reads this mark. */
   serves?: string;
+  /** `<publisherModule>.<eventId>` on a route that receives a module event. The runtime reads this mark. */
+  consumes?: string;
 }
 
 export interface D1RequestServiceItem {

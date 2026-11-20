@@ -5,6 +5,7 @@ import type { D1InputArtifacts, D1InputSnapshot } from '/_102021_/l2/agentDefsL1
 import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import { resolverAnswers } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
 import { serviceSourceOf } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
+import { serveControllerGrants, technicalCaller } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
 import type {
   D1ControllerGrant,
   D1ControllerRelationship,
@@ -35,7 +36,8 @@ export function seedControllerRequest(id: string, moduleName: string): D1Control
     moduleName,
     pages: pageIds.map(pageId => ({
       pageId,
-      actors: actors.get(pageId) || [],
+      // A pseudo-page (a connection, or the publisher of an event this module consumes) has no needs page: its actor is the technical caller (as io.ts does).
+      actors: actors.get(pageId) || snapshot.selection.requests.filter(request => request.pageId === pageId).flatMap(request => technicalCaller(request)?.actorRef ?? []).slice(0, 1),
       defPath: `l1/${moduleName}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`,
     })),
     usecases: snapshot.selection.usecases.map(usecase => ({
@@ -46,7 +48,7 @@ export function seedControllerRequest(id: string, moduleName: string): D1Control
       functionName: '',
       defPath: usecasePath.get(usecase.identity) || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,
     })),
-    grants: grantsFrom(artifacts.access),
+    grants: [...grantsFrom(artifacts.access), ...serveControllerGrants(snapshot.selection.requests)],
     relationships: relationshipsFrom(artifacts.ontologyIndex),
     contracts: Object.entries(artifacts.contractTexts || {}).map(([pageId, source]) => ({
       pageId,

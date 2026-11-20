@@ -266,7 +266,8 @@ void test('an update keeps the done handlers of the same page and plans the othe
   const row = (request.serviceRequests || []).find(item => item.route === query);
   assert.ok(row);
   for (const usecase of request.usecases) if (row.uses.includes(usecase.usecaseId)) usecase.status = 'done';
-  const original = request.grants.map(item => item.grantId);
+  // The grants of the L4 access artifact: the technical callers of a pseudo-page belong to that page, not to this one.
+  const original = request.grants.filter(item => !item.actorRef.startsWith('module:') && !item.actorRef.startsWith('connection:')).map(item => item.grantId);
   const extra = { ...request.grants[0], grantId: `${request.grants[0].grantId}Extra`, entityRefs: [...request.grants[0].entityRefs], allowedFields: [] };
   request.grants.push(extra);
   request.existing = [{
