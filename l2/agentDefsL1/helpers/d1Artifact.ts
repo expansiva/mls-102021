@@ -3,6 +3,7 @@
 import {
   dataAllowList,
   arrivalTransitionsIssues,
+  callsIssues,
   derivedReadIssues,
   definitionIssues as envelopeIssues,
   M1_ARTIFACT_TYPES,
@@ -167,6 +168,8 @@ export interface D1UsecaseData {
   transitionRef?: string;
   /** d1_259 s1c: the process transitions an arrival applies (an `update` a `serve` calls on an entity with a lifecycle). */
   arrivalTransitions?: Array<{ transitionId: string; from: string[]; to: string; ruleRefs: string[] }>;
+  /** d1_269: where the required fields of its outside call that no field names come from. */
+  calls?: Array<{ call: string; input: Array<{ field: string; from: { kind: 'input'; field: string } | { kind: 'entity'; entity: string; field: string; idFrom: string } }> }>;
   mdm?: {
     namespace: string;
     role: string;
@@ -753,6 +756,7 @@ export function usecaseIssues(data: unknown): string[] {
   if (data.mdm !== undefined) mdmBindingIssues(data.mdm, issues);
   if (data.derivedRead !== undefined) derivedReadIssues(data.derivedRead, issues);
   arrivalTransitionsIssues(data, issues);
+  callsIssues(data, issues);
   issues.push(...projectionIssues(data));
   issues.push(...usecaseV1Issues(data));
   return issues;

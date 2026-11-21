@@ -21,6 +21,7 @@ import { enforcedRuleIds, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/st
 import { readUsecaseFidelity } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { capabilityApplies, mdmForOperation, isForeignMdmPatchKey } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import type { D1DerivedRead } from '/_102021_/l2/agentDefsL1/steps/usecases50/derivedRead.js';
+import type { D1CallInput } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import {
   D1_USECASE_VERSION,
   ENUMERATION_REASON,
@@ -128,6 +129,7 @@ function planUsecase(
     effects: effects.map(eventId => ({ eventId, path: integrationPath, symbol: eventId })),
     ...(transitionRef ? { transitionRef } : {}),
     ...(arrival.transitions.length ? { arrivalTransitions: arrival.transitions } : {}),
+    ...(usecase.callInputs?.length ? { calls: callsOf(usecase.callInputs) } : {}),
     ...(mdm ? { mdm: storedMdm(mdm) } : {}),
     ...(derivedRead ? { derivedRead } : {}),
   };
@@ -201,6 +203,16 @@ function noteRequiredNotes(
       review(problems, 'NOTE_WITHOUT_INPUT', path, `Rule ${ruleId} requires ${field.name}, and the operation input does not supply it.`);
     }
   }
+}
+
+/** The chosen sources of a usecase, grouped by call, in the order of the plan (d1_269). */
+function callsOf(inputs: readonly D1CallInput[]): Array<{ call: string; input: Array<{ field: string; from: D1CallInput['from'] }> }> {
+  const out: Array<{ call: string; input: Array<{ field: string; from: D1CallInput['from'] }> }> = [];
+  for (const item of inputs) {
+    const row = out.find(entry => entry.call === item.call) ?? (out[out.push({ call: item.call, input: [] }) - 1]);
+    row.input.push({ field: item.field, from: item.from });
+  }
+  return out;
 }
 
 function decideRules(

@@ -299,7 +299,7 @@ function catalogOperations(source: string): CatalogOperation[] | null {
 }
 
 /** One param per top-level member of the catalog input interface. Nested members stay inside their parent. */
-function topParams(source: string, inputType: string): D1RequestParam[] {
+export function topParams(source: string, inputType: string): D1RequestParam[] {
   const raw = interfaceBody(source, inputType);
   if (raw === null) return [];
   const body = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
@@ -315,7 +315,8 @@ function topParams(source: string, inputType: string): D1RequestParam[] {
 
 function interfaceBody(source: string, name: string): string | null {
   if (!name) return null;
-  const at = source.indexOf(`interface ${name}`);
+  // A catalog declares its types as `interface X {` (the platform) or `type X = {` (a generated declaration, d1_269).
+  const at = new RegExp(`(?:interface|type)\\s+${name}\\b`, 'u').exec(source)?.index ?? -1;
   if (at < 0) return null;
   const open = source.indexOf('{', at);
   if (open < 0) return null;

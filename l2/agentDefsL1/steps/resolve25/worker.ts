@@ -58,6 +58,16 @@ export function resolveHumanPrompt(input: {
   return lines.join('\n');
 }
 
+/** d1_269: the unit of a usecase's call. There is no route: the gap `reason` says the usecase, the call, the field and what each candidate is. */
+export function resolveCallHumanPrompt(input: { unit: D1ResolveUnit; feedback?: string }): string {
+  const lines = [`Usecase call (${input.unit.route.slice('usecase:'.length)}).`, '', 'Open parts. Answer each id with one of its candidates:'];
+  for (const gap of input.unit.gaps) {
+    lines.push(`- ${gap.gapId}: ${gap.path} [${gap.kind}] ${gap.reason} Candidates: ${gap.candidates.join(', ')}.`);
+  }
+  if (input.feedback) lines.push('', `The previous reply was refused: ${input.feedback}`);
+  return lines.join('\n');
+}
+
 /** Interfaces the text names, and the ones they name in turn. */
 function namedInterfaces(definition: D2ContractV2Definition, text: string): D2ContractV2Definition['projections'] {
   const byName = new Map(definition.projections.map(item => [item.name, item]));

@@ -39,7 +39,7 @@ import { assembleD1Input, d1SourceKey, persistD1Input, readD1Derivation, readD1I
 import { readContractV2 } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import { D1_RESOLVE_VERSION, type D1ResolveAttempt, type D1ResolveReceipt, type D1ResolveUnit, type D1ResolveWork } from '/_102021_/l2/agentDefsL1/steps/resolve25/contracts.js';
 import { recordHeldReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/heldReport.js';
-import { answersByRoute, buildResolveReceipt, checkResolveReply, KEPT_TRACE, keptRoutes, receiptAnswersDerived, resolveUnits, settledGapAnswers, sourcesDrift, unaskedGaps, withKeptAnswers } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
+import { answersByRoute, buildResolveReceipt, callInputUnits, callUnitsAnswered, checkResolveReply, isCallUnit, KEPT_TRACE, keptRoutes, receiptAnswersDerived, resolveUnits, settledGapAnswers, sourcesDrift, unaskedGaps, withKeptAnswers } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
 import {
   readResolveAttempt,
   readResolveReceipt,
@@ -48,7 +48,7 @@ import {
   writeResolveReceipt,
   writeResolveWork,
 } from '/_102021_/l2/agentDefsL1/steps/resolve25/io.js';
-import { RESOLVE_TOOL_NAME, resolveHumanPrompt, resolveTool } from '/_102021_/l2/agentDefsL1/steps/resolve25/worker.js';
+import { RESOLVE_TOOL_NAME, resolveCallHumanPrompt, resolveHumanPrompt, resolveTool } from '/_102021_/l2/agentDefsL1/steps/resolve25/worker.js';
 
 /**
  * resolve25 (d1_62): between input20 and domain30. No gap, no model call. One worker per route with a gap, on the
@@ -102,9 +102,9 @@ export async function beforeD1ResolvePromptStep(
     return stopStep(context, parentStep, step, hookSequential, `Sources changed after input20 sealed the snapshot${drift.length ? `: ${drift.join(', ')}` : ''}. resolve25 wrote nothing. Run /run again.`);
   }
   const kept = await readResolveReceipt(project, moduleName);
-  const units = resolveUnits(artifacts);
+  const units = resolveUnits(artifacts, derivation.selection?.callInputGaps ?? []);
   // Same sources: the receipt is kept only when it answers every gap the derivation with those answers opens now.
-  if (kept && kept.sourceKey === sourceKey && receiptAnswersDerived(kept, artifacts)) {
+  if (kept && kept.sourceKey === sourceKey && receiptAnswersDerived(kept, artifacts) && callUnitsAnswered(kept, units)) {
     return finish(context, parentStep, step, hookSequential, pipeline, kept, `resolve25 kept the answers for ${moduleName}. No model was called.`, 0);
   }
   const work: D1ResolveWork = { schemaVersion: D1_RESOLVE_VERSION, project, moduleName, sourceKey, units, repairs: 0 };
@@ -114,7 +114,8 @@ export async function beforeD1ResolvePromptStep(
     return finish(context, parentStep, step, hookSequential, pipeline, receipt, `resolve25 found no open part in the contract routes of ${moduleName}. No model was called.`, 0);
   }
   // A different source key keeps a route only when every gap still matches the receipt (gapKey). The rest is asked.
-  const reused = kept && kept.sourceKey !== sourceKey ? keptRoutes(kept, units) : new Map<string, Record<string, string>>();
+  // Each route whose every gap still matches the receipt by its gap key keeps its answers, with the same sources or not; the rest is asked.
+  const reused = kept ? keptRoutes(kept, units) : new Map<string, Record<string, string>>();
   await writeResolveWork(work);
   const keptAttempts: D1ResolveAttempt[] = [];
   for (const unit of units) {
@@ -194,11 +195,13 @@ async function prepareWorker(
   const instructions = await readText(agentFile('steps/resolve25', 'prompt'));
   if (!instructions) return stopStep(context, parentStep, step, hookSequential, 'resolve25 prompt is missing.');
   const artifacts = await readD1InputArtifacts(arg.project, arg.moduleName);
-  const definition = readContractV2(artifacts.contractTexts).get(unit.pageId);
+  // d1_269: the unit of a usecase's call has no contract route; its gaps carry what the model reads.
+  const callUnit = isCallUnit(unit);
+  const definition = callUnit ? undefined : readContractV2(artifacts.contractTexts).get(unit.pageId);
   const route = definition?.routes.find(item => item.route === unit.route);
   const prior = await readResolveAttempt(arg.project, arg.moduleName, arg.unitId);
   const calls = (prior?.calls || 0) + 1;
-  if (!definition || !route) {
+  if (!callUnit && (!definition || !route)) {
     const trace = `Route ${unit.route} is not in contract ${unit.pageId} any more. It was not sent to the model.`;
     await writeResolveAttempt(arg.project, arg.moduleName, { unitId: unit.unitId, status: 'operational', trace, unitAttempts: arg.unitAttempts, planId: arg.planId, calls: prior?.calls || 0, answers: {} });
     return [updateStatus(context, parentStep, step, hookSequential, 'completed', trace)];
@@ -222,7 +225,7 @@ async function prepareWorker(
     hookSequential,
     parentStepId: parentStep.stepId,
     systemPrompt: instructions.trim(),
-    humanPrompt: resolveHumanPrompt({ unit, route, definition, feedback: arg.feedback }),
+    humanPrompt: callUnit || !route || !definition ? resolveCallHumanPrompt({ unit, feedback: arg.feedback }) : resolveHumanPrompt({ unit, route, definition, feedback: arg.feedback }),
     tools: [resolveTool(unit)],
     toolChoice: { type: 'function', function: { name: RESOLVE_TOOL_NAME } },
   }];
@@ -333,6 +336,14 @@ async function barrier(
       pageId: item.pageId,
       gaps: item.gaps.map((gap, index) => ({ gapId: `g${index}`, ...gap })),
     });
+  }
+  // d1_269: the answers of the routes may bring a usecase into the plan (the route `lerArquivo` takes `getRepositoryEntry`, which the derivation without
+  // answers drops): a required field of its call that no field names is asked in this round, once.
+  const answered = await assembleD1Input(prompt.project, prompt.moduleName, settledGapAnswers(work, attempts));
+  const askedCalls = new Set(work.units.filter(isCallUnit).map(unit => unit.route));
+  for (const unit of callInputUnits(answered.selection.callInputGaps ?? [])) {
+    if (askedCalls.has(unit.route) || ask.some(item => item.route === unit.route)) continue;
+    ask.push({ unitId: `c${work.units.length + ask.length}`, ...unit });
   }
   if (ask.length) {
     work.units.push(...ask);

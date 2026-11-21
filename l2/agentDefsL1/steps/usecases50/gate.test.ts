@@ -1129,3 +1129,19 @@ void test('d1_259 s1c: the AgentDraft of agents@30f16c8e: the def of the arrival
   const stateField = arrivalTransitionsOf(request.entities.find(item => item.entityId === 'AgentDraft')!, update, 'updateAgentDraft', []).stateField;
   assert.equal(stateField, 'status');
 });
+
+void test('d1_269: the sources the model chose for the fields of a call are written in the usecase def, grouped by call; none chosen, no `calls`', () => {
+  const request = coreUsecaseRequest();
+  const list = request.usecases.find(item => item.operation === 'list')!;
+  const source = { kind: 'entity' as const, entity: 'Paciente', field: 'nome', idFrom: 'pacienteId' };
+  list.callInputs = [{ call: 'sys.listar', field: 'caminho', from: source }, { call: 'sys.listar', field: 'ramo', from: { kind: 'input', field: 'branch' } }, { call: 'sys.ler', field: 'caminho', from: source }];
+  const build = buildD1Usecases(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  const data = (id: string) => build.emit.find(item => item.definition.artifactId === id)?.definition.data as { calls?: unknown };
+  assert.deepEqual(data(list.usecaseId).calls, [
+    { call: 'sys.listar', input: [{ field: 'caminho', from: source }, { field: 'ramo', from: { kind: 'input', field: 'branch' } }] },
+    { call: 'sys.ler', input: [{ field: 'caminho', from: source }] },
+  ]);
+  const other = request.usecases.find(item => item !== list)!;
+  assert.equal(data(other.usecaseId).calls, undefined);
+});

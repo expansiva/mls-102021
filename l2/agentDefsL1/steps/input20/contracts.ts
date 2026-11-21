@@ -83,6 +83,8 @@ export interface D1InputArtifacts {
   contractTexts?: Record<string, string>;
   /** Connection id → catalog source (`catalogFilePath(<id>)`). Snapshot input, not a def field. */
   catalogTexts?: Record<string, string>;
+  /** Connection id → the generated declaration of a system this module or a sibling declares (d1_269). Snapshot input, not a def field. */
+  declarationTexts?: Record<string, string>;
   /**
    * The systems the L4 of this module and of its siblings declare (d1_208). Snapshot input, not a def field. Absent: no declared
    * system (a module with only platform connections reads as before).
@@ -150,7 +152,7 @@ export interface D1RequestRelatedField {
 }
 
 /** What a gap asks (d1_62). Each kind has its own closed candidates, computed by code. */
-export type D1RequestGapKind = 'entity' | 'relationship' | 'flatPaging' | 'pageParam' | 'pagingRole' | 'fieldPath' | 'computedRule' | 'value' | 'filterField';
+export type D1RequestGapKind = 'entity' | 'relationship' | 'flatPaging' | 'pageParam' | 'pagingRole' | 'fieldPath' | 'computedRule' | 'value' | 'filterField' | 'callInput';
 
 /** The answer that leaves a gap open. Always the last candidate. */
 export const D1_GAP_NONE = 'none';
@@ -218,6 +220,33 @@ export interface D1SelectedUsecase {
    * entity with a lifecycle gives its `update` usecase these; the arrival writes the state only through one of them. Absent on every other usecase.
    */
   arrivalTransitions?: string[];
+  /** The sources chosen for the required fields of its call that no field names (d1_269). Absent when none was asked or answered. */
+  callInputs?: D1CallInput[];
+}
+
+/** Where the value of a required field of an outside call comes from (d1_269). `entity`: the field of the record the id `idFrom` of the input points to; the id absent, the value is empty. */
+export type D1CallInputSource =
+  | { kind: 'input'; field: string }
+  | { kind: 'entity'; entity: string; field: string; idFrom: string };
+
+/** The source the model chose for one required field of the call of a usecase. */
+export interface D1CallInput {
+  /** `<connectionId>.<operationId>`. */
+  call: string;
+  field: string;
+  from: D1CallInputSource;
+}
+
+/** One required field of a call with no source by name, and the sources the code offers for it (the model chooses, resolve25). */
+export interface D1CallInputGap {
+  usecaseId: string;
+  /** `<connectionId>.<operationId>`. */
+  call: string;
+  field: string;
+  /** `input:<name>` or `entity:<Entity>.<field>@<name>`. Never `none`. */
+  candidates: string[];
+  /** What the code knows to say about the field and each candidate, for the model. */
+  reason: string;
 }
 
 export interface D1SelectedPort {
@@ -269,6 +298,8 @@ export interface D1InputSnapshot {
     tables: D1SelectedTable[];
     entities: string[];
     outbound: string[];
+    /** The required fields of a call that no field of the usecase names (d1_269). Present only when there is one. */
+    callInputGaps?: D1CallInputGap[];
   };
   files: D1PlannedFile[];
   removed: D1RemovedItem[];

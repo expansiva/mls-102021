@@ -148,15 +148,17 @@ export function preservedDefPaths(snapshot: D1InputSnapshot | null): Set<string>
  * d1_266: a preserved usecase def whose `dependencies` are not the ones the plan gives it now. The def of `activate` was written on 18/11, when AgentDraft was
  * kept outside the module and had no port; AgentDraft is a module table now, and the def still did not name its port, so the port never reached the model
  * (it wrote `findById`, a method the port does not have). The dependencies are derived from the plan, so the def is written again with them; a def whose
- * dependencies are the same stays untouched.
+ * dependencies and the same sources of its call (`data.calls`) stays untouched.
  */
-async function dependenciesStale(project: number, defPath: string, wanted: readonly string[]): Promise<boolean> {
+async function dependenciesStale(project: number, defPath: string, wanted: readonly string[], wantedCalls: unknown): Promise<boolean> {
   const info = artifactFile(project, defPath);
   const text = info ? await readText(info) : null;
   const parsed = text ? parseDefinitionSource(text) : null;
   const definition = parsed && 'definition' in parsed ? readDefinition(parsed.definition) : null;
   if (!definition || 'issues' in definition) return false;
   const have = new Set(definition.dependencies);
+  // d1_269: the sources of the call fields are part of what the plan gives the def now: a def written before them is written again with them.
+  if (JSON.stringify(definition.data.calls ?? null) !== JSON.stringify(wantedCalls ?? null)) return true;
   return wanted.length !== have.size || wanted.some(path => !have.has(path));
 }
 
@@ -204,7 +206,7 @@ export async function commitD1Usecases(project: number, build: D1UsecaseBuild): 
   const writable: D1UsecaseBuild['emit'] = [];
   for (const part of build.emit) {
     const defPath = part.pipeline[0]?.defPath || '';
-    if (!preserved.has(logicalDefPath(defPath)) || await dependenciesStale(project, defPath, part.definition.dependencies)) writable.push(part);
+    if (!preserved.has(logicalDefPath(defPath)) || await dependenciesStale(project, defPath, part.definition.dependencies, (part.definition.data as { calls?: unknown }).calls)) writable.push(part);
   }
   const rendered = writable.length > 0 ? renderParts(project, writable) : { parts: [], issues: [] };
   if (rendered.issues.length > 0) return { written: [], issues: rendered.issues };
@@ -333,6 +335,7 @@ async function usecaseRequest(
     operation: usecase.operation,
     ...(usecase.operation === 'transition' ? { transitionRef: usecase.transitionRef || '' } : {}),
     ...(usecase.operation === 'update' && usecase.arrivalTransitions?.length ? { arrivalTransitions: [...usecase.arrivalTransitions] } : {}),
+    ...(usecase.callInputs?.length ? { callInputs: usecase.callInputs.map(item => ({ ...item, from: { ...item.from } })) } : {}),
     routes: [...usecase.routes],
     defPath: snapshot.files.find(file => file.artifactType === 'usecase' && file.identity === usecase.usecaseId)?.defPath
       || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,

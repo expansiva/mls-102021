@@ -307,6 +307,10 @@ function artifactsFrom(
     contracts: contractMap,
     contractTexts,
     catalogTexts,
+    declarationTexts: Object.fromEntries(catalogs.flatMap(item => {
+      const match = /\/layer_1_external\/connections\/([A-Za-z0-9_]+)\.ts$/u.exec(item.path);
+      return match && item.text ? [[match[1], item.text]] : [];
+    })),
     ...(connectionScope.own.length || connectionScope.siblings.length ? { connectionScope } : {}),
     presentDefs,
     writerReceipts,
@@ -387,7 +391,9 @@ async function loadServeCatalogs(project: number, moduleName: string, integratio
       }
     }
   }
-  for (const connectionId of entityConnectionIds) {
+  // d1_269: the declaration of every system this module or a sibling declares is read, not only the ones an external entity names: the input of the calls a
+  // usecase makes (`callInputGaps`) is typed there.
+  for (const connectionId of [...new Set([...entityConnectionIds, ...serveIds, ...otherIds])]) {
     if (platformPresent.get(connectionId)) continue;
     // The declaration of this module or of a sibling, read like any other source of the run.
     const owner = ownIds.has(connectionId) ? moduleName : siblings.find(item => item.systems.some(system => system.id === connectionId))?.moduleName;

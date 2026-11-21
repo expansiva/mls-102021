@@ -114,11 +114,41 @@ export async function runResolve25(
     const unitId = parseFanoutWorkerArg(RESOLVE_FANOUT, arg)?.unitId;
     const unit = (await readResolveWork(project, moduleName))?.units.find(item => item.unitId === unitId);
     const route = unit ? contracts.get(unit.pageId)?.routes.find(item => item.route === unit.route) : undefined;
-    const reply = { answers: Object.fromEntries((unit?.gaps || []).map(gap => [gap.gapId, route ? resolver(route, gap) : D1_GAP_NONE])) };
+    // d1_269: the unit of a usecase's call has no route; the stand-in takes the source that reads a record (`entity:`), else `none`.
+    const standIn = (gap: { candidates: string[] }): string => gap.candidates.find(item => item.startsWith('entity:')) ?? D1_GAP_NONE;
+    const reply = { answers: Object.fromEntries((unit?.gaps || []).map(gap => [gap.gapId, unit?.pageId === 'usecase' ? standIn(gap) : route ? resolver(route, gap) : D1_GAP_NONE])) };
     worker.interaction = { input: [], cost: 0, trace: [], payload: [{ type: 'function', function: { name: 'resolveRouteGaps', arguments: JSON.stringify(reply) } }] } as unknown as mls.msg.AIAgentStep['interaction'];
     intents.push(...prepared, ...await agent.afterPromptStep!(agentMeta, ctx, parent, worker, seq));
   }
   const barrier = workerStep(++seq, JSON.stringify({ planId: 'resolve25-barrier', moduleName, project, command }), 'resolve25-barrier');
-  intents.push(...await agent.beforePromptStep!(agentMeta, ctx, parent, barrier, seq));
+  const closing = await agent.beforePromptStep!(agentMeta, ctx, parent, barrier, seq);
+  intents.push(...closing);
+  // d1_269: a second round (a part the answers of the first one opened) is answered the same way, and closed by its own barrier.
+  let round = closing;
+  for (let again = 0; again < 3; again += 1) {
+    const second = round.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-fanout-round2');
+    if (!second) break;
+    const secondArgs = second.executionMode?.type === 'parallel' ? second.executionMode.args : [];
+    const refreshed = await readD1InputArtifacts(project, moduleName);
+    const refreshedContracts = readContractV2(refreshed.contractTexts);
+    for (const arg of secondArgs) {
+      const worker = workerStep(++seq, arg);
+      const prepared = await agent.beforePromptStep!(agentMeta, ctx, parent, worker, seq);
+      if (!prepared.some(intent => intent.type === 'prompt_ready')) {
+        intents.push(...prepared);
+        continue;
+      }
+      const unitId = parseFanoutWorkerArg(RESOLVE_FANOUT, arg)?.unitId;
+      const unit = (await readResolveWork(project, moduleName))?.units.find(item => item.unitId === unitId);
+      const route = unit ? refreshedContracts.get(unit.pageId)?.routes.find(item => item.route === unit.route) : undefined;
+      const standIn = (gap: { candidates: string[] }): string => gap.candidates.find(item => item.startsWith('entity:')) ?? D1_GAP_NONE;
+      const reply = { answers: Object.fromEntries((unit?.gaps || []).map(gap => [gap.gapId, unit?.pageId === 'usecase' ? standIn(gap) : route ? resolver(route, gap) : D1_GAP_NONE])) };
+      worker.interaction = { input: [], cost: 0, trace: [], payload: [{ type: 'function', function: { name: 'resolveRouteGaps', arguments: JSON.stringify(reply) } }] } as unknown as mls.msg.AIAgentStep['interaction'];
+      intents.push(...prepared, ...await agent.afterPromptStep!(agentMeta, ctx, parent, worker, seq));
+    }
+    const nextBarrier = workerStep(++seq, JSON.stringify({ planId: 'resolve25-barrier', moduleName, project, command }), 'resolve25-barrier');
+    round = await agent.beforePromptStep!(agentMeta, ctx, parent, nextBarrier, seq);
+    intents.push(...round);
+  }
   return intents;
 }

@@ -37,6 +37,7 @@ import { applyResolutions } from '/_102021_/l2/agentDefsL1/steps/input20/deriveR
 import { consumeLinesOf, deriveConsumeRequests } from '/_102021_/l2/agentDefsL1/steps/input20/deriveConsume.js';
 import { deriveProcessUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/deriveProcess.js';
 import { deriveServeRequests, processTriggerServes, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
+import { callInputGaps, callInputsOf } from '/_102021_/l2/agentDefsL1/steps/input20/callInputs.js';
 import { externalCallsOf, routeCallsOf, splitExternalUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import type {
   PoolBackendEndpoint,
@@ -407,6 +408,18 @@ export function buildD1InputSnapshot(
   if (hasCycle(files)) error(problems, 'DAG_CYCLE', 'input.json', 'Planned files have a dependency cycle.');
 
   const pages = pageGroups(requests);
+  // d1_269: the required fields of a call that no field of the usecase names are asked of the model (resolve25); the answer is applied here.
+  const callGaps = callInputGaps({
+    usecases: generatedUsecases,
+    requests,
+    catalogTexts: { ...(artifacts.catalogTexts ?? {}), ...(artifacts.declarationTexts ?? {}) },
+    entities: artifacts.entities,
+    entityKind,
+  });
+  for (const usecase of generatedUsecases) {
+    const chosen = callInputsOf(usecase.usecaseId, callGaps, answers);
+    if (chosen.length) usecase.callInputs = chosen;
+  }
   const snapshot: D1InputSnapshot = {
     schemaVersion: D1_INPUT_VERSION,
     project: identity.project,
@@ -422,6 +435,7 @@ export function buildD1InputSnapshot(
       tables: plannedTables,
       entities: [...entityClosure.ids],
       outbound: outbound.map(item => item.id),
+      ...(callGaps.length ? { callInputGaps: callGaps } : {}),
     },
     files,
     removed,

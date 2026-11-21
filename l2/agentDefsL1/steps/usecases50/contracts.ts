@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/contracts.ts" enhancement="_blank"/>
 
+import type { D1CallInput } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import type { D1ChildWriter } from '/_102021_/l2/agentDefsL1/steps/usecases50/childWriters.js';
 import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
@@ -128,6 +129,8 @@ export interface D1UsecaseSelection {
   transitionRef?: string;
   /** L4 `transitionId`s (`by: []`) a `serve` arrival applies through this `update` (d1_259 s1c). Absent otherwise. */
   arrivalTransitions?: string[];
+  /** The sources chosen for the required fields of its call that no field names (d1_269). */
+  callInputs?: D1CallInput[];
   routes: string[];
   defPath: string;
 }

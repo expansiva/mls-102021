@@ -79,7 +79,7 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
   repositoryAdapter: { required: ['entityId', 'portId', 'tableId', 'columns'], optional: [], nonempty: ['columns'] },
   usecase: {
     required: ['usecaseId', 'entityId', 'operation', 'rulesApplied', 'effects'],
-    optional: ['transitionRef', 'mdm', 'derivedRead', 'arrivalTransitions'],
+    optional: ['transitionRef', 'mdm', 'derivedRead', 'arrivalTransitions', 'calls'],
     nonempty: [],
   },
   httpController: { required: ['pageId', 'handlers'], optional: [], nonempty: ['handlers'] },
@@ -549,6 +549,55 @@ export function arrivalTransitionsIssues(data: Record<string, unknown>, issues: 
   });
 }
 
+/**
+ * d1_269: where each required field of an outside call the usecase makes comes from, when no field of the usecase has its name: `{ call, input: [{ field,
+ * from }] }`. `from` is `{ kind: 'input', field }` (a field of the usecase input) or `{ kind: 'entity', entity, field, idFrom }` (the field of the record
+ * the id `idFrom` of the input points to; the id absent, the value is empty). The model chose it among candidates the code closed.
+ */
+export function callsIssues(data: Record<string, unknown>, issues: string[]): void {
+  const value = data.calls;
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.length === 0) {
+    issues.push('data.calls must be a non-empty list.');
+    return;
+  }
+  const text = (item: unknown): item is string => typeof item === 'string' && item.length > 0;
+  value.forEach((item, index) => {
+    const path = `data.calls.${index}`;
+    if (!isRecord(item)) {
+      issues.push(`${path} must be an object.`);
+      return;
+    }
+    for (const key of Object.keys(item)) if (!['call', 'input'].includes(key)) issues.push(`Unknown field ${path}.${key}.`);
+    if (!text(item.call) || !/^[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/u.test(item.call)) issues.push(`Missing field ${path}.call.`);
+    if (!Array.isArray(item.input) || item.input.length === 0) {
+      issues.push(`Missing field ${path}.input.`);
+      return;
+    }
+    item.input.forEach((entry, at) => {
+      const inner = `${path}.input.${at}`;
+      if (!isRecord(entry)) {
+        issues.push(`${inner} must be an object.`);
+        return;
+      }
+      for (const key of Object.keys(entry)) if (!['field', 'from'].includes(key)) issues.push(`Unknown field ${inner}.${key}.`);
+      if (!text(entry.field)) issues.push(`Missing field ${inner}.field.`);
+      const from = entry.from;
+      if (!isRecord(from)) {
+        issues.push(`Missing field ${inner}.from.`);
+        return;
+      }
+      const allowed = from.kind === 'input' ? ['kind', 'field'] : from.kind === 'entity' ? ['kind', 'entity', 'field', 'idFrom'] : [];
+      if (allowed.length === 0) {
+        issues.push(`${inner}.from.kind must be input or entity.`);
+        return;
+      }
+      for (const key of Object.keys(from)) if (!allowed.includes(key)) issues.push(`Unknown field ${inner}.from.${key}.`);
+      for (const key of allowed.slice(1)) if (!text(from[key])) issues.push(`Missing field ${inner}.from.${key}.`);
+    });
+  });
+}
+
 /** Alpha read of a `ddm`: calculated on read, from the named sources, window and groups. */
 export function derivedReadIssues(value: unknown, issues: string[]): void {
   const path = 'data.derivedRead';
@@ -597,6 +646,7 @@ function dataIssues(type: M1ArtifactType, data: Record<string, unknown>): string
   }
   if (type === 'usecase' && data.derivedRead !== undefined) derivedReadIssues(data.derivedRead, issues);
   if (type === 'usecase') arrivalTransitionsIssues(data, issues);
+  if (type === 'usecase') callsIssues(data, issues);
   for (const key of spec.required) {
     if (data[key] === undefined) issues.push(`Missing field data.${key}.`);
   }

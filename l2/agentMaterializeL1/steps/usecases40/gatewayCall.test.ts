@@ -223,3 +223,36 @@ void test('d1_268: a cast of the input of a gateway call is refused; a value tha
   assert.deepEqual(gatewayInputCastProblems('// gateway.readAgent(input as X, ctx)\nawait gateway.readAgent(input, ctx);', ['readAgent']), []);
   assert.deepEqual(gatewayInputCastProblems('await gateway.other(input as X, ctx);', ['readAgent']), [], 'only the operations the usecase consumes');
 });
+
+void test('d1_269: the def says where a field of the call comes from; the context shows it and the gate asks the file to build the field from it', async () => {
+  const { gatewayInputFieldProblems } = await import('/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js');
+  const calls = [{ call: 'github.listarConteudo', input: [{ field: 'caminho', from: { kind: 'entity' as const, entity: 'RepositoryEntry', field: 'path', idFrom: 'parentEntryId' } }] }];
+  const good = [
+    "const repository = resolveRepository<RepositoryEntryRepository>(ctx, 'RepositoryEntryRepository');",
+    'const parent = input.parentEntryId ? (await repository.list({ id: input.parentEntryId }))[0] : undefined;',
+    "const request: ListarConteudoInput = { caminho: parent?.path ?? '' };",
+    'await gateway.listarConteudo(request, ctx);',
+  ].join('\n');
+  assert.deepEqual(gatewayInputFieldProblems(good, calls), []);
+  // What the evidence shipped: the whole input, the field left to the type of the usecase input.
+  const whole = 'await gateway.listarConteudo(input, ctx);';
+  const refused = gatewayInputFieldProblems(whole, calls);
+  assert.equal(refused.length, 1);
+  assert.match(refused[0], /^GATEWAY_INPUT_FIELD_MISSING: the def says `caminho` of github\.listarConteudo comes from the field `path` of the RepositoryEntry record that the id `parentEntryId`/u);
+  // The field is set but the record is never read (the id is not used, or the port of the entity is not resolved).
+  assert.equal(gatewayInputFieldProblems("const request = { caminho: '' };\nawait gateway.listarConteudo(request, ctx);", calls).length, 1);
+  // A source that is a field of the input only needs the field to be set; a comment does not set it.
+  const fromInput = [{ call: 'github.lerArquivo', input: [{ field: 'caminho', from: { kind: 'input' as const, field: 'path' } }] }];
+  assert.deepEqual(gatewayInputFieldProblems('const request = { caminho: input.path };\nawait gateway.lerArquivo(request, ctx);', fromInput), []);
+  assert.equal(gatewayInputFieldProblems('// caminho: input.path\nawait gateway.lerArquivo(input, ctx);', fromInput).length, 1);
+  assert.deepEqual(gatewayInputFieldProblems(whole, []), [], 'a def with no calls asks nothing');
+  // The context: the section names the source for the operation.
+  await withHost(async () => {
+    const { ctx } = setup('moduleDatabase');
+    const units = (ctx as unknown as { units: M12Unit[] }).units;
+    const create = units.find(item => item.definition.artifactId === 'createContentFile')!;
+    (create.definition.data as Record<string, unknown>).calls = [{ call: 'github.gravarArquivo', input: [{ field: 'caminho', from: { kind: 'input', field: 'path' } }] }];
+    const text = await connectionGatewaySection(ctx, 'createContentFile', 'createContentFile');
+    assert.match(text, /The def says where `caminho` comes from, and the usecase input does not declare it: `caminho` is the field `path` of the usecase input\. Build it from that source\./u);
+  });
+});

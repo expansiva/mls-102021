@@ -1,6 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/resolve25/gate.ts" enhancement="_blank"/>
 
-import { D1_GAP_NONE, type D1InputArtifacts, type D1RequestGapAnswer, type D1SourceDigest } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { D1_GAP_NONE, type D1CallInputGap, type D1InputArtifacts, type D1RequestGapAnswer, type D1SourceDigest } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { applyResolutions, deriveRequest } from '/_102021_/l2/agentDefsL1/steps/input20/deriveRequest.js';
 import { readContractV2 } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import {
@@ -30,8 +30,32 @@ export function sourcesDrift(sealed: readonly D1SourceDigest[], now: readonly D1
   return drift.sort();
 }
 
-/** One unit per contract route the derivation leaves with a gap, in route order. */
-export function resolveUnits(artifacts: Pick<D1InputArtifacts, 'contractTexts' | 'entities'>): D1ResolveUnit[] {
+/** The unit of a usecase's call is named `usecase:<usecaseId>` in the receipt, so it never meets the name of a route (d1_269). */
+export const CALL_UNIT_PAGE = 'usecase';
+
+export function isCallUnit(unit: Pick<D1ResolveUnit, 'route'>): boolean {
+  return unit.route.startsWith('usecase:');
+}
+
+/** One unit per usecase whose call has a required field with no source by name: the gaps are the fields, the candidates the sources the code closed. */
+export function callInputUnits(gaps: readonly D1CallInputGap[]): Array<Omit<D1ResolveUnit, 'unitId'>> {
+  const byUsecase = new Map<string, D1CallInputGap[]>();
+  for (const gap of gaps) byUsecase.set(gap.usecaseId, [...(byUsecase.get(gap.usecaseId) ?? []), gap]);
+  return [...byUsecase.keys()].sort().map(usecaseId => ({
+    route: `usecase:${usecaseId}`,
+    pageId: CALL_UNIT_PAGE,
+    gaps: (byUsecase.get(usecaseId) ?? []).map((gap, index) => ({
+      gapId: `g${index}`,
+      path: `${gap.call}.${gap.field}`,
+      kind: 'callInput' as const,
+      reason: gap.reason,
+      candidates: [...gap.candidates, D1_GAP_NONE],
+    })),
+  }));
+}
+
+/** One unit per contract route the derivation leaves with a gap, in route order; then one per usecase call with a field no name gives (d1_269). */
+export function resolveUnits(artifacts: Pick<D1InputArtifacts, 'contractTexts' | 'entities'>, callGaps: readonly D1CallInputGap[] = []): D1ResolveUnit[] {
   const routes: Array<Omit<D1ResolveUnit, 'unitId'>> = [];
   for (const [pageId, definition] of readContractV2(artifacts.contractTexts)) {
     for (const route of definition.routes) {
@@ -51,6 +75,7 @@ export function resolveUnits(artifacts: Pick<D1InputArtifacts, 'contractTexts' |
     }
   }
   routes.sort((left, right) => left.route.localeCompare(right.route));
+  routes.push(...callInputUnits(callGaps));
   return routes.map((item, index) => ({ unitId: `r${index}`, ...item }));
 }
 
@@ -166,6 +191,14 @@ export function withKeptAnswers(built: D1ResolveReceipt, previous: D1ResolveRece
     return { ...row, answers: [...row.answers, ...before.answers.filter(item => !have.has(item.path))] };
   });
   return { ...built, routes };
+}
+
+/** True when the receipt answers every gap of every call unit by its gap key: a unit it has no answer for must be asked. */
+export function callUnitsAnswered(receipt: D1ResolveReceipt, units: readonly D1ResolveUnit[]): boolean {
+  return units.filter(isCallUnit).every(unit => {
+    const row = receipt.routes.find(item => item.route === unit.route);
+    return !!row && unit.gaps.every(gap => row.answers.some(answer => answer.gapKey === resolveGapKey(unit.route, gap)));
+  });
 }
 
 /** Identity of one gap. Synchronous, not a hash. */

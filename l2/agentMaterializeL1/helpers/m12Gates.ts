@@ -40,6 +40,8 @@ export interface M12CodeGateInput {
   externalEntity?: boolean;
   /** Calls the def of the integration gives this usecase as consumer (`connections[].consumer`): the file must make each one (d1_219). */
   consumerCalls?: readonly M12ConsumerCall[];
+  /** Where the required fields of those calls that no field of the usecase names come from (`data.calls` of the def, d1_269): the file must build each one. */
+  callInputs?: readonly M12CallInputs[];
   /** Events the def lists as effects of this usecase and binds to the platform publisher (d1_216): the file must publish each one. */
   publishers?: readonly M12EventPublisher[];
   /** Entities the L4 says this usecase's parent entity records (d1_221): the file must `create` each one through its port, after the calls above. */
@@ -240,6 +242,40 @@ export function consumerCallProblems(code: string, calls: readonly M12ConsumerCa
   return calls
     .filter(call => !new RegExp(`\\.${call.operationId}\\s*\\(`, 'u').test(clean))
     .map(call => `GATEWAY_CALL_MISSING: the def names this usecase the consumer of ${call.connectionId}.${call.operationId}: the file must call \`gateway.${call.operationId}(input, ctx)\` on the \`${gatewayNameOf(call.connectionId)}\`. Importing the gateway type is not a call.`);
+}
+
+/** `data.calls` of the usecase def: for one call, where each required field of its input comes from. */
+export interface M12CallInputs {
+  call: string;
+  input: ReadonlyArray<{ field: string; from: { kind: 'input'; field: string } | { kind: 'entity'; entity: string; field: string; idFrom: string } }>;
+}
+
+/** The sentence the context gives for one source, and the gate repeats. */
+export function callInputSourceText(from: M12CallInputs['input'][number]['from']): string {
+  return from.kind === 'input'
+    ? `the field \`${from.field}\` of the usecase input`
+    : `the field \`${from.field}\` of the ${from.entity} record that the id \`${from.idFrom}\` of the input points to (read that record through its port; when \`${from.idFrom}\` is absent the value is the empty text \`''\`)`;
+}
+
+/**
+ * d1_269: each field the def says the call needs from a source is built by the file: the name is a key of an object, or assigned, and a source that reads a
+ * record shows the id it reads by and the port of that entity. The compiler checks the name against the operation (d1_268); this checks the file does not leave the
+ * field to the type of the usecase input, which the route cannot fill.
+ */
+export function gatewayInputFieldProblems(code: string, calls: readonly M12CallInputs[]): string[] {
+  const clean = withoutComments(code);
+  const problems: string[] = [];
+  for (const call of calls) {
+    const operation = call.call.split('.')[1] ?? call.call;
+    for (const item of call.input) {
+      const set = new RegExp(`(?:[{,]\\s*|\\.)${item.field}\\s*(?::|=[^=])|[{,]\\s*${item.field}\\s*[,}]`, 'u').test(clean);
+      const reads = item.from.kind !== 'entity'
+        || (new RegExp(`\\b${item.from.idFrom}\\b`, 'u').test(clean) && new RegExp(`Repository\\s*>\\s*\\(`, 'u').test(clean) && clean.includes(`${item.from.entity}Repository`));
+      if (set && reads) continue;
+      problems.push(`GATEWAY_INPUT_FIELD_MISSING: the def says \`${item.field}\` of ${call.call} comes from ${callInputSourceText(item.from)}: the file must build \`${item.field}\` for \`gateway.${operation}(\` from it, and not leave it to the type of the usecase input.`);
+    }
+  }
+  return problems;
 }
 
 /**
@@ -928,6 +964,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...eventPublishProblems(code, input.publishers ?? []));
   problems.push(...consumerCallProblems(code, input.consumerCalls ?? []));
   problems.push(...gatewayInputCastProblems(code, (input.consumerCalls ?? []).map(call => call.operationId)));
+  problems.push(...gatewayInputFieldProblems(code, input.callInputs ?? []));
   problems.push(...childRecordProblems(code, input.childRecords ?? [], (input.consumerCalls ?? []).map(call => call.operationId)));
   problems.push(...emptyCastProblems(code));
   problems.push(...recordCastProblems(code));
