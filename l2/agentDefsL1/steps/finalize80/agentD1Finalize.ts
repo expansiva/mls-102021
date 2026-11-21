@@ -95,7 +95,7 @@ export async function beforeD1FinalizePromptStep(
   const lines = runSummaryLines(allSteps(context).filter(item => item.type === 'result').map(item => String((item as mls.msg.AIResultStep).result || '')), ['domain30', 'persistence40', 'usecases50', 'controllers60', 'support70']);
   const summary = lines.length ? `\nrun summary:\n${lines.join('\n')}` : '';
   const rederived = targets ? `\nrederive: ${targets.length} def(s) changed.${targets.length ? `\n${targets.join('\n')}` : ''}` : '';
-  const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, report.calls)];
+  const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, report.calls, { runSummary: lines, targets: targets ?? [], rederiveChanged: targets ? targets.length : null })];
   return [
     ...anchor,
     updateStatus(context, mutationParent, step, hookSequential, 'completed', `finalize80 recorded the report for ${prompt.moduleName} in project ${prompt.project}. Defs are complete. Future outputs stay pending. No model was called.${summary}${rederived}`),
@@ -208,7 +208,10 @@ function doneAnchor(
   moduleName: string,
   artifact: string,
   calls: D1CallAccount,
+  shown: { runSummary: readonly string[]; targets: readonly string[]; rederiveChanged?: number | null } = { runSummary: [], targets: [] },
 ): mls.msg.AgentIntentAddStep {
+  // d1_255: the `traceMsg` of a status update is not kept in the task; the result of this step is. What the manager reads at the end of a run is here: one line
+  // per step of what it wrote and kept, and the `@@agentMaterializeL1` line of each def a `/rederive` changed.
   const result = {
     project,
     moduleName,
@@ -217,6 +220,9 @@ function doneAnchor(
     artifact,
     calls,
     executableBackend: false,
+    ...(shown.runSummary.length ? { runSummary: shown.runSummary } : {}),
+    ...(shown.rederiveChanged != null ? { rederiveChanged: shown.rederiveChanged } : {}),
+    ...(shown.targets.length ? { materializeTargets: shown.targets } : {}),
   };
   return {
     type: 'add-step',

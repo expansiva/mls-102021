@@ -161,6 +161,7 @@ async function rederiveRun(host: TestHost, from: 'controllers60' | null, upTo: D
     for (const intent of intents) {
       if (intent.type === 'update-status') out.push({ stepId, status: intent.status, trace: intent.traceMsg || '' });
       if (intent.type === 'add-step') (parent.nextSteps ??= []).push(intent.step as mls.msg.AIPayload);
+      if (intent.type === 'add-step' && intent.step.type === 'result') out.push({ stepId: `result:${intent.step.planning?.planId}`, status: 'result', trace: String((intent.step as mls.msg.AIResultStep).result) });
     }
     order += 1;
   }
@@ -272,4 +273,25 @@ void test('d1_253: agents@f45e1e26: /rederive controllers60, the state stays, /r
   const refused = await rederiveRun(other, 'controllers60');
   assert.equal(failedOf(refused).length > 0, true, '5: the hand edit is refused');
   assert.equal(request.content.includes('EDITADO-A-MAO'), true, 'and the edit stays');
+});
+
+void test('d1_255: agents@f45e1e26: the result the manager reads at the end of the /rederive (finalize80-done) carries the materialize targets and the run summary', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, F45, PROJECT);
+  const ran = await rederiveRun(host, 'controllers60');
+  assert.deepEqual(failedOf(ran), []);
+  const text = ran.find(item => item.stepId === 'result:finalize80-done')?.trace;
+  assert.ok(text, 'the finalize80-done result exists');
+  const result = JSON.parse(text) as { materializeTargets?: string[]; runSummary?: string[]; rederiveChanged?: number };
+  // The five defs the earlier /rederive wrote (controllers, requests and the outbound) are still "changed since the first command".
+  assert.equal(result.rederiveChanged, 5);
+  assert.deepEqual(result.materializeTargets, [
+    '@@agentMaterializeL1 {"target":"_102047_/l1/agents/layer_1_external/adapters/http/controllers/agents.defs.ts"}',
+    '@@agentMaterializeL1 {"target":"_102047_/l1/agents/layer_1_external/adapters/http/controllers/my_conduct.defs.ts"}',
+    '@@agentMaterializeL1 {"target":"_102047_/l1/agents/layer_1_external/adapters/integration/outbound.defs.ts"}',
+    '@@agentMaterializeL1 {"target":"_102047_/l1/agents/layer_2_application/requests/agents.defs.ts"}',
+    '@@agentMaterializeL1 {"target":"_102047_/l1/agents/layer_2_application/requests/my_conduct.defs.ts"}',
+  ]);
+  assert.match((result.runSummary ?? []).join('\n'), /^domain30: wrote 0, kept 10/mu);
+  assert.match((result.runSummary ?? []).join('\n'), /^support70: /mu);
 });
