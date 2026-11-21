@@ -1,0 +1,77 @@
+/// <mls fileReference="_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "PersonToolRestriction",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+  ],
+  "data": {
+    "entityId": "PersonToolRestriction",
+    "storageTarget": "moduleDatabase",
+    "fields": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "derived": true
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "personId",
+        "type": "record",
+        "ref": "OrganizationUser"
+      },
+      {
+        "name": "toolId",
+        "type": "record",
+        "ref": "Tool"
+      },
+      {
+        "name": "details",
+        "type": "object"
+      },
+      {
+        "name": "details.markedAt",
+        "type": "timestamp",
+        "derived": true
+      },
+      {
+        "name": "details.toolName",
+        "type": "string",
+        "derived": true
+      },
+      {
+        "name": "details.toolPath",
+        "type": "string",
+        "derived": true
+      },
+      {
+        "name": "details.toolRemoved",
+        "type": "boolean",
+        "derived": true
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [
+      "restrictionUniquePerPersonTool",
+      "restrictionAppliesThroughAnyAgent",
+      "onlyCompanyAdminRestrictsTools",
+      "removedToolRestrictionKept",
+      "noTechnicalIdsOnScreen"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

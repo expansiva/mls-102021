@@ -1,0 +1,96 @@
+/// <mls fileReference="_102047_/l1/agents/layer_3_domain/entities/executionSummary.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "ExecutionSummary",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+  ],
+  "data": {
+    "entityId": "ExecutionSummary",
+    "storageTarget": "moduleDatabase",
+    "fields": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "derived": true
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "agentId",
+        "type": "record",
+        "ref": "Agent"
+      },
+      {
+        "name": "personId",
+        "type": "record",
+        "ref": "OrganizationUser"
+      },
+      {
+        "name": "executionRef",
+        "type": "string"
+      },
+      {
+        "name": "startedAt",
+        "type": "timestamp"
+      },
+      {
+        "name": "details",
+        "type": "object"
+      },
+      {
+        "name": "details.durationMs",
+        "type": "integer"
+      },
+      {
+        "name": "details.cost",
+        "type": "money"
+      },
+      {
+        "name": "details.tookOver",
+        "type": "boolean"
+      },
+      {
+        "name": "details.conversationLink",
+        "type": "string"
+      },
+      {
+        "name": "details.actions",
+        "type": "object"
+      },
+      {
+        "name": "details.actions.toolName",
+        "type": "string"
+      },
+      {
+        "name": "details.actions.result",
+        "type": "enum"
+      },
+      {
+        "name": "details.actions.resultNote",
+        "type": "text"
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [
+      "executionRecordedOnce",
+      "onlyInboundWritesExecution",
+      "executionNeverEdited",
+      "activityNewestFirst"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

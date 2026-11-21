@@ -1,0 +1,74 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryAdapter",
+  "artifactId": "ExecutionSummaryRepository",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/executionSummary.defs.ts",
+    "_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts"
+  ],
+  "data": {
+    "entityId": "ExecutionSummary",
+    "portId": "ExecutionSummaryRepository",
+    "tableId": "executionSummary",
+    "columns": [
+      {
+        "field": "id",
+        "column": "id"
+      },
+      {
+        "field": "version",
+        "column": "json:version"
+      },
+      {
+        "field": "agentId",
+        "column": "agentId"
+      },
+      {
+        "field": "personId",
+        "column": "personId"
+      },
+      {
+        "field": "executionRef",
+        "column": "executionRef"
+      },
+      {
+        "field": "startedAt",
+        "column": "startedAt"
+      },
+      {
+        "field": "details.durationMs",
+        "column": "json:details.durationMs"
+      },
+      {
+        "field": "details.cost",
+        "column": "json:details.cost"
+      },
+      {
+        "field": "details.tookOver",
+        "column": "json:details.tookOver"
+      },
+      {
+        "field": "details.conversationLink",
+        "column": "json:details.conversationLink"
+      },
+      {
+        "field": "details.actions.toolName",
+        "column": "json:details.actions.toolName"
+      },
+      {
+        "field": "details.actions.result",
+        "column": "json:details.actions.result"
+      },
+      {
+        "field": "details.actions.resultNote",
+        "column": "json:details.actions.resultNote"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

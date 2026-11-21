@@ -1,0 +1,86 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryAdapter",
+  "artifactId": "ToolRepository",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/tool.defs.ts",
+    "_102047_/l1/agents/layer_2_application/ports/toolRepository.defs.ts"
+  ],
+  "data": {
+    "entityId": "Tool",
+    "portId": "ToolRepository",
+    "tableId": "tool",
+    "columns": [
+      {
+        "field": "id",
+        "column": "id"
+      },
+      {
+        "field": "version",
+        "column": "json:version"
+      },
+      {
+        "field": "toolKey",
+        "column": "toolKey"
+      },
+      {
+        "field": "origin",
+        "column": "origin"
+      },
+      {
+        "field": "moduleName",
+        "column": "moduleName"
+      },
+      {
+        "field": "subject",
+        "column": "subject"
+      },
+      {
+        "field": "name",
+        "column": "name"
+      },
+      {
+        "field": "status",
+        "column": "status"
+      },
+      {
+        "field": "details.moduleTitle",
+        "column": "json:details.moduleTitle"
+      },
+      {
+        "field": "details.subjectTitle",
+        "column": "json:details.subjectTitle"
+      },
+      {
+        "field": "details.description",
+        "column": "json:details.description"
+      },
+      {
+        "field": "details.releaseLabel",
+        "column": "json:details.releaseLabel"
+      },
+      {
+        "field": "details.addedAt",
+        "column": "json:details.addedAt"
+      },
+      {
+        "field": "details.removedAt",
+        "column": "json:details.removedAt"
+      },
+      {
+        "field": "details.usedByAgents",
+        "column": "json:details.usedByAgents"
+      },
+      {
+        "field": "details.catalogItem",
+        "column": "json:details.catalogItem"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

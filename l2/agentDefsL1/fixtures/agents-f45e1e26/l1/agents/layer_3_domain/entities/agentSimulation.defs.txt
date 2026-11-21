@@ -1,0 +1,127 @@
+/// <mls fileReference="_102047_/l1/agents/layer_3_domain/entities/agentSimulation.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "AgentSimulation",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+  ],
+  "data": {
+    "entityId": "AgentSimulation",
+    "storageTarget": "external",
+    "fields": [
+      {
+        "name": "agent",
+        "type": "record",
+        "ref": "Agent"
+      },
+      {
+        "name": "level",
+        "type": "enum"
+      },
+      {
+        "name": "subjectKind",
+        "type": "enum"
+      },
+      {
+        "name": "person",
+        "type": "record",
+        "ref": "OrganizationUser"
+      },
+      {
+        "name": "roleName",
+        "type": "string"
+      },
+      {
+        "name": "sentence",
+        "type": "text"
+      },
+      {
+        "name": "toolVerdicts",
+        "type": "object"
+      },
+      {
+        "name": "toolVerdicts.tool",
+        "type": "record",
+        "ref": "Tool"
+      },
+      {
+        "name": "toolVerdicts.moduleName",
+        "type": "string"
+      },
+      {
+        "name": "toolVerdicts.subjectName",
+        "type": "string"
+      },
+      {
+        "name": "toolVerdicts.actionName",
+        "type": "string"
+      },
+      {
+        "name": "toolVerdicts.canUse",
+        "type": "boolean"
+      },
+      {
+        "name": "toolVerdicts.reason",
+        "type": "enum"
+      },
+      {
+        "name": "toolVerdicts.reasonText",
+        "type": "string"
+      },
+      {
+        "name": "understanding",
+        "type": "object"
+      },
+      {
+        "name": "understanding.asksForAction",
+        "type": "boolean"
+      },
+      {
+        "name": "understanding.moduleName",
+        "type": "string"
+      },
+      {
+        "name": "understanding.subjectName",
+        "type": "string"
+      },
+      {
+        "name": "understanding.actions",
+        "type": "object"
+      },
+      {
+        "name": "understanding.actions.tool",
+        "type": "record",
+        "ref": "Tool"
+      },
+      {
+        "name": "understanding.actions.actionName",
+        "type": "string"
+      },
+      {
+        "name": "understanding.explanation",
+        "type": "text"
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [
+      "simulationSavesNothing",
+      "memberSimulatesOnlyAsSelf",
+      "adminSimulatesByRole",
+      "onlyToolsOnAreConsidered",
+      "personRestrictionAppliesInRequest",
+      "noTechnicalIdsOnScreen"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

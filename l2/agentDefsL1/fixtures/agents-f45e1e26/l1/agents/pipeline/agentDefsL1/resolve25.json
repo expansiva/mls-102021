@@ -1,0 +1,996 @@
+{
+  "schemaVersion": "2026-10-06-d1-resolve-v1",
+  "project": 102047,
+  "moduleName": "agents",
+  "sourceKey": "sha256:4feef8b01fb2884739c48e606af0f8453042cbe041f4d1057972937858843fc8",
+  "llmCalls": 0,
+  "routes": [
+    {
+      "route": "agents.agent_activity.getAgentActivity",
+      "pageId": "agent_activity",
+      "answers": [
+        {
+          "path": "output.agent",
+          "kind": "entity",
+          "choice": "Agent",
+          "call": "resolve25-worker-r0",
+          "gapKey": "[\"agents.agent_activity.getAgentActivity\",\"output.agent\",\"entity\",\"Interface AgentHeader: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.\",[\"Agent\",\"AgentDraft\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.executions.details.actions.toolName",
+          "kind": "fieldPath",
+          "choice": "details.actions.toolName",
+          "call": "resolve25-worker-r0",
+          "gapKey": "[\"agents.agent_activity.getAgentActivity\",\"output.executions.details.actions.toolName\",\"fieldPath\",\"Interface ExecutionAction: field toolName is not a field of any entity.\",[\"details.actions.toolName\",\"details.toolName\",\"none\"]]"
+        },
+        {
+          "path": "output.executions.details.actions.result",
+          "kind": "fieldPath",
+          "choice": "details.actions.result",
+          "call": "resolve25-worker-r0",
+          "gapKey": "[\"agents.agent_activity.getAgentActivity\",\"output.executions.details.actions.result\",\"fieldPath\",\"Interface ExecutionAction: field result is not a field of any entity.\",[\"details.actions.result\",\"none\"]]"
+        },
+        {
+          "path": "output.executions.details.actions.resultNote",
+          "kind": "fieldPath",
+          "choice": "details.actions.resultNote",
+          "call": "resolve25-worker-r0",
+          "gapKey": "[\"agents.agent_activity.getAgentActivity\",\"output.executions.details.actions.resultNote\",\"fieldPath\",\"Interface ExecutionAction: field resultNote is not a field of any entity.\",[\"details.actions.resultNote\",\"none\"]]"
+        },
+        {
+          "path": "output.executions.organizationUser",
+          "kind": "computedRule",
+          "choice": "noTechnicalIdsOnScreen",
+          "call": "resolve25-worker-r0",
+          "gapKey": "[\"agents.agent_activity.getAgentActivity\",\"output.executions.organizationUser\",\"computedRule\",\"Interface ExecutionCaller has no field that is not readonly, so no entity owns it.\",[\"activityNewestFirst\",\"noTechnicalIdsOnScreen\",\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_activity.listAgentExecutions",
+      "pageId": "agent_activity",
+      "answers": [
+        {
+          "path": "output.executions.details.actions.toolName",
+          "kind": "fieldPath",
+          "choice": "details.actions.toolName",
+          "call": "resolve25-worker-r1",
+          "gapKey": "[\"agents.agent_activity.listAgentExecutions\",\"output.executions.details.actions.toolName\",\"fieldPath\",\"Interface ExecutionAction: field toolName is not a field of any entity.\",[\"details.actions.toolName\",\"details.toolName\",\"none\"]]"
+        },
+        {
+          "path": "output.executions.details.actions.result",
+          "kind": "fieldPath",
+          "choice": "details.actions.result",
+          "call": "resolve25-worker-r1",
+          "gapKey": "[\"agents.agent_activity.listAgentExecutions\",\"output.executions.details.actions.result\",\"fieldPath\",\"Interface ExecutionAction: field result is not a field of any entity.\",[\"details.actions.result\",\"none\"]]"
+        },
+        {
+          "path": "output.executions.details.actions.resultNote",
+          "kind": "fieldPath",
+          "choice": "details.actions.resultNote",
+          "call": "resolve25-worker-r1",
+          "gapKey": "[\"agents.agent_activity.listAgentExecutions\",\"output.executions.details.actions.resultNote\",\"fieldPath\",\"Interface ExecutionAction: field resultNote is not a field of any entity.\",[\"details.actions.resultNote\",\"none\"]]"
+        },
+        {
+          "path": "output.executions.organizationUser",
+          "kind": "computedRule",
+          "choice": "noTechnicalIdsOnScreen",
+          "call": "resolve25-worker-r1",
+          "gapKey": "[\"agents.agent_activity.listAgentExecutions\",\"output.executions.organizationUser\",\"computedRule\",\"Interface ExecutionCaller has no field that is not readonly, so no entity owns it.\",[\"activityNewestFirst\",\"noTechnicalIdsOnScreen\",\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_behavior.getAgentBehavior",
+      "pageId": "agent_behavior",
+      "answers": [
+        {
+          "path": "output.behavior.agent.agent.name",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r2",
+          "gapKey": "[\"agents.agent_behavior.getAgentBehavior\",\"output.behavior.agent.agent.name\",\"fieldPath\",\"Interface BehaviorAgent: field agent.name is not a field of any entity.\",[\"none\"]]"
+        },
+        {
+          "path": "input.agentId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r2",
+          "gapKey": "[\"agents.agent_behavior.getAgentBehavior\",\"input.agentId\",\"filterField\",\"Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"behavior:changes.changeRef\",\"behavior:changes.summary\",\"behavior:summary\",\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_behavior.listBehaviorChanges",
+      "pageId": "agent_behavior",
+      "answers": [
+        {
+          "path": "output.changes.changeRef",
+          "kind": "fieldPath",
+          "choice": "changes.changeRef",
+          "call": "resolve25-worker-r3",
+          "gapKey": "[\"agents.agent_behavior.listBehaviorChanges\",\"output.changes.changeRef\",\"fieldPath\",\"Interface BehaviorChange: field changeRef is not a field of any entity.\",[\"changes.changeRef\",\"none\"]]"
+        },
+        {
+          "path": "output.changes.changedBy",
+          "kind": "fieldPath",
+          "choice": "changes.changedBy",
+          "call": "resolve25-worker-r3",
+          "gapKey": "[\"agents.agent_behavior.listBehaviorChanges\",\"output.changes.changedBy\",\"fieldPath\",\"Interface BehaviorChange: field changedBy is not a field of any entity.\",[\"changes.changedBy\",\"history.changedBy\",\"none\"]]"
+        },
+        {
+          "path": "output.changes.changedAt",
+          "kind": "fieldPath",
+          "choice": "changes.changedAt",
+          "call": "resolve25-worker-r3",
+          "gapKey": "[\"agents.agent_behavior.listBehaviorChanges\",\"output.changes.changedAt\",\"fieldPath\",\"Interface BehaviorChange: field changedAt is not a field of any entity.\",[\"changes.changedAt\",\"history.changedAt\",\"none\"]]"
+        },
+        {
+          "path": "output.changes.undone",
+          "kind": "fieldPath",
+          "choice": "changes.undone",
+          "call": "resolve25-worker-r3",
+          "gapKey": "[\"agents.agent_behavior.listBehaviorChanges\",\"output.changes.undone\",\"fieldPath\",\"Interface BehaviorChange: field undone is not a field of any entity.\",[\"changes.undone\",\"none\"]]"
+        },
+        {
+          "path": "input.page",
+          "kind": "pageParam",
+          "choice": "changes",
+          "call": "resolve25-worker-r3",
+          "gapKey": "[\"agents.agent_behavior.listBehaviorChanges\",\"input.page\",\"pageParam\",\"Page input page pages one of 0 lists; the types do not say which.\",[\"changes\",\"none\"]]"
+        },
+        {
+          "path": "input.pageSize",
+          "kind": "pageParam",
+          "choice": "changes",
+          "call": "resolve25-worker-r3",
+          "gapKey": "[\"agents.agent_behavior.listBehaviorChanges\",\"input.pageSize\",\"pageParam\",\"Page input pageSize pages one of 0 lists; the types do not say which.\",[\"changes\",\"none\"]]"
+        },
+        {
+          "path": "input.agentId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r3",
+          "gapKey": "[\"agents.agent_behavior.listBehaviorChanges\",\"input.agentId\",\"filterField\",\"Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_behavior.requestBehaviorChange",
+      "pageId": "agent_behavior",
+      "answers": [
+        {
+          "path": "output.behavior.agent.agent.name",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r4",
+          "gapKey": "[\"agents.agent_behavior.requestBehaviorChange\",\"output.behavior.agent.agent.name\",\"fieldPath\",\"Interface BehaviorAgent: field agent.name is not a field of any entity.\",[\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_configuration.getAgentConfiguration",
+      "pageId": "agent_configuration",
+      "answers": [
+        {
+          "path": "output.configuration.responsible.agent.responsible",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r5",
+          "gapKey": "[\"agents.agent_configuration.getAgentConfiguration\",\"output.configuration.responsible.agent.responsible\",\"fieldPath\",\"Interface ResponsiblePerson: field agent.responsible is not a field of any entity.\",[\"none\"]]"
+        },
+        {
+          "path": "output.limits.label",
+          "kind": "fieldPath",
+          "choice": "limits.label",
+          "call": "resolve25-worker-r5",
+          "gapKey": "[\"agents.agent_configuration.getAgentConfiguration\",\"output.limits.label\",\"fieldPath\",\"Interface AgentLimit: field label is not a field of any entity.\",[\"limits.label\",\"none\"]]"
+        },
+        {
+          "path": "output.limits.value",
+          "kind": "fieldPath",
+          "choice": "limits.value",
+          "call": "resolve25-worker-r5",
+          "gapKey": "[\"agents.agent_configuration.getAgentConfiguration\",\"output.limits.value\",\"fieldPath\",\"Interface AgentLimit: field value is not a field of any entity.\",[\"limits.value\",\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_configuration.saveAgentConfiguration",
+      "pageId": "agent_configuration",
+      "answers": [
+        {
+          "path": "output.configuration.responsible.agent.responsible",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r6",
+          "gapKey": "[\"agents.agent_configuration.saveAgentConfiguration\",\"output.configuration.responsible.agent.responsible\",\"fieldPath\",\"Interface ResponsiblePerson: field agent.responsible is not a field of any entity.\",[\"none\"]]"
+        },
+        {
+          "path": "output.limits.label",
+          "kind": "fieldPath",
+          "choice": "limits.label",
+          "call": "resolve25-worker-r6",
+          "gapKey": "[\"agents.agent_configuration.saveAgentConfiguration\",\"output.limits.label\",\"fieldPath\",\"Interface AgentLimit: field label is not a field of any entity.\",[\"limits.label\",\"none\"]]"
+        },
+        {
+          "path": "output.limits.value",
+          "kind": "fieldPath",
+          "choice": "limits.value",
+          "call": "resolve25-worker-r6",
+          "gapKey": "[\"agents.agent_configuration.saveAgentConfiguration\",\"output.limits.value\",\"fieldPath\",\"Interface AgentLimit: field value is not a field of any entity.\",[\"limits.value\",\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_configuration.searchResponsibleCandidates",
+      "pageId": "agent_configuration",
+      "answers": [
+        {
+          "path": "output.users.agent.responsible",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r7",
+          "gapKey": "[\"agents.agent_configuration.searchResponsibleCandidates\",\"output.users.agent.responsible\",\"fieldPath\",\"Interface ResponsiblePerson: field agent.responsible is not a field of any entity.\",[\"none\"]]"
+        },
+        {
+          "path": "input.page",
+          "kind": "pageParam",
+          "choice": "users",
+          "call": "resolve25-worker-r7",
+          "gapKey": "[\"agents.agent_configuration.searchResponsibleCandidates\",\"input.page\",\"pageParam\",\"Page input page pages one of 0 lists; the types do not say which.\",[\"none\",\"users\"]]"
+        },
+        {
+          "path": "input.pageSize",
+          "kind": "pageParam",
+          "choice": "users",
+          "call": "resolve25-worker-r7",
+          "gapKey": "[\"agents.agent_configuration.searchResponsibleCandidates\",\"input.pageSize\",\"pageParam\",\"Page input pageSize pages one of 0 lists; the types do not say which.\",[\"none\",\"users\"]]"
+        },
+        {
+          "path": "input.search",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r7",
+          "gapKey": "[\"agents.agent_configuration.searchResponsibleCandidates\",\"input.search\",\"filterField\",\"Input search is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_overview.getAgentOverview",
+      "pageId": "agent_overview",
+      "answers": [
+        {
+          "path": "input.agentId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r8",
+          "gapKey": "[\"agents.agent_overview.getAgentOverview\",\"input.agentId\",\"filterField\",\"Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"agent:limits.label\",\"agent:limits.value\",\"agent:name\",\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_simulation.findPeopleToSimulate",
+      "pageId": "agent_simulation",
+      "answers": [
+        {
+          "path": "output.people",
+          "kind": "entity",
+          "choice": "OrganizationUser",
+          "call": "resolve25-worker-r9",
+          "gapKey": "[\"agents.agent_simulation.findPeopleToSimulate\",\"output.people\",\"entity\",\"Interface SimulatedPerson: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.\",[\"AgentTool\",\"ExecutionSummary\",\"OrganizationUser\",\"PersonToolRestriction\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.people.details.identification",
+          "kind": "entity",
+          "choice": "none",
+          "call": "resolve25-worker-r9",
+          "gapKey": "[\"agents.agent_simulation.findPeopleToSimulate\",\"output.people.details.identification\",\"entity\",\"Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.\",[\"Agent\",\"AgentDraft\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "input.page",
+          "kind": "pageParam",
+          "choice": "people",
+          "call": "resolve25-worker-r9",
+          "gapKey": "[\"agents.agent_simulation.findPeopleToSimulate\",\"input.page\",\"pageParam\",\"Page input page pages one of 0 lists; the types do not say which.\",[\"none\",\"people\"]]"
+        },
+        {
+          "path": "input.pageSize",
+          "kind": "pageParam",
+          "choice": "people",
+          "call": "resolve25-worker-r9",
+          "gapKey": "[\"agents.agent_simulation.findPeopleToSimulate\",\"input.pageSize\",\"pageParam\",\"Page input pageSize pages one of 0 lists; the types do not say which.\",[\"none\",\"people\"]]"
+        },
+        {
+          "path": "input.search",
+          "kind": "filterField",
+          "choice": "people:details.identification.name",
+          "call": "resolve25-worker-r9",
+          "gapKey": "[\"agents.agent_simulation.findPeopleToSimulate\",\"input.search\",\"filterField\",\"Input search is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"none\",\"people:details.actions.toolName\",\"people:details.agents.loginEmail\",\"people:details.conversationLink\",\"people:details.identification.name\",\"people:details.identification.tags\",\"people:details.moduleTitle\",\"people:details.releaseLabel\",\"people:details.subjectTitle\",\"people:details.toolName\",\"people:details.toolPath\",\"people:executionRef\",\"people:moduleName\",\"people:name\",\"people:subject\",\"people:toolKey\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_simulation.getSimulationPage",
+      "pageId": "agent_simulation",
+      "answers": [
+        {
+          "path": "output.agent",
+          "kind": "entity",
+          "choice": "Agent",
+          "call": "resolve25-worker-r10",
+          "gapKey": "[\"agents.agent_simulation.getSimulationPage\",\"output.agent\",\"entity\",\"Interface AgentHeader: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.\",[\"Agent\",\"AgentDraft\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.whatItCan.person",
+          "kind": "entity",
+          "choice": "OrganizationUser",
+          "call": "resolve25-worker-r10",
+          "gapKey": "[\"agents.agent_simulation.getSimulationPage\",\"output.whatItCan.person\",\"entity\",\"Interface SimulatedPerson: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.\",[\"AgentTool\",\"ExecutionSummary\",\"OrganizationUser\",\"PersonToolRestriction\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.whatItCan.person.details.identification",
+          "kind": "entity",
+          "choice": "none",
+          "call": "resolve25-worker-r10",
+          "gapKey": "[\"agents.agent_simulation.getSimulationPage\",\"output.whatItCan.person.details.identification\",\"entity\",\"Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.\",[\"Agent\",\"AgentDraft\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.whatItCan.toolVerdicts.tool",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.tool",
+          "call": "resolve25-worker-r10",
+          "gapKey": "[\"agents.agent_simulation.getSimulationPage\",\"output.whatItCan.toolVerdicts.tool\",\"fieldPath\",\"Interface ToolVerdict: field tool is not a field of any entity.\",[\"none\",\"toolVerdicts.tool\",\"understanding.actions.tool\"]]"
+        },
+        {
+          "path": "output.whatItCan.toolVerdicts.subjectName",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.subjectName",
+          "call": "resolve25-worker-r10",
+          "gapKey": "[\"agents.agent_simulation.getSimulationPage\",\"output.whatItCan.toolVerdicts.subjectName\",\"fieldPath\",\"Interface ToolVerdict: field subjectName is not a field of any entity.\",[\"none\",\"toolVerdicts.subjectName\",\"understanding.subjectName\"]]"
+        },
+        {
+          "path": "output.whatItCan.toolVerdicts.actionName",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.actionName",
+          "call": "resolve25-worker-r10",
+          "gapKey": "[\"agents.agent_simulation.getSimulationPage\",\"output.whatItCan.toolVerdicts.actionName\",\"fieldPath\",\"Interface ToolVerdict: field actionName is not a field of any entity.\",[\"none\",\"toolVerdicts.actionName\",\"understanding.actions.actionName\"]]"
+        },
+        {
+          "path": "output.whatItCan.toolVerdicts.canUse",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.canUse",
+          "call": "resolve25-worker-r10",
+          "gapKey": "[\"agents.agent_simulation.getSimulationPage\",\"output.whatItCan.toolVerdicts.canUse\",\"fieldPath\",\"Interface ToolVerdict: field canUse is not a field of any entity.\",[\"none\",\"toolVerdicts.canUse\"]]"
+        },
+        {
+          "path": "output.whatItCan.toolVerdicts.reason",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.reason",
+          "call": "resolve25-worker-r10",
+          "gapKey": "[\"agents.agent_simulation.getSimulationPage\",\"output.whatItCan.toolVerdicts.reason\",\"fieldPath\",\"Interface ToolVerdict: field reason is not a field of any entity.\",[\"none\",\"toolVerdicts.reason\"]]"
+        },
+        {
+          "path": "output.whatItCan.toolVerdicts.reasonText",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.reasonText",
+          "call": "resolve25-worker-r10",
+          "gapKey": "[\"agents.agent_simulation.getSimulationPage\",\"output.whatItCan.toolVerdicts.reasonText\",\"fieldPath\",\"Interface ToolVerdict: field reasonText is not a field of any entity.\",[\"none\",\"toolVerdicts.reasonText\"]]"
+        },
+        {
+          "path": "input.agentId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r10",
+          "gapKey": "[\"agents.agent_simulation.getSimulationPage\",\"input.agentId\",\"filterField\",\"Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"agent:details.moduleTitle\",\"agent:details.releaseLabel\",\"agent:details.subjectTitle\",\"agent:limits.label\",\"agent:limits.value\",\"agent:moduleName\",\"agent:name\",\"agent:subject\",\"agent:toolKey\",\"none\",\"whatItCan:roleName\",\"whatItCan:toolVerdicts.actionName\",\"whatItCan:toolVerdicts.moduleName\",\"whatItCan:toolVerdicts.reasonText\",\"whatItCan:toolVerdicts.subjectName\",\"whatItCan:understanding.actions.actionName\",\"whatItCan:understanding.moduleName\",\"whatItCan:understanding.subjectName\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_simulation.simulateWhatItCan",
+      "pageId": "agent_simulation",
+      "answers": [
+        {
+          "path": "output.whatItCan.person",
+          "kind": "entity",
+          "choice": "OrganizationUser",
+          "call": "resolve25-worker-r11",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItCan\",\"output.whatItCan.person\",\"entity\",\"Interface SimulatedPerson: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.\",[\"AgentTool\",\"ExecutionSummary\",\"OrganizationUser\",\"PersonToolRestriction\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.whatItCan.person.details.identification",
+          "kind": "entity",
+          "choice": "none",
+          "call": "resolve25-worker-r11",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItCan\",\"output.whatItCan.person.details.identification\",\"entity\",\"Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.\",[\"Agent\",\"AgentDraft\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.whatItCan.toolVerdicts.tool",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.tool",
+          "call": "resolve25-worker-r11",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItCan\",\"output.whatItCan.toolVerdicts.tool\",\"fieldPath\",\"Interface ToolVerdict: field tool is not a field of any entity.\",[\"none\",\"toolVerdicts.tool\",\"understanding.actions.tool\"]]"
+        },
+        {
+          "path": "output.whatItCan.toolVerdicts.subjectName",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.subjectName",
+          "call": "resolve25-worker-r11",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItCan\",\"output.whatItCan.toolVerdicts.subjectName\",\"fieldPath\",\"Interface ToolVerdict: field subjectName is not a field of any entity.\",[\"none\",\"toolVerdicts.subjectName\",\"understanding.subjectName\"]]"
+        },
+        {
+          "path": "output.whatItCan.toolVerdicts.actionName",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.actionName",
+          "call": "resolve25-worker-r11",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItCan\",\"output.whatItCan.toolVerdicts.actionName\",\"fieldPath\",\"Interface ToolVerdict: field actionName is not a field of any entity.\",[\"none\",\"toolVerdicts.actionName\",\"understanding.actions.actionName\"]]"
+        },
+        {
+          "path": "output.whatItCan.toolVerdicts.canUse",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.canUse",
+          "call": "resolve25-worker-r11",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItCan\",\"output.whatItCan.toolVerdicts.canUse\",\"fieldPath\",\"Interface ToolVerdict: field canUse is not a field of any entity.\",[\"none\",\"toolVerdicts.canUse\"]]"
+        },
+        {
+          "path": "output.whatItCan.toolVerdicts.reason",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.reason",
+          "call": "resolve25-worker-r11",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItCan\",\"output.whatItCan.toolVerdicts.reason\",\"fieldPath\",\"Interface ToolVerdict: field reason is not a field of any entity.\",[\"none\",\"toolVerdicts.reason\"]]"
+        },
+        {
+          "path": "output.whatItCan.toolVerdicts.reasonText",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.reasonText",
+          "call": "resolve25-worker-r11",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItCan\",\"output.whatItCan.toolVerdicts.reasonText\",\"fieldPath\",\"Interface ToolVerdict: field reasonText is not a field of any entity.\",[\"none\",\"toolVerdicts.reasonText\"]]"
+        },
+        {
+          "path": "input.agentId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r11",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItCan\",\"input.agentId\",\"filterField\",\"Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"none\",\"whatItCan:roleName\",\"whatItCan:toolVerdicts.actionName\",\"whatItCan:toolVerdicts.moduleName\",\"whatItCan:toolVerdicts.reasonText\",\"whatItCan:toolVerdicts.subjectName\",\"whatItCan:understanding.actions.actionName\",\"whatItCan:understanding.moduleName\",\"whatItCan:understanding.subjectName\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_simulation.simulateWhatItUnderstands",
+      "pageId": "agent_simulation",
+      "answers": [
+        {
+          "path": "output.whatItUnderstands.understanding.asksForAction",
+          "kind": "fieldPath",
+          "choice": "understanding.asksForAction",
+          "call": "resolve25-worker-r12",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItUnderstands\",\"output.whatItUnderstands.understanding.asksForAction\",\"fieldPath\",\"Interface Understanding: field asksForAction is not a field of any entity.\",[\"none\",\"understanding.asksForAction\"]]"
+        },
+        {
+          "path": "output.whatItUnderstands.understanding.subjectName",
+          "kind": "fieldPath",
+          "choice": "understanding.subjectName",
+          "call": "resolve25-worker-r12",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItUnderstands\",\"output.whatItUnderstands.understanding.subjectName\",\"fieldPath\",\"Interface Understanding: field subjectName is not a field of any entity.\",[\"none\",\"toolVerdicts.subjectName\",\"understanding.subjectName\"]]"
+        },
+        {
+          "path": "output.whatItUnderstands.understanding.explanation",
+          "kind": "fieldPath",
+          "choice": "understanding.explanation",
+          "call": "resolve25-worker-r12",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItUnderstands\",\"output.whatItUnderstands.understanding.explanation\",\"fieldPath\",\"Interface Understanding: field explanation is not a field of any entity.\",[\"none\",\"understanding.explanation\"]]"
+        },
+        {
+          "path": "output.whatItUnderstands.understanding.actions.tool",
+          "kind": "fieldPath",
+          "choice": "understanding.actions.tool",
+          "call": "resolve25-worker-r12",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItUnderstands\",\"output.whatItUnderstands.understanding.actions.tool\",\"fieldPath\",\"Interface UnderstoodAction: field tool is not a field of any entity.\",[\"none\",\"toolVerdicts.tool\",\"understanding.actions.tool\"]]"
+        },
+        {
+          "path": "output.whatItUnderstands.understanding.actions.actionName",
+          "kind": "fieldPath",
+          "choice": "understanding.actions.actionName",
+          "call": "resolve25-worker-r12",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItUnderstands\",\"output.whatItUnderstands.understanding.actions.actionName\",\"fieldPath\",\"Interface UnderstoodAction: field actionName is not a field of any entity.\",[\"none\",\"toolVerdicts.actionName\",\"understanding.actions.actionName\"]]"
+        },
+        {
+          "path": "input.agentId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r12",
+          "gapKey": "[\"agents.agent_simulation.simulateWhatItUnderstands\",\"input.agentId\",\"filterField\",\"Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"none\",\"whatItUnderstands:roleName\",\"whatItUnderstands:toolVerdicts.actionName\",\"whatItUnderstands:toolVerdicts.moduleName\",\"whatItUnderstands:toolVerdicts.reasonText\",\"whatItUnderstands:toolVerdicts.subjectName\",\"whatItUnderstands:understanding.actions.actionName\",\"whatItUnderstands:understanding.moduleName\",\"whatItUnderstands:understanding.subjectName\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agent_tools.getAgentToolTree",
+      "pageId": "agent_tools",
+      "answers": [
+        {
+          "path": "output.name",
+          "kind": "value",
+          "choice": "none",
+          "call": "resolve25-worker-r13",
+          "gapKey": "[\"agents.agent_tools.getAgentToolTree\",\"output.name\",\"value\",\"Output name is a value (string), not an interface; no entity owns it.\",[\"none\"]]"
+        },
+        {
+          "path": "input.agentId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r13",
+          "gapKey": "[\"agents.agent_tools.getAgentToolTree\",\"input.agentId\",\"filterField\",\"Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"actions:details.moduleTitle\",\"actions:details.releaseLabel\",\"actions:details.subjectTitle\",\"actions:moduleName\",\"actions:name\",\"actions:subject\",\"actions:toolKey\",\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agents.listAgentsCollection",
+      "pageId": "agents",
+      "answers": [
+        {
+          "path": "output.agents.draft.draftId",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r14",
+          "gapKey": "[\"agents.agents.listAgentsCollection\",\"output.agents.draft.draftId\",\"fieldPath\",\"Interface DraftCard: field draftId is not a field of any entity.\",[\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agents.listRequestHistory",
+      "pageId": "agents",
+      "answers": [
+        {
+          "path": "output.requests.draftId",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r15",
+          "gapKey": "[\"agents.agents.listRequestHistory\",\"output.requests.draftId\",\"fieldPath\",\"Interface RequestEvent: field draftId is not a field of any entity.\",[\"none\"]]"
+        },
+        {
+          "path": "input.page",
+          "kind": "pageParam",
+          "choice": "requests",
+          "call": "resolve25-worker-r15",
+          "gapKey": "[\"agents.agents.listRequestHistory\",\"input.page\",\"pageParam\",\"Page input page pages one of 0 lists; the types do not say which.\",[\"none\",\"requests\"]]"
+        },
+        {
+          "path": "input.pageSize",
+          "kind": "pageParam",
+          "choice": "requests",
+          "call": "resolve25-worker-r15",
+          "gapKey": "[\"agents.agents.listRequestHistory\",\"input.pageSize\",\"pageParam\",\"Page input pageSize pages one of 0 lists; the types do not say which.\",[\"none\",\"requests\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agents.loadAgentsPage",
+      "pageId": "agents",
+      "answers": [
+        {
+          "path": "output.inbox.draftId",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r16",
+          "gapKey": "[\"agents.agents.loadAgentsPage\",\"output.inbox.draftId\",\"fieldPath\",\"Interface DraftInboxItem: field draftId is not a field of any entity.\",[\"none\"]]"
+        },
+        {
+          "path": "output.agents.draft.draftId",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r16",
+          "gapKey": "[\"agents.agents.loadAgentsPage\",\"output.agents.draft.draftId\",\"fieldPath\",\"Interface DraftCard: field draftId is not a field of any entity.\",[\"none\"]]"
+        },
+        {
+          "path": "output.requests.draftId",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r16",
+          "gapKey": "[\"agents.agents.loadAgentsPage\",\"output.requests.draftId\",\"fieldPath\",\"Interface RequestEvent: field draftId is not a field of any entity.\",[\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.agents.sendNewAgentRequest",
+      "pageId": "agents",
+      "answers": [
+        {
+          "path": "output.request.draftId",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.agents.sendNewAgentRequest\",\"output.request.draftId\",\"fieldPath\",\"Interface RequestEvent: field draftId is not a field of any entity.\",[\"none\"]]"
+        },
+        {
+          "path": "output.inboxItem.draftId",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.agents.sendNewAgentRequest\",\"output.inboxItem.draftId\",\"fieldPath\",\"Interface DraftInboxItem: field draftId is not a field of any entity.\",[\"none\"]]"
+        },
+        {
+          "path": "output.collectionEntry.draft.draftId",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.agents.sendNewAgentRequest\",\"output.collectionEntry.draft.draftId\",\"fieldPath\",\"Interface DraftCard: field draftId is not a field of any entity.\",[\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.draft_review.getDraftReview",
+      "pageId": "draft_review",
+      "answers": [
+        {
+          "path": "input.draftId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r15",
+          "gapKey": "[\"agents.draft_review.getDraftReview\",\"input.draftId\",\"filterField\",\"Input draftId is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"draft:name\",\"none\",\"tools:details.toolName\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.draft_review.searchSimulationPeople",
+      "pageId": "draft_review",
+      "answers": [
+        {
+          "path": "output.people.personRef",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r16",
+          "gapKey": "[\"agents.draft_review.searchSimulationPeople\",\"output.people.personRef\",\"fieldPath\",\"Interface SimulationPerson: field personRef is not a field of any entity.\",[\"none\"]]"
+        },
+        {
+          "path": "output.people.details.identification",
+          "kind": "entity",
+          "choice": "none",
+          "call": "resolve25-worker-r16",
+          "gapKey": "[\"agents.draft_review.searchSimulationPeople\",\"output.people.details.identification\",\"entity\",\"Interface SimulationPersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.\",[\"Agent\",\"AgentDraft\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.people.details.agents",
+          "kind": "computedRule",
+          "choice": "none",
+          "call": "resolve25-worker-r16",
+          "gapKey": "[\"agents.draft_review.searchSimulationPeople\",\"output.people.details.agents\",\"computedRule\",\"Interface SimulationPersonAgents has no field that is not readonly, so no entity owns it.\",[\"adminSimulatesByRole\",\"noTechnicalIdsOnScreen\",\"none\",\"onlyActiveUsersRestricted\"]]"
+        },
+        {
+          "path": "input.page",
+          "kind": "pageParam",
+          "choice": "people",
+          "call": "resolve25-worker-r16",
+          "gapKey": "[\"agents.draft_review.searchSimulationPeople\",\"input.page\",\"pageParam\",\"Page input page pages one of 0 lists; the types do not say which.\",[\"none\",\"people\"]]"
+        },
+        {
+          "path": "input.pageSize",
+          "kind": "pageParam",
+          "choice": "people",
+          "call": "resolve25-worker-r16",
+          "gapKey": "[\"agents.draft_review.searchSimulationPeople\",\"input.pageSize\",\"pageParam\",\"Page input pageSize pages one of 0 lists; the types do not say which.\",[\"none\",\"people\"]]"
+        },
+        {
+          "path": "input.name",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r16",
+          "gapKey": "[\"agents.draft_review.searchSimulationPeople\",\"input.name\",\"filterField\",\"Input name is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.draft_review.simulateDraft",
+      "pageId": "draft_review",
+      "answers": [
+        {
+          "path": "output.simulation.toolVerdicts.subjectName",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.subjectName",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.draft_review.simulateDraft\",\"output.simulation.toolVerdicts.subjectName\",\"fieldPath\",\"Interface ToolVerdict: field subjectName is not a field of any entity.\",[\"none\",\"toolVerdicts.subjectName\",\"understanding.subjectName\"]]"
+        },
+        {
+          "path": "output.simulation.toolVerdicts.actionName",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.actionName",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.draft_review.simulateDraft\",\"output.simulation.toolVerdicts.actionName\",\"fieldPath\",\"Interface ToolVerdict: field actionName is not a field of any entity.\",[\"none\",\"toolVerdicts.actionName\",\"understanding.actions.actionName\"]]"
+        },
+        {
+          "path": "output.simulation.toolVerdicts.canUse",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.canUse",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.draft_review.simulateDraft\",\"output.simulation.toolVerdicts.canUse\",\"fieldPath\",\"Interface ToolVerdict: field canUse is not a field of any entity.\",[\"none\",\"toolVerdicts.canUse\"]]"
+        },
+        {
+          "path": "output.simulation.toolVerdicts.reason",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.reason",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.draft_review.simulateDraft\",\"output.simulation.toolVerdicts.reason\",\"fieldPath\",\"Interface ToolVerdict: field reason is not a field of any entity.\",[\"none\",\"toolVerdicts.reason\"]]"
+        },
+        {
+          "path": "output.simulation.toolVerdicts.reasonText",
+          "kind": "fieldPath",
+          "choice": "toolVerdicts.reasonText",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.draft_review.simulateDraft\",\"output.simulation.toolVerdicts.reasonText\",\"fieldPath\",\"Interface ToolVerdict: field reasonText is not a field of any entity.\",[\"none\",\"toolVerdicts.reasonText\"]]"
+        },
+        {
+          "path": "output.simulation.understanding.asksForAction",
+          "kind": "fieldPath",
+          "choice": "understanding.asksForAction",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.draft_review.simulateDraft\",\"output.simulation.understanding.asksForAction\",\"fieldPath\",\"Interface SimulationUnderstanding: field asksForAction is not a field of any entity.\",[\"none\",\"understanding.asksForAction\"]]"
+        },
+        {
+          "path": "output.simulation.understanding.subjectName",
+          "kind": "fieldPath",
+          "choice": "understanding.subjectName",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.draft_review.simulateDraft\",\"output.simulation.understanding.subjectName\",\"fieldPath\",\"Interface SimulationUnderstanding: field subjectName is not a field of any entity.\",[\"none\",\"toolVerdicts.subjectName\",\"understanding.subjectName\"]]"
+        },
+        {
+          "path": "output.simulation.understanding.explanation",
+          "kind": "fieldPath",
+          "choice": "understanding.explanation",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.draft_review.simulateDraft\",\"output.simulation.understanding.explanation\",\"fieldPath\",\"Interface SimulationUnderstanding: field explanation is not a field of any entity.\",[\"none\",\"understanding.explanation\"]]"
+        },
+        {
+          "path": "output.simulation.understanding.actions.actionName",
+          "kind": "fieldPath",
+          "choice": "understanding.actions.actionName",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.draft_review.simulateDraft\",\"output.simulation.understanding.actions.actionName\",\"fieldPath\",\"Interface UnderstoodAction: field actionName is not a field of any entity.\",[\"none\",\"toolVerdicts.actionName\",\"understanding.actions.actionName\"]]"
+        },
+        {
+          "path": "input.draftId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r17",
+          "gapKey": "[\"agents.draft_review.simulateDraft\",\"input.draftId\",\"filterField\",\"Input draftId is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"none\",\"simulation:roleName\",\"simulation:toolVerdicts.actionName\",\"simulation:toolVerdicts.moduleName\",\"simulation:toolVerdicts.reasonText\",\"simulation:toolVerdicts.subjectName\",\"simulation:understanding.actions.actionName\",\"simulation:understanding.moduleName\",\"simulation:understanding.subjectName\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.my_conduct.getMyConduct",
+      "pageId": "my_conduct",
+      "answers": [
+        {
+          "path": "output.conduct",
+          "kind": "entity",
+          "choice": "none",
+          "call": "resolve25-worker-r18",
+          "gapKey": "[\"agents.my_conduct.getMyConduct\",\"output.conduct\",\"entity\",\"Interface MyConduct: fields summary, version are not all fields of one entity or of one entity linked to it by an N:1 relationship.\",[\"none\"]]"
+        },
+        {
+          "path": "output.conduct.agent",
+          "kind": "entity",
+          "choice": "Agent",
+          "call": "resolve25-worker-r18",
+          "gapKey": "[\"agents.my_conduct.getMyConduct\",\"output.conduct.agent\",\"entity\",\"Interface ConductAgent: fields name, onBehalfOf are fields of Agent, AgentDraft; the types do not say which.\",[\"Agent\",\"AgentDraft\",\"none\"]]"
+        },
+        {
+          "path": "input.agentId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r18",
+          "gapKey": "[\"agents.my_conduct.getMyConduct\",\"input.agentId\",\"filterField\",\"Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.my_conduct.listMyConductHistory",
+      "pageId": "my_conduct",
+      "answers": [
+        {
+          "path": "output.history.changedAt",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r19",
+          "gapKey": "[\"agents.my_conduct.listMyConductHistory\",\"output.history.changedAt\",\"fieldPath\",\"Interface ConductHistoryEntry: field changedAt is not a field of any entity.\",[\"changes.changedAt\",\"history.changedAt\",\"none\"]]"
+        },
+        {
+          "path": "output.history.changedBy",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r19",
+          "gapKey": "[\"agents.my_conduct.listMyConductHistory\",\"output.history.changedBy\",\"fieldPath\",\"Interface ConductHistoryEntry: field changedBy is not a field of any entity.\",[\"changes.changedBy\",\"history.changedBy\",\"none\"]]"
+        },
+        {
+          "path": "input.page",
+          "kind": "pageParam",
+          "choice": "history",
+          "call": "resolve25-worker-r19",
+          "gapKey": "[\"agents.my_conduct.listMyConductHistory\",\"input.page\",\"pageParam\",\"Page input page pages one of 0 lists; the types do not say which.\",[\"history\",\"none\"]]"
+        },
+        {
+          "path": "input.pageSize",
+          "kind": "pageParam",
+          "choice": "history",
+          "call": "resolve25-worker-r19",
+          "gapKey": "[\"agents.my_conduct.listMyConductHistory\",\"input.pageSize\",\"pageParam\",\"Page input pageSize pages one of 0 lists; the types do not say which.\",[\"history\",\"none\"]]"
+        },
+        {
+          "path": "input.agentId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r19",
+          "gapKey": "[\"agents.my_conduct.listMyConductHistory\",\"input.agentId\",\"filterField\",\"Input agentId is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.my_conduct.sendConductChange",
+      "pageId": "my_conduct",
+      "answers": [
+        {
+          "path": "output.conduct",
+          "kind": "entity",
+          "choice": "none",
+          "call": "resolve25-worker-r20",
+          "gapKey": "[\"agents.my_conduct.sendConductChange\",\"output.conduct\",\"entity\",\"Interface MyConduct: fields summary, version are not all fields of one entity or of one entity linked to it by an N:1 relationship.\",[\"none\"]]"
+        },
+        {
+          "path": "output.conduct.agent",
+          "kind": "entity",
+          "choice": "Agent",
+          "call": "resolve25-worker-r20",
+          "gapKey": "[\"agents.my_conduct.sendConductChange\",\"output.conduct.agent\",\"entity\",\"Interface ConductAgent: fields name, onBehalfOf are fields of Agent, AgentDraft; the types do not say which.\",[\"Agent\",\"AgentDraft\",\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.person_restrictions.getPersonRestrictions",
+      "pageId": "person_restrictions",
+      "answers": [
+        {
+          "path": "output.person",
+          "kind": "entity",
+          "choice": "OrganizationUser",
+          "call": "resolve25-worker-r21",
+          "gapKey": "[\"agents.person_restrictions.getPersonRestrictions\",\"output.person\",\"entity\",\"Interface PersonOption: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.\",[\"AgentTool\",\"ExecutionSummary\",\"OrganizationUser\",\"PersonToolRestriction\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.person.details.identification",
+          "kind": "entity",
+          "choice": "none",
+          "call": "resolve25-worker-r21",
+          "gapKey": "[\"agents.person_restrictions.getPersonRestrictions\",\"output.person.details.identification\",\"entity\",\"Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.\",[\"Agent\",\"AgentDraft\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.person.details.agents",
+          "kind": "computedRule",
+          "choice": "none",
+          "call": "resolve25-worker-r21",
+          "gapKey": "[\"agents.person_restrictions.getPersonRestrictions\",\"output.person.details.agents\",\"computedRule\",\"Interface PersonAgentsData has no field that is not readonly, so no entity owns it.\",[\"noTechnicalIdsOnScreen\",\"none\",\"onlyActiveUsersRestricted\",\"removedToolRestrictionKept\",\"restrictionUniquePerPersonTool\"]]"
+        },
+        {
+          "path": "output.tools.personToolRestriction",
+          "kind": "entity",
+          "choice": "PersonToolRestriction",
+          "call": "resolve25-worker-r21",
+          "gapKey": "[\"agents.person_restrictions.getPersonRestrictions\",\"output.tools.personToolRestriction\",\"entity\",\"Interface BlockedToolRestriction: fields id, version are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.\",[\"AgentTool\",\"ExecutionSummary\",\"OrganizationUser\",\"PersonToolRestriction\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "input.personId",
+          "kind": "filterField",
+          "choice": "person:personId",
+          "call": "resolve25-worker-r21",
+          "gapKey": "[\"agents.person_restrictions.getPersonRestrictions\",\"input.personId\",\"filterField\",\"Input personId names a field of more than one output entity; the types do not say which it filters.\",[\"none\",\"person:personId\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.person_restrictions.listPeople",
+      "pageId": "person_restrictions",
+      "answers": [
+        {
+          "path": "output.people",
+          "kind": "entity",
+          "choice": "OrganizationUser",
+          "call": "resolve25-worker-r22",
+          "gapKey": "[\"agents.person_restrictions.listPeople\",\"output.people\",\"entity\",\"Interface PersonOption: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.\",[\"AgentTool\",\"ExecutionSummary\",\"OrganizationUser\",\"PersonToolRestriction\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.people.details.identification",
+          "kind": "entity",
+          "choice": "none",
+          "call": "resolve25-worker-r22",
+          "gapKey": "[\"agents.person_restrictions.listPeople\",\"output.people.details.identification\",\"entity\",\"Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.\",[\"Agent\",\"AgentDraft\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.people.details.agents",
+          "kind": "computedRule",
+          "choice": "none",
+          "call": "resolve25-worker-r22",
+          "gapKey": "[\"agents.person_restrictions.listPeople\",\"output.people.details.agents\",\"computedRule\",\"Interface PersonAgentsData has no field that is not readonly, so no entity owns it.\",[\"noTechnicalIdsOnScreen\",\"none\",\"onlyActiveUsersRestricted\"]]"
+        },
+        {
+          "path": "input.page",
+          "kind": "pageParam",
+          "choice": "people",
+          "call": "resolve25-worker-r22",
+          "gapKey": "[\"agents.person_restrictions.listPeople\",\"input.page\",\"pageParam\",\"Page input page pages one of 0 lists; the types do not say which.\",[\"none\",\"people\"]]"
+        },
+        {
+          "path": "input.pageSize",
+          "kind": "pageParam",
+          "choice": "people",
+          "call": "resolve25-worker-r22",
+          "gapKey": "[\"agents.person_restrictions.listPeople\",\"input.pageSize\",\"pageParam\",\"Page input pageSize pages one of 0 lists; the types do not say which.\",[\"none\",\"people\"]]"
+        },
+        {
+          "path": "input.search",
+          "kind": "filterField",
+          "choice": "people:details.identification.name",
+          "call": "resolve25-worker-r22",
+          "gapKey": "[\"agents.person_restrictions.listPeople\",\"input.search\",\"filterField\",\"Input search is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"none\",\"people:details.actions.toolName\",\"people:details.agents.loginEmail\",\"people:details.conversationLink\",\"people:details.identification.name\",\"people:details.identification.tags\",\"people:details.moduleTitle\",\"people:details.releaseLabel\",\"people:details.subjectTitle\",\"people:details.toolName\",\"people:details.toolPath\",\"people:executionRef\",\"people:moduleName\",\"people:name\",\"people:subject\",\"people:toolKey\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.person_restrictions.saveRestrictions",
+      "pageId": "person_restrictions",
+      "answers": [
+        {
+          "path": "output.person",
+          "kind": "entity",
+          "choice": "OrganizationUser",
+          "call": "resolve25-worker-r23",
+          "gapKey": "[\"agents.person_restrictions.saveRestrictions\",\"output.person\",\"entity\",\"Interface PersonOption: fields id are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.\",[\"AgentTool\",\"ExecutionSummary\",\"OrganizationUser\",\"PersonToolRestriction\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.person.details.identification",
+          "kind": "entity",
+          "choice": "none",
+          "call": "resolve25-worker-r23",
+          "gapKey": "[\"agents.person_restrictions.saveRestrictions\",\"output.person.details.identification\",\"entity\",\"Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which.\",[\"Agent\",\"AgentDraft\",\"Tool\",\"none\"]]"
+        },
+        {
+          "path": "output.person.details.agents",
+          "kind": "computedRule",
+          "choice": "none",
+          "call": "resolve25-worker-r23",
+          "gapKey": "[\"agents.person_restrictions.saveRestrictions\",\"output.person.details.agents\",\"computedRule\",\"Interface PersonAgentsData has no field that is not readonly, so no entity owns it.\",[\"none\",\"onlyActiveUsersRestricted\",\"onlyCompanyAdminRestrictsTools\",\"removedToolRestrictionKept\",\"restrictionAppliesThroughAnyAgent\",\"restrictionUniquePerPersonTool\"]]"
+        },
+        {
+          "path": "output.tools.personToolRestriction",
+          "kind": "entity",
+          "choice": "PersonToolRestriction",
+          "call": "resolve25-worker-r23",
+          "gapKey": "[\"agents.person_restrictions.saveRestrictions\",\"output.tools.personToolRestriction\",\"entity\",\"Interface BlockedToolRestriction: fields id, version are fields of AgentTool, ExecutionSummary, OrganizationUser, PersonToolRestriction, Tool; the types do not say which.\",[\"AgentTool\",\"ExecutionSummary\",\"OrganizationUser\",\"PersonToolRestriction\",\"Tool\",\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "agents.tool_catalog.getToolCatalog",
+      "pageId": "tool_catalog",
+      "answers": [
+        {
+          "path": "output.modules.subjects",
+          "kind": "relationship",
+          "choice": "none",
+          "call": "resolve25-worker-r24",
+          "gapKey": "[\"agents.tool_catalog.getToolCatalog\",\"output.modules.subjects\",\"relationship\",\"Tool inside Tool needs one L4 relationship between them; found 0.\",[\"none\"]]"
+        },
+        {
+          "path": "output.modules.subjects.tools",
+          "kind": "relationship",
+          "choice": "none",
+          "call": "resolve25-worker-r24",
+          "gapKey": "[\"agents.tool_catalog.getToolCatalog\",\"output.modules.subjects.tools\",\"relationship\",\"Tool inside Tool needs one L4 relationship between them; found 0.\",[\"none\"]]"
+        },
+        {
+          "path": "output.toolUsage.usedByAgents",
+          "kind": "fieldPath",
+          "choice": "details.usedByAgents",
+          "call": "resolve25-worker-r24",
+          "gapKey": "[\"agents.tool_catalog.getToolCatalog\",\"output.toolUsage.usedByAgents\",\"fieldPath\",\"Interface ToolUsage: readonly usedByAgents is not a field of Tool; it may stand for one of its paths.\",[\"details.usedByAgents\",\"none\"]]"
+        }
+      ]
+    }
+  ]
+}

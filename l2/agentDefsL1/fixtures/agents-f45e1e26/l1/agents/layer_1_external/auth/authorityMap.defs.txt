@@ -1,0 +1,71 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "authorityMap",
+  "artifactId": "authorityMap",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "mapId": "authorityMap",
+    "entries": [
+      {
+        "grantId": "adminChoosePeople",
+        "actorRef": "companyAdmin"
+      },
+      {
+        "grantId": "adminManageAgents",
+        "actorRef": "companyAdmin"
+      },
+      {
+        "grantId": "adminManageTools",
+        "actorRef": "companyAdmin"
+      },
+      {
+        "grantId": "adminOwnConduct",
+        "actorRef": "companyAdmin"
+      },
+      {
+        "grantId": "adminReadActivity",
+        "actorRef": "companyAdmin"
+      },
+      {
+        "grantId": "connection_cm",
+        "actorRef": "connection:cm"
+      },
+      {
+        "grantId": "connection_platform",
+        "actorRef": "connection:platform"
+      },
+      {
+        "grantId": "memberOwnConduct",
+        "actorRef": "organizationMember"
+      },
+      {
+        "grantId": "memberReadActivity",
+        "actorRef": "organizationMember"
+      },
+      {
+        "grantId": "memberReadToolCatalog",
+        "actorRef": "organizationMember"
+      },
+      {
+        "grantId": "memberSeeAgents",
+        "actorRef": "organizationMember"
+      },
+      {
+        "grantId": "memberSeePeopleNames",
+        "actorRef": "organizationMember"
+      },
+      {
+        "grantId": "memberSimulateAsMyself",
+        "actorRef": "organizationMember"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

@@ -1,0 +1,99 @@
+{
+  "schemaVersion": "2026-09-20-p1-pipeline-v1",
+  "flowId": "agentPlannerL1",
+  "moduleName": "agents",
+  "status": "complete",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:34:51.893Z",
+      "artifactPaths": [
+        "l4/agents/pool/l1/pipeline.json"
+      ]
+    },
+    "plan20": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:34:58.092Z",
+      "artifactPaths": [
+        "l4/agents/pool/l2/web/backend.json",
+        "l4/agents/pool/l2/20261120193458_agents-20261120193417_1.json"
+      ]
+    }
+  },
+  "thread": "agents-20261120193417",
+  "round": 1,
+  "messageFile": "l4/agents/pool/l1/20261120193451_agents-20261120193417_1.json",
+  "sourceMessages": [
+    "20261120193451_agents-20261120193417_1.json"
+  ],
+  "needsFile": "l4/agents/pool/l1/web/needs.json",
+  "inventory": {
+    "routes": [
+      "agents.agent_activity.getAgentActivity",
+      "agents.agent_activity.listAgentExecutions",
+      "agents.agent_behavior.getAgentBehavior",
+      "agents.agent_behavior.listBehaviorChanges",
+      "agents.agent_behavior.sendBehaviorChange",
+      "agents.agent_configuration.getAgentConfiguration",
+      "agents.agent_configuration.saveAgentConfiguration",
+      "agents.agent_configuration.searchResponsibleCandidates",
+      "agents.agent_overview.getAgentOverview",
+      "agents.agent_simulation.loadAgentSimulation",
+      "agents.agent_simulation.runWhatItCan",
+      "agents.agent_simulation.runWhatItUnderstands",
+      "agents.agent_simulation.searchPeopleToSimulate",
+      "agents.agent_tools.getAgentTools",
+      "agents.agent_tools.toggleAgentTool",
+      "agents.agents.getAgentsHome",
+      "agents.agents.listAgents",
+      "agents.agents.listDraftRequests",
+      "agents.agents.sendNewAgentRequest",
+      "agents.cm.agentDraftReady",
+      "agents.cm.describe",
+      "agents.cm.record",
+      "agents.draft_review.activateDraft",
+      "agents.draft_review.discardDraft",
+      "agents.draft_review.getDraftReview",
+      "agents.draft_review.saveDraftTools",
+      "agents.draft_review.searchSimulationPeople",
+      "agents.draft_review.simulateDraft",
+      "agents.my_conduct.getMyConduct",
+      "agents.my_conduct.saveMyConduct",
+      "agents.person_restrictions.getPersonRestrictions",
+      "agents.person_restrictions.saveRestrictions",
+      "agents.person_restrictions.searchPeople",
+      "agents.platform.releaseCatalogChanged",
+      "agents.tool_catalog.getToolCatalog",
+      "agents.tool_catalog.getToolUsage",
+      "agents.tool_catalog.listCatalogUpdates",
+      "agents.tool_catalog.searchToolTree"
+    ],
+    "usecases": [],
+    "ports": [],
+    "tables": [],
+    "present": true
+  },
+  "updatedAt": "2026-11-20T19:34:58.092Z",
+  "pool": [
+    {
+      "at": "2026-11-20T19:34:58.092Z",
+      "file": "l4/agents/pool/l2/20261120193458_agents-20261120193417_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "agents-20261120193417",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-20T19:34:58.092Z",
+      "file": "l4/agents/pool/l1/20261120193451_agents-20261120193417_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "agents-20261120193417",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    }
+  ]
+}

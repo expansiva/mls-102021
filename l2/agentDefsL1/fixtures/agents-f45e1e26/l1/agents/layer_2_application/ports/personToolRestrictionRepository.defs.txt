@@ -1,0 +1,34 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryPort",
+  "artifactId": "PersonToolRestrictionRepository",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts"
+  ],
+  "data": {
+    "entityId": "PersonToolRestriction",
+    "interfaceName": "PersonToolRestrictionRepository",
+    "methods": [
+      {
+        "name": "list",
+        "params": [
+          "PersonToolRestrictionFilter"
+        ],
+        "returns": "PersonToolRestriction[]"
+      },
+      {
+        "name": "update",
+        "params": [
+          "PersonToolRestriction"
+        ],
+        "returns": "PersonToolRestriction"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

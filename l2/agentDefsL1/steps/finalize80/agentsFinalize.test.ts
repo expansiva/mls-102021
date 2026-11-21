@@ -146,11 +146,11 @@ async function runStep(
   };
 }
 
-async function rederiveRun(host: TestHost, from: 'controllers60', upTo: D1StepId = 'finalize80'): Promise<Array<{ stepId: string; status: string; trace: string }>> {
+async function rederiveRun(host: TestHost, from: 'controllers60' | null, upTo: D1StepId = 'finalize80'): Promise<Array<{ stepId: string; status: string; trace: string }>> {
   const agent = createAgent();
   const ctx = contextFor(MODULE);
   const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
-  await agent.beforePromptImplicit!(meta(), ctx, COMMAND(from));
+  if (from) await agent.beforePromptImplicit!(meta(), ctx, COMMAND(from));
   const out: Array<{ stepId: string; status: string; trace: string }> = [];
   let order = 1;
   const flow = ['input20', 'resolve25', 'domain30', 'persistence40', 'usecases50', 'controllers60', 'support70', 'finalize80'] as D1StepId[];
@@ -220,3 +220,52 @@ void test('d1_250: a def the D1 wrote and someone edited since is still an extra
   assert.equal(errorsOf(host).includes('EXTRA_FILE l1/agents/layer_2_application/usecases/listPersonalConduct.defs.ts'), true, errorsOf(host).join(' | '));
 });
 
+
+// d1_253: the whole sequence on the state of `agents` at mls-102047@f45e1e26 (git show): the /rederive that the L4 ran, the state that stays, the same
+// command again, a /run, and a def edited by hand between the two commands.
+
+const F45 = 'agents-f45e1e26';
+
+function failedOf(ran: Array<{ stepId: string; status: string; trace: string }>): string[] {
+  return ran.filter(item => item.status === 'failed').map(item => `${item.stepId}: ${item.trace.slice(0, 200)}`);
+}
+
+void test('d1_253: agents@f45e1e26: /rederive controllers60, the state stays, /rederive again, /run; a def edited by hand in between is refused', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, F45, PROJECT);
+
+  // The state the L4 left: the first /rederive wrote 5 defs, their receipts have the new bytes, and the inventory of the last input20 has the old ones.
+  const first = await rederiveRun(host, 'controllers60');
+  assert.deepEqual(failedOf(first), [], '1: /rederive controllers60 ends complete');
+  assert.deepEqual(errorsOf(host), []);
+  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
+
+  // 2: the state stays: nothing is edited. 3: the same command again.
+  const before = Object.fromEntries(Object.values(host.files).filter(file => file.level === 1 && file.extension === '.defs.ts').map(file => [`${file.folder}/${file.shortName}`, file.content]));
+  const second = await rederiveRun(host, 'controllers60');
+  assert.deepEqual(failedOf(second), [], '3: the second /rederive ends complete');
+  assert.equal(second.some(item => /EXISTS_WITHOUT_RECEIPT|EXTRA_FILE/u.test(item.trace)), false);
+  assert.deepEqual(errorsOf(host), []);
+  for (const file of Object.values(host.files).filter(item => item.level === 1 && item.extension === '.defs.ts')) {
+    assert.equal(file.content, before[`${file.folder}/${file.shortName}`], `the second command rewrote nothing: ${file.shortName}`);
+  }
+
+  // 4: a /run after it ends complete and writes nothing.
+  const run = await rederiveRun(host, null);
+  assert.deepEqual(failedOf(run), [], '4: /run ends complete');
+  for (const stepId of ['domain30', 'persistence40', 'controllers60', 'support70']) {
+    assert.match(run.find(item => item.stepId === stepId)!.trace, new RegExp(`^${stepId}: wrote 0, `, 'u'), `/run wrote nothing in ${stepId}`);
+  }
+  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
+
+  // 5: a def edited by hand between the first run and the second command is refused, and the edit stays.
+  const other = installStudio(PROJECT);
+  seedD1Fixture(other, F45, PROJECT);
+  assert.deepEqual(failedOf(await rederiveRun(other, 'controllers60')), []);
+  const request = Object.values(other.files).find(file => file.shortName === 'my_conduct' && file.folder.endsWith('layer_2_application/requests') && file.extension === '.defs.ts')!;
+  request.content = request.content.replace('Purpose', 'EDITADO-A-MAO Purpose');
+  assert.equal(request.content.includes('EDITADO-A-MAO'), true);
+  const refused = await rederiveRun(other, 'controllers60');
+  assert.equal(failedOf(refused).length > 0, true, '5: the hand edit is refused');
+  assert.equal(request.content.includes('EDITADO-A-MAO'), true, 'and the edit stays');
+});

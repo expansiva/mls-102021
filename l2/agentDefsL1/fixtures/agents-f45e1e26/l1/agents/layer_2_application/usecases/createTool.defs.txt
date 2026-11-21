@@ -1,0 +1,31 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/createTool.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "createTool",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts",
+    "_102047_/l4/agents/rules.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "createTool",
+    "entityId": "Tool",
+    "operation": "create",
+    "rulesApplied": [
+      "agentToolsShowWholeCatalog",
+      "catalogRebuiltOnRelease",
+      "noTechnicalIdsOnScreen",
+      "removedToolNotSent",
+      "toolKeepsWholeCatalogItem",
+      "toolKeyUnique",
+      "toolNeverDeleted"
+    ],
+    "effects": []
+  }
+} as const;
+
+export default definition;

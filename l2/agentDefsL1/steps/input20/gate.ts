@@ -392,7 +392,7 @@ export function buildD1InputSnapshot(
     receipts,
   }), present, receipts, artifacts.rederiveTypes), present);
   noteRemovals(problems, removed, previous, present, receipts);
-  implicitRemovals(removed, files, present, receipts);
+  implicitRemovals(removed, files, present, receipts, previous);
   if (hasCycle(files)) error(problems, 'DAG_CYCLE', 'input.json', 'Planned files have a dependency cycle.');
 
   const pages = pageGroups(requests);
@@ -699,7 +699,7 @@ function actionFor(
   ownerRef: string,
 ): D1FileAction {
   const hash = present.get(defPath) || '';
-  const view = receiptView(previous, defPath, receipts);
+  const view = receiptView(previous, defPath, receipts, hash);
   if (status === 'done') {
     if (!hash) {
       error(problems, 'DONE_ABSENT', defPath, `Done item ${ownerRef} has no file. It was not turned into toCreate.`, ownerRef);
@@ -741,7 +741,7 @@ function recomposeOrConflict(
   ownerRef: string,
 ): D1FileAction {
   const hash = present.get(defPath) || '';
-  const view = receiptView(previous, defPath, receipts);
+  const view = receiptView(previous, defPath, receipts, hash);
   if (hash && view.inventoried === hash && view.agrees) return 'recompose';
   if (!hash && !view.inventoried) return 'create';
   if (hash && !view.inventoried && view.written === hash && view.agrees) return 'create';
@@ -803,12 +803,18 @@ function indexWriterReceipts(rows: ReadonlyArray<{ defPath: string; desiredHash:
   return { hash, conflict };
 }
 
-function receiptView(previous: D1InputSnapshot | null, defPath: string, receipts: WriterIndex): ReceiptView {
+/**
+ * d1_253: `disk` is the hash of the def now. The hash the previous snapshot inventoried is the one the def had when that snapshot was taken; a step that
+ * rewrote the def after it (the controllers60 of a `/rederive`) left the receipt with the new bytes and the inventory with the old ones. When the disk is
+ * the bytes the receipt names, the D1 wrote them and the stale inventory does not count against them. A def edited since has a disk that is not the receipt.
+ */
+function receiptView(previous: D1InputSnapshot | null, defPath: string, receipts: WriterIndex, disk = ''): ReceiptView {
   const plan = previous?.files.find(file => file.defPath === defPath);
   const inventoried = plan?.contentHash || '';
   const conflict = receipts.conflict.get(defPath);
   const written = conflict ? '' : (receipts.hash.get(defPath) || '');
-  const agrees = !conflict && !(written && inventoried && written !== inventoried);
+  const stale = !!written && !!disk && written === disk && inventoried !== written;
+  const agrees = !conflict && (stale || !(written && inventoried && written !== inventoried));
   let refusal = '';
   if (conflict) {
     refusal = `toCreate file ${defPath} has disagreeing receipts ${conflict.join(' and ')}. The file was not accepted.`;
@@ -886,7 +892,7 @@ export function previousFileOfRemoved(previous: D1InputSnapshot | null, item: Pi
  * plan does not know can read through it: agents, my_conduct), so nothing deletes it. A def with no receipt, or edited by hand, is not touched: it stays an
  * extra file.
  */
-function implicitRemovals(removed: D1RemovedItem[], files: readonly D1PlannedFile[], present: Map<string, string>, receipts: WriterIndex): void {
+function implicitRemovals(removed: D1RemovedItem[], files: readonly D1PlannedFile[], present: Map<string, string>, receipts: WriterIndex, previous: D1InputSnapshot | null): void {
   const planned = new Set(files.map(file => file.defPath));
   const listed = new Set(removed.flatMap(item => (item.defPath ? [item.defPath] : [])));
   for (const [defPath, hash] of receipts.hash) {
@@ -894,6 +900,13 @@ function implicitRemovals(removed: D1RemovedItem[], files: readonly D1PlannedFil
     if (!match || planned.has(defPath) || listed.has(defPath) || removed.some(item => item.kind === 'usecase' && item.id === match[1])) continue;
     if (present.get(defPath) !== hash) continue;
     removed.push({ kind: 'usecase', id: match[1], defPath, inventoried: true, contentHash: hash, unplanned: true });
+  }
+  // The previous inventory vouches too: a def it carried as removed, still the bytes it inventoried (the progress of its step no longer lists it).
+  for (const item of previous?.removed ?? []) {
+    const defPath = item.defPath || '';
+    if (item.kind !== 'usecase' || !defPath || !item.contentHash || planned.has(defPath) || removed.some(entry => entry.defPath === defPath || (entry.kind === item.kind && entry.id === item.id))) continue;
+    if (present.get(defPath) !== item.contentHash) continue;
+    removed.push({ kind: 'usecase', id: item.id, defPath, inventoried: true, contentHash: item.contentHash, unplanned: true });
   }
 }
 
@@ -907,7 +920,7 @@ function noteRemovals(
   for (const item of removed) {
     const receipt = previousFileOfRemoved(previous, item);
     const hash = receipt ? present.get(receipt.defPath) : '';
-    const view = receipt ? receiptView(previous, receipt.defPath, receipts) : null;
+    const view = receipt ? receiptView(previous, receipt.defPath, receipts, hash || '') : null;
     if (receipt && hash && view && view.agrees && view.hash === hash) {
       item.defPath = receipt.defPath;
       item.inventoried = true;

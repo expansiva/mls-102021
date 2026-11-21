@@ -1,0 +1,1564 @@
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "agents",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "agents",
+      "actors": [
+        "companyAdmin",
+        "organizationMember"
+      ],
+      "reads": [
+        {
+          "entity": "Agent",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "grant:memberSeeAgents",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "journey:createVirtualEmployee/describeAgent",
+            "journey:createVirtualEmployee/followDraftSituation",
+            "journey:createVirtualEmployee/openAgentList",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:ExecutionSummary/executionAgent"
+          ]
+        },
+        {
+          "entity": "AgentBehavior",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange"
+          ]
+        },
+        {
+          "entity": "AgentDraft",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "journey:createVirtualEmployee/describeAgent",
+            "journey:createVirtualEmployee/followDraftSituation",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft"
+          ]
+        },
+        {
+          "entity": "AgentSimulation",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "grant:memberSimulateAsMyself",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.decidedAt",
+            "details.toolName",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "journey:createVirtualEmployee/describeAgent",
+            "journey:createVirtualEmployee/followDraftSituation",
+            "journey:createVirtualEmployee/openAgentList",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "process:virtualEmployeeCreation",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool"
+          ]
+        },
+        {
+          "entity": "ExecutionSummary",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminReadActivity",
+            "grant:memberReadActivity",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "journey:createVirtualEmployee/describeAgent",
+            "journey:createVirtualEmployee/followDraftSituation",
+            "journey:createVirtualEmployee/openAgentList",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester"
+          ]
+        },
+        {
+          "entity": "OrganizationUser",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [
+            "details.agents.loginEmail"
+          ],
+          "from": [
+            "grant:adminChoosePeople",
+            "grant:memberSeePeopleNames",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "journey:createVirtualEmployee/describeAgent",
+            "journey:createVirtualEmployee/followDraftSituation",
+            "journey:createVirtualEmployee/openAgentList",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson",
+            "relationship:Tool/agentToolTool",
+            "relationship:Tool/restrictionTool"
+          ]
+        },
+        {
+          "entity": "PersonToolRestriction",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.markedAt",
+            "details.toolName",
+            "details.toolPath",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "journey:createVirtualEmployee/describeAgent",
+            "journey:createVirtualEmployee/followDraftSituation",
+            "journey:createVirtualEmployee/openAgentList",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson",
+            "relationship:Tool/agentToolTool",
+            "relationship:Tool/restrictionTool"
+          ]
+        },
+        {
+          "entity": "Tool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.usedByAgents"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "grant:memberReadToolCatalog",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "journey:createVirtualEmployee/describeAgent",
+            "journey:createVirtualEmployee/followDraftSituation",
+            "journey:createVirtualEmployee/openAgentList",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool",
+            "relationship:Tool/restrictionTool"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Agent",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:configureAgent/saveConfiguration"
+          ]
+        },
+        {
+          "entity": "AgentBehavior",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange"
+          ]
+        },
+        {
+          "entity": "AgentDraft",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:createVirtualEmployee/describeAgent"
+          ]
+        },
+        {
+          "entity": "AgentDraft",
+          "operation": "transition",
+          "transitionRef": "activate",
+          "from": [
+            "journey:reviewAndActivateDraft/activateDraft"
+          ]
+        },
+        {
+          "entity": "AgentDraft",
+          "operation": "transition",
+          "transitionRef": "discard",
+          "from": [
+            "journey:reviewAndActivateDraft/discardDraft"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:adjustAgentTools/enableUnchosenTool"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:adjustAgentTools/toggleTools",
+            "journey:reviewAndActivateDraft/adjustDraftTools"
+          ]
+        },
+        {
+          "entity": "PersonalConduct",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:changeMyConduct/changeConduct"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "draft_review",
+      "actors": [
+        "companyAdmin"
+      ],
+      "reads": [
+        {
+          "entity": "Agent",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:ExecutionSummary/executionAgent"
+          ]
+        },
+        {
+          "entity": "AgentDraft",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft"
+          ]
+        },
+        {
+          "entity": "AgentSimulation",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "journey:reviewAndActivateDraft/simulateDraft"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.decidedAt",
+            "details.toolName",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "process:virtualEmployeeCreation",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolAgent"
+          ]
+        },
+        {
+          "entity": "ExecutionSummary",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminReadActivity",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester"
+          ]
+        },
+        {
+          "entity": "OrganizationUser",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [
+            "details.agents.loginEmail"
+          ],
+          "from": [
+            "grant:adminChoosePeople",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson"
+          ]
+        },
+        {
+          "entity": "PersonToolRestriction",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.markedAt",
+            "details.toolName",
+            "details.toolPath",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson"
+          ]
+        },
+        {
+          "entity": "Tool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.usedByAgents"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "AgentDraft",
+          "operation": "transition",
+          "transitionRef": "activate",
+          "from": [
+            "journey:reviewAndActivateDraft/activateDraft"
+          ]
+        },
+        {
+          "entity": "AgentDraft",
+          "operation": "transition",
+          "transitionRef": "discard",
+          "from": [
+            "journey:reviewAndActivateDraft/discardDraft"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:reviewAndActivateDraft/adjustDraftTools"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "agent_overview",
+      "actors": [
+        "companyAdmin",
+        "organizationMember"
+      ],
+      "reads": [
+        {
+          "entity": "Agent",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "grant:memberSeeAgents",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:ExecutionSummary/executionAgent"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.decidedAt",
+            "details.toolName",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool"
+          ]
+        },
+        {
+          "entity": "ExecutionSummary",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminReadActivity",
+            "grant:memberReadActivity",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester"
+          ]
+        },
+        {
+          "entity": "OrganizationUser",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [
+            "details.agents.loginEmail"
+          ],
+          "from": [
+            "grant:adminChoosePeople",
+            "grant:memberSeePeopleNames",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson"
+          ]
+        },
+        {
+          "entity": "PersonToolRestriction",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.markedAt",
+            "details.toolName",
+            "details.toolPath",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson"
+          ]
+        },
+        {
+          "entity": "Tool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.usedByAgents"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "grant:memberReadToolCatalog",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool"
+          ]
+        }
+      ],
+      "writes": []
+    },
+    {
+      "pageId": "agent_behavior",
+      "actors": [
+        "companyAdmin"
+      ],
+      "reads": [
+        {
+          "entity": "Agent",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:ExecutionSummary/executionAgent"
+          ]
+        },
+        {
+          "entity": "AgentBehavior",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.decidedAt",
+            "details.toolName",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolAgent"
+          ]
+        },
+        {
+          "entity": "ExecutionSummary",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminReadActivity",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionAgent"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "AgentBehavior",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "agent_tools",
+      "actors": [
+        "companyAdmin"
+      ],
+      "reads": [
+        {
+          "entity": "Agent",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:ExecutionSummary/executionAgent"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.decidedAt",
+            "details.toolName",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "process:toolCatalogRefresh",
+            "process:virtualEmployeeCreation",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool"
+          ]
+        },
+        {
+          "entity": "ExecutionSummary",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminReadActivity",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester"
+          ]
+        },
+        {
+          "entity": "OrganizationUser",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [
+            "details.agents.loginEmail"
+          ],
+          "from": [
+            "grant:adminChoosePeople",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson"
+          ]
+        },
+        {
+          "entity": "PersonToolRestriction",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.markedAt",
+            "details.toolName",
+            "details.toolPath",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson"
+          ]
+        },
+        {
+          "entity": "Tool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.usedByAgents"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "process:toolCatalogRefresh",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "AgentTool",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:adjustAgentTools/enableUnchosenTool"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:adjustAgentTools/toggleTools"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "agent_configuration",
+      "actors": [
+        "companyAdmin"
+      ],
+      "reads": [
+        {
+          "entity": "Agent",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:ExecutionSummary/executionAgent"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.decidedAt",
+            "details.toolName",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolAgent"
+          ]
+        },
+        {
+          "entity": "ExecutionSummary",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminReadActivity",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester"
+          ]
+        },
+        {
+          "entity": "OrganizationUser",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [
+            "details.agents.loginEmail"
+          ],
+          "from": [
+            "grant:adminChoosePeople",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson"
+          ]
+        },
+        {
+          "entity": "PersonToolRestriction",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.markedAt",
+            "details.toolName",
+            "details.toolPath",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Agent",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:configureAgent/saveConfiguration"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "agent_activity",
+      "actors": [
+        "companyAdmin",
+        "organizationMember"
+      ],
+      "reads": [
+        {
+          "entity": "Agent",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "grant:memberSeeAgents",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:ExecutionSummary/executionAgent"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.decidedAt",
+            "details.toolName",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool"
+          ]
+        },
+        {
+          "entity": "ExecutionSummary",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminReadActivity",
+            "grant:memberReadActivity",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "process:executionRecording",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester"
+          ]
+        },
+        {
+          "entity": "OrganizationUser",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [
+            "details.agents.loginEmail"
+          ],
+          "from": [
+            "grant:adminChoosePeople",
+            "grant:memberSeePeopleNames",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson"
+          ]
+        },
+        {
+          "entity": "PersonToolRestriction",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.markedAt",
+            "details.toolName",
+            "details.toolPath",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson"
+          ]
+        },
+        {
+          "entity": "Tool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.usedByAgents"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "grant:memberReadToolCatalog",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool"
+          ]
+        }
+      ],
+      "writes": []
+    },
+    {
+      "pageId": "agent_simulation",
+      "actors": [
+        "companyAdmin",
+        "organizationMember"
+      ],
+      "reads": [
+        {
+          "entity": "Agent",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "grant:memberSeeAgents",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:ExecutionSummary/executionAgent"
+          ]
+        },
+        {
+          "entity": "AgentSimulation",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "grant:memberSimulateAsMyself",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.decidedAt",
+            "details.toolName",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool"
+          ]
+        },
+        {
+          "entity": "ExecutionSummary",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminReadActivity",
+            "grant:memberReadActivity",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester"
+          ]
+        },
+        {
+          "entity": "OrganizationUser",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [
+            "details.agents.loginEmail"
+          ],
+          "from": [
+            "grant:adminChoosePeople",
+            "grant:memberSeePeopleNames",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson"
+          ]
+        },
+        {
+          "entity": "PersonToolRestriction",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.markedAt",
+            "details.toolName",
+            "details.toolPath",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson"
+          ]
+        },
+        {
+          "entity": "Tool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.usedByAgents"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "grant:memberReadToolCatalog",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool"
+          ]
+        }
+      ],
+      "writes": []
+    },
+    {
+      "pageId": "my_conduct",
+      "actors": [
+        "companyAdmin",
+        "organizationMember"
+      ],
+      "reads": [
+        {
+          "entity": "Agent",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "grant:memberSeeAgents",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolAgent"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.decidedAt",
+            "details.toolName",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolAgent"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "PersonalConduct",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:changeMyConduct/changeConduct"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "person_restrictions",
+      "actors": [
+        "companyAdmin"
+      ],
+      "reads": [
+        {
+          "entity": "Agent",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminManageAgents",
+            "journey:restrictPersonTools/choosePerson",
+            "journey:restrictPersonTools/markRestrictions",
+            "journey:restrictPersonTools/reviewRestrictions",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:ExecutionSummary/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:PersonToolRestriction/restrictionPerson",
+            "relationship:Tool/agentToolTool",
+            "relationship:Tool/restrictionTool"
+          ]
+        },
+        {
+          "entity": "AgentTool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.decidedAt",
+            "details.toolName",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:restrictPersonTools/choosePerson",
+            "journey:restrictPersonTools/markRestrictions",
+            "journey:restrictPersonTools/reviewRestrictions",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool",
+            "relationship:Tool/restrictionTool"
+          ]
+        },
+        {
+          "entity": "ExecutionSummary",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:adminReadActivity",
+            "journey:restrictPersonTools/choosePerson",
+            "journey:restrictPersonTools/markRestrictions",
+            "journey:restrictPersonTools/reviewRestrictions",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:ExecutionSummary/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester",
+            "relationship:PersonToolRestriction/restrictionPerson",
+            "relationship:Tool/agentToolTool",
+            "relationship:Tool/restrictionTool"
+          ]
+        },
+        {
+          "entity": "OrganizationUser",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [
+            "details.agents.loginEmail"
+          ],
+          "from": [
+            "grant:adminChoosePeople",
+            "journey:restrictPersonTools/choosePerson",
+            "journey:restrictPersonTools/markRestrictions",
+            "journey:restrictPersonTools/reviewRestrictions",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson"
+          ]
+        },
+        {
+          "entity": "PersonToolRestriction",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.markedAt",
+            "details.toolName",
+            "details.toolPath",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:restrictPersonTools/choosePerson",
+            "journey:restrictPersonTools/markRestrictions",
+            "journey:restrictPersonTools/reviewRestrictions",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionTool",
+            "relationship:Tool/restrictionTool"
+          ]
+        },
+        {
+          "entity": "Tool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.usedByAgents"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "journey:restrictPersonTools/choosePerson",
+            "journey:restrictPersonTools/markRestrictions",
+            "journey:restrictPersonTools/reviewRestrictions",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:PersonToolRestriction/restrictionTool",
+            "relationship:Tool/agentToolTool",
+            "relationship:Tool/restrictionTool"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "PersonToolRestriction",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:restrictPersonTools/markRestrictions"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "tool_catalog",
+      "actors": [
+        "companyAdmin",
+        "organizationMember"
+      ],
+      "reads": [
+        {
+          "entity": "AgentTool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.decidedAt",
+            "details.toolName",
+            "details.toolRemoved"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "process:toolCatalogRefresh"
+          ]
+        },
+        {
+          "entity": "Tool",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.usedByAgents"
+          ],
+          "from": [
+            "grant:adminManageTools",
+            "grant:memberReadToolCatalog",
+            "process:toolCatalogRefresh"
+          ]
+        }
+      ],
+      "writes": []
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "generatedAt": "2026-11-20T19:34:51.402Z"
+  }
+}

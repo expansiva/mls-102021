@@ -1,0 +1,32 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_overview.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "agent_overview",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agent_overview.defs.ts",
+    "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "agent_overview",
+    "handlers": [
+      {
+        "route": "agents.agent_overview.getAgentOverview",
+        "kind": "query",
+        "grantIds": [
+          "adminManageAgents",
+          "memberSeeAgents"
+        ],
+        "serviceFunction": "agents.agent_overview.getAgentOverview",
+        "contractPath": "l2/agents/web/contracts/agent_overview.defs.ts",
+        "contractInterface": "Agent_overviewContracts"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

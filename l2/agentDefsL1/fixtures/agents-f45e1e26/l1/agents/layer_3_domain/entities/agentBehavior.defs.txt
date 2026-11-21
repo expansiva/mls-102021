@@ -1,0 +1,73 @@
+/// <mls fileReference="_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "AgentBehavior",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+  ],
+  "data": {
+    "entityId": "AgentBehavior",
+    "storageTarget": "external",
+    "fields": [
+      {
+        "name": "agent",
+        "type": "record",
+        "ref": "Agent"
+      },
+      {
+        "name": "currentBehavior",
+        "type": "text"
+      },
+      {
+        "name": "summary",
+        "type": "string"
+      },
+      {
+        "name": "changeRequest",
+        "type": "text"
+      },
+      {
+        "name": "changes",
+        "type": "object"
+      },
+      {
+        "name": "changes.changeRef",
+        "type": "string"
+      },
+      {
+        "name": "changes.changedBy",
+        "type": "record",
+        "ref": "OrganizationUser"
+      },
+      {
+        "name": "changes.changedAt",
+        "type": "timestamp"
+      },
+      {
+        "name": "changes.summary",
+        "type": "string"
+      },
+      {
+        "name": "changes.undone",
+        "type": "boolean"
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [
+      "agentBehaviorChangedOnlyThroughCm",
+      "behaviorChangeByAdminOnly",
+      "undoRestoresPreviousBehavior"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

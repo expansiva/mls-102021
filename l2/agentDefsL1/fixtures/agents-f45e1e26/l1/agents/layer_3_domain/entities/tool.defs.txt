@@ -1,0 +1,131 @@
+/// <mls fileReference="_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "Tool",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [],
+  "data": {
+    "entityId": "Tool",
+    "storageTarget": "moduleDatabase",
+    "fields": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "derived": true
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "toolKey",
+        "type": "string"
+      },
+      {
+        "name": "origin",
+        "type": "enum"
+      },
+      {
+        "name": "moduleName",
+        "type": "string"
+      },
+      {
+        "name": "subject",
+        "type": "string"
+      },
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "enum"
+      },
+      {
+        "name": "details",
+        "type": "object"
+      },
+      {
+        "name": "details.moduleTitle",
+        "type": "string"
+      },
+      {
+        "name": "details.subjectTitle",
+        "type": "string"
+      },
+      {
+        "name": "details.description",
+        "type": "text"
+      },
+      {
+        "name": "details.releaseLabel",
+        "type": "string"
+      },
+      {
+        "name": "details.addedAt",
+        "type": "timestamp"
+      },
+      {
+        "name": "details.removedAt",
+        "type": "timestamp"
+      },
+      {
+        "name": "details.usedByAgents",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "details.catalogItem",
+        "type": "json"
+      }
+    ],
+    "lifecycle": {
+      "states": [
+        {
+          "state": "available",
+          "reachedBy": "command"
+        },
+        {
+          "state": "removed",
+          "reachedBy": "command"
+        }
+      ],
+      "transitions": [
+        {
+          "transitionId": "removeFromRelease",
+          "from": [
+            "available"
+          ],
+          "to": "removed",
+          "by": [],
+          "ruleRefs": []
+        },
+        {
+          "transitionId": "restoreToRelease",
+          "from": [
+            "removed"
+          ],
+          "to": "available",
+          "by": [],
+          "ruleRefs": []
+        }
+      ]
+    },
+    "invariants": [
+      "toolKeyUnique",
+      "toolNeverDeleted",
+      "catalogRebuiltOnRelease",
+      "removedToolNotSent",
+      "noTechnicalIdsOnScreen",
+      "toolKeepsWholeCatalogItem",
+      "agentToolsShowWholeCatalog"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

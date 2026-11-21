@@ -1,0 +1,486 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/draft_review.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "draft_review",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/usecases/activate.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/discard.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/getAgentDraft.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listAgentTool.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listTool.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts"
+  ],
+  "data": {
+    "pageId": "draft_review",
+    "requests": [
+      {
+        "route": "agents.draft_review.getDraftReview",
+        "kind": "qry",
+        "uses": [
+          "getAgentDraft",
+          "listAgentTool",
+          "listTool"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "draft",
+            "entity": "AgentDraft",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "summary",
+                "path": "summary"
+              },
+              {
+                "field": "audience",
+                "path": "audience"
+              },
+              {
+                "field": "onBehalfOf",
+                "path": "onBehalfOf"
+              },
+              {
+                "field": "proposedBehavior",
+                "path": "proposedBehavior"
+              },
+              {
+                "field": "prompt",
+                "path": "prompt"
+              },
+              {
+                "field": "situation",
+                "path": "situation"
+              },
+              {
+                "field": "requestedBy",
+                "path": "requestedBy"
+              },
+              {
+                "field": "requestedAt",
+                "path": "requestedAt"
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "path": "tools",
+            "entity": "AgentTool",
+            "items": "",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "toolId",
+                "path": "toolId"
+              },
+              {
+                "field": "enabled",
+                "path": "enabled"
+              },
+              {
+                "field": "choiceSource",
+                "path": "choiceSource"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "tools.tool.details",
+            "reason": "DISCLOSURE: Route agents.draft_review.getDraftReview projects tool.details. A grant names a sub-path, but the nested shape could not be read, so the container was not released."
+          },
+          {
+            "kind": "related",
+            "path": "tools.tool",
+            "entity": "Tool",
+            "relationship": "agentToolTool",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              }
+            ]
+          }
+        ],
+        "params": [],
+        "rules": [
+          "agentDraftSuggestedToolsOnWhenReady",
+          "draftSuggestedToolsTurnedOn",
+          "removedToolNeverSent",
+          "noTechnicalIdsOnScreen"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads everything the draft review shows when it opens: the draft as the cm keeps it and the tool choices of the draft’s agent.\nInput: draftId: the cm reference of the draft, taken from the URL (the notification link).\nProcessing: Reads the draft from the cm (name, summary, audience, on whose behalf, proposed behavior, original prompt, situation, requester shown by readable name, requested date). Lists every AgentTool of the draft’s agent in one read (listByForeignKey) and joins each to its Tool for module title, subject title, name, description and status. toolName and toolRemoved are derived from the catalog on read, never stored; decidedAt is the system-filled change time. The suggested tools are already on as automatic choices (agentDraftSuggestedToolsOnWhenReady, draftSuggestedToolsTurnedOn); removed tools are flagged (removedToolNeverSent). The requester is returned as a name, never an id (noTechnicalIdsOnScreen).\nOutput: draft: the draft in its current situation; tools: every tool choice of the draft’s agent with its catalog tool, ordered by module title, subject title and tool name.",
+          "purpose": "Loads everything the draft review shows when it opens: the draft as the cm keeps it and the tool choices of the draft’s agent.",
+          "input": "draftId: the cm reference of the draft, taken from the URL (the notification link).",
+          "processing": "Reads the draft from the cm (name, summary, audience, on whose behalf, proposed behavior, original prompt, situation, requester shown by readable name, requested date). Lists every AgentTool of the draft’s agent in one read (listByForeignKey) and joins each to its Tool for module title, subject title, name, description and status. toolName and toolRemoved are derived from the catalog on read, never stored; decidedAt is the system-filled change time. The suggested tools are already on as automatic choices (agentDraftSuggestedToolsOnWhenReady, draftSuggestedToolsTurnedOn); removed tools are flagged (removedToolNeverSent). The requester is returned as a name, never an id (noTechnicalIdsOnScreen).",
+          "output": "draft: the draft in its current situation; tools: every tool choice of the draft’s agent with its catalog tool, ordered by module title, subject title and tool name."
+        }
+      },
+      {
+        "route": "agents.draft_review.searchSimulationPeople",
+        "kind": "qry",
+        "uses": [],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "unresolved",
+            "path": "people.personRef",
+            "reason": "Interface SimulationPerson: field personRef is not a field of any entity."
+          },
+          {
+            "kind": "unresolved",
+            "path": "people.details.identification",
+            "reason": "Interface SimulationPersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which."
+          },
+          {
+            "kind": "unresolved",
+            "path": "people.details.agents",
+            "reason": "Interface SimulationPersonAgents has no field that is not readonly, so no entity owns it."
+          }
+        ],
+        "params": [
+          {
+            "name": "name",
+            "target": "",
+            "optional": true
+          }
+        ],
+        "rules": [
+          "onlyActiveUsersRestricted",
+          "adminSimulatesByRole",
+          "noTechnicalIdsOnScreen"
+        ],
+        "doc": {
+          "raw": "Purpose: Finds the people the company admin can simulate the draft for.\nInput: name: typed text to filter by person name; page and pageSize: the page requested.\nProcessing: Uses OrganizationUser locate.users / locate.byName filtered by name, keeping only users with a platform login whose status is Active (onlyActiveUsersRestricted). Status and login e-mail are derived from the platform, not stored. Each person carries an opaque reference instead of a visible id (noTechnicalIdsOnScreen).\nOutput: people: one page of active people with name, status and login e-mail, ordered by name.",
+          "purpose": "Finds the people the company admin can simulate the draft for.",
+          "input": "name: typed text to filter by person name; page and pageSize: the page requested.",
+          "processing": "Uses OrganizationUser locate.users / locate.byName filtered by name, keeping only users with a platform login whose status is Active (onlyActiveUsersRestricted). Status and login e-mail are derived from the platform, not stored. Each person carries an opaque reference instead of a visible id (noTechnicalIdsOnScreen).",
+          "output": "people: one page of active people with name, status and login e-mail, ordered by name."
+        }
+      },
+      {
+        "route": "agents.draft_review.simulateDraft",
+        "kind": "qry",
+        "uses": [
+          "listAgentSimulation"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "simulation",
+            "entity": "AgentSimulation",
+            "fields": [
+              {
+                "field": "agent",
+                "path": "agent"
+              },
+              {
+                "field": "level",
+                "path": "level"
+              },
+              {
+                "field": "toolVerdicts",
+                "path": "toolVerdicts"
+              },
+              {
+                "field": "understanding",
+                "path": "understanding"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "simulation.toolVerdicts",
+            "reason": "Interface ToolVerdict: fields moduleName, toolVerdicts.subjectName, toolVerdicts.actionName, toolVerdicts.canUse, toolVerdicts.reason, toolVerdicts.reasonText are not all fields of one entity or of one entity linked to it by an N:1 relationship."
+          },
+          {
+            "kind": "unresolved",
+            "path": "simulation.understanding",
+            "reason": "Interface SimulationUnderstanding: fields understanding.asksForAction, moduleName, understanding.subjectName, understanding.explanation are not all fields of one entity or of one entity linked to it by an N:1 relationship."
+          }
+        ],
+        "params": [
+          {
+            "name": "level",
+            "target": "simulation",
+            "field": "level"
+          },
+          {
+            "name": "subjectKind",
+            "target": "simulation",
+            "field": "subjectKind",
+            "optional": true
+          },
+          {
+            "name": "person",
+            "target": "simulation",
+            "field": "person",
+            "optional": true
+          },
+          {
+            "name": "roleName",
+            "target": "simulation",
+            "field": "roleName",
+            "optional": true
+          },
+          {
+            "name": "sentence",
+            "target": "simulation",
+            "field": "sentence",
+            "optional": true
+          }
+        ],
+        "rules": [
+          "simulationSavesNothing",
+          "adminSimulatesByRole",
+          "onlyToolsOnAreConsidered",
+          "personRestrictionAppliesInRequest",
+          "removedToolNotSent",
+          "onlyActiveUsersRestricted",
+          "noTechnicalIdsOnScreen"
+        ],
+        "doc": {
+          "raw": "Purpose: Runs a simulation of the draft through the cm: which tools it could use for a person or role, or how it reads a sample sentence.\nInput: draftId: the draft under review (URL); level: whatItCan or whatItUnderstands; subjectKind: person or role for whatItCan; person: the reference of the chosen active person; roleName: the chosen role; sentence: the sample request for whatItUnderstands.\nProcessing: For whatItCan, requires subjectKind with person (active only, onlyActiveUsersRestricted) or roleName (adminSimulatesByRole); considers only tools on for the draft’s agent (onlyToolsOnAreConsidered), marks removed tools as removedFromRelease (removedToolNotSent) and, for a person, their restrictions as restrictedForPerson (personRestrictionAppliesInRequest). For whatItUnderstands, requires sentence and asks the cm how it reads it. Writes nothing (simulationSavesNothing); returns readable names only (noTechnicalIdsOnScreen).\nOutput: simulation: the draft agent’s name and the level, with toolVerdicts for whatItCan or understanding for whatItUnderstands.",
+          "purpose": "Runs a simulation of the draft through the cm: which tools it could use for a person or role, or how it reads a sample sentence.",
+          "input": "draftId: the draft under review (URL); level: whatItCan or whatItUnderstands; subjectKind: person or role for whatItCan; person: the reference of the chosen active person; roleName: the chosen role; sentence: the sample request for whatItUnderstands.",
+          "processing": "For whatItCan, requires subjectKind with person (active only, onlyActiveUsersRestricted) or roleName (adminSimulatesByRole); considers only tools on for the draft’s agent (onlyToolsOnAreConsidered), marks removed tools as removedFromRelease (removedToolNotSent) and, for a person, their restrictions as restrictedForPerson (personRestrictionAppliesInRequest). For whatItUnderstands, requires sentence and asks the cm how it reads it. Writes nothing (simulationSavesNothing); returns readable names only (noTechnicalIdsOnScreen).",
+          "output": "simulation: the draft agent’s name and the level, with toolVerdicts for whatItCan or understanding for whatItUnderstands."
+        }
+      },
+      {
+        "route": "agents.draft_review.saveDraftTools",
+        "kind": "cmd",
+        "uses": [
+          "updateAgentTool",
+          "listTool"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "list",
+            "path": "tools",
+            "entity": "AgentTool",
+            "items": "",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "toolId",
+                "path": "toolId"
+              },
+              {
+                "field": "enabled",
+                "path": "enabled"
+              },
+              {
+                "field": "choiceSource",
+                "path": "choiceSource"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "tools.tool.details",
+            "reason": "DISCLOSURE: Route agents.draft_review.saveDraftTools projects tool.details. A grant names a sub-path, but the nested shape could not be read, so the container was not released."
+          },
+          {
+            "kind": "related",
+            "path": "tools.tool",
+            "entity": "Tool",
+            "relationship": "agentToolTool",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              }
+            ]
+          }
+        ],
+        "params": [],
+        "rules": [
+          "adminChoiceNeverOverridden",
+          "adminChoiceNotOverriddenByAutomatic",
+          "oneChoicePerAgentAndTool",
+          "draftDecisionOnlyWhenReady"
+        ],
+        "doc": {
+          "raw": "Purpose: Saves the on/off choices the company admin made on the draft’s suggested tools.\nInput: draftId: the draft under review (URL); changes: each changed tool choice with its id, version and new on value.\nProcessing: Refuses when the draft is no longer ready. For each change, checks the choice belongs to the draft’s agent and its version matches, then updates only enabled, sets choiceSource to admin and records the calling admin as decidedBy; decidedAt is filled by the system. All changes are applied together. From then on no automatic step changes these choices (adminChoiceNeverOverridden, adminChoiceNotOverriddenByAutomatic); one choice per agent and tool is kept (oneChoicePerAgentAndTool).\nOutput: tools: the changed tool choices in their new state, each with its catalog tool, derived name, removed flag and new version.",
+          "purpose": "Saves the on/off choices the company admin made on the draft’s suggested tools.",
+          "input": "draftId: the draft under review (URL); changes: each changed tool choice with its id, version and new on value.",
+          "processing": "Refuses when the draft is no longer ready. For each change, checks the choice belongs to the draft’s agent and its version matches, then updates only enabled, sets choiceSource to admin and records the calling admin as decidedBy; decidedAt is filled by the system. All changes are applied together. From then on no automatic step changes these choices (adminChoiceNeverOverridden, adminChoiceNotOverriddenByAutomatic); one choice per agent and tool is kept (oneChoicePerAgentAndTool).",
+          "output": "tools: the changed tool choices in their new state, each with its catalog tool, derived name, removed flag and new version."
+        }
+      },
+      {
+        "route": "agents.draft_review.activateDraft",
+        "kind": "cmd",
+        "uses": [
+          "activate"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "draft",
+            "entity": "AgentDraft",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "summary",
+                "path": "summary"
+              },
+              {
+                "field": "audience",
+                "path": "audience"
+              },
+              {
+                "field": "onBehalfOf",
+                "path": "onBehalfOf"
+              },
+              {
+                "field": "proposedBehavior",
+                "path": "proposedBehavior"
+              },
+              {
+                "field": "prompt",
+                "path": "prompt"
+              },
+              {
+                "field": "situation",
+                "path": "situation"
+              },
+              {
+                "field": "requestedBy",
+                "path": "requestedBy"
+              },
+              {
+                "field": "requestedAt",
+                "path": "requestedAt"
+              }
+            ]
+          }
+        ],
+        "params": [],
+        "rules": [
+          "draftDecisionOnlyWhenReady",
+          "agentNameUniqueAmongActive"
+        ],
+        "doc": {
+          "raw": "Purpose: Asks the cm to activate the draft as a working agent with the reviewed tools.\nInput: draftId: the draft under review (URL); expectVersion: the version of the draft the admin reviewed, so a draft changed meanwhile is refused.\nProcessing: Refuses when the draft changed since it was loaded (expectVersion) or unless its situation is ready (draftDecisionOnlyWhenReady). Calls the cm activate operation; if the cm refuses because the @name is used by another active agent, returns that the name is taken (agentNameUniqueAmongActive). The tool choices already saved stay as they are.\nOutput: draft: the draft in its new situation (activated).",
+          "purpose": "Asks the cm to activate the draft as a working agent with the reviewed tools.",
+          "input": "draftId: the draft under review (URL); expectVersion: the version of the draft the admin reviewed, so a draft changed meanwhile is refused.",
+          "processing": "Refuses when the draft changed since it was loaded (expectVersion) or unless its situation is ready (draftDecisionOnlyWhenReady). Calls the cm activate operation; if the cm refuses because the @name is used by another active agent, returns that the name is taken (agentNameUniqueAmongActive). The tool choices already saved stay as they are.",
+          "output": "draft: the draft in its new situation (activated)."
+        }
+      },
+      {
+        "route": "agents.draft_review.discardDraft",
+        "kind": "cmd",
+        "uses": [
+          "discard"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "draft",
+            "entity": "AgentDraft",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "summary",
+                "path": "summary"
+              },
+              {
+                "field": "audience",
+                "path": "audience"
+              },
+              {
+                "field": "onBehalfOf",
+                "path": "onBehalfOf"
+              },
+              {
+                "field": "proposedBehavior",
+                "path": "proposedBehavior"
+              },
+              {
+                "field": "prompt",
+                "path": "prompt"
+              },
+              {
+                "field": "situation",
+                "path": "situation"
+              },
+              {
+                "field": "requestedBy",
+                "path": "requestedBy"
+              },
+              {
+                "field": "requestedAt",
+                "path": "requestedAt"
+              }
+            ]
+          }
+        ],
+        "params": [],
+        "rules": [
+          "draftDecisionOnlyWhenReady"
+        ],
+        "doc": {
+          "raw": "Purpose: Asks the cm to discard the draft so it no longer shows as ready.\nInput: draftId: the draft under review (URL); expectVersion: the version of the draft the admin reviewed, so a draft changed meanwhile is refused.\nProcessing: Refuses when the draft changed since it was loaded (expectVersion) or unless its situation is ready (draftDecisionOnlyWhenReady), then calls the cm discard operation.\nOutput: draft: the draft in its new situation (discarded).",
+          "purpose": "Asks the cm to discard the draft so it no longer shows as ready.",
+          "input": "draftId: the draft under review (URL); expectVersion: the version of the draft the admin reviewed, so a draft changed meanwhile is refused.",
+          "processing": "Refuses when the draft changed since it was loaded (expectVersion) or unless its situation is ready (draftDecisionOnlyWhenReady), then calls the cm discard operation.",
+          "output": "draft: the draft in its new situation (discarded)."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;
