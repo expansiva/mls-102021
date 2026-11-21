@@ -461,6 +461,49 @@ void test('a cycle takes the first declared non-time state; one free state stays
   assert.equal(oneFree.normalizations.some(item => item.code === 'INITIAL_STATE_FROM_ORDER'), false);
 });
 
+void test('d1_259 s1b: the initial state is the one the NS5 reader gives: explicit, derived, or an error; never chosen by order', () => {
+  const rules = { rules: {} };
+  const base = {
+    entityId: 'Country',
+    kind: 'entity',
+    storage: { target: 'moduleDatabase' },
+    record: { fields: { id: { type: 'uuid', derived: true } } },
+  };
+  const states3 = [
+    { state: 'preparing', reachedBy: 'command' },
+    { state: 'ready', reachedBy: 'command' },
+    { state: 'refused', reachedBy: 'command' },
+    { state: 'activated', reachedBy: 'actor' },
+  ];
+  const draftTransitions = [
+    { transitionId: 'markReady', from: ['preparing'], to: 'ready', by: [] as string[], ruleRefs: [] as string[] },
+    { transitionId: 'markRefused', from: ['preparing'], to: 'refused', by: [] as string[], ruleRefs: [] as string[] },
+    { transitionId: 'activate', from: ['ready'], to: 'activated', by: ['admin'], ruleRefs: [] as string[] },
+  ];
+  // The AgentDraft of the agents (L4 v3.1): three command states and a transition for each that is moved to; only `preparing` has no entry.
+  const derived = buildD1Domain(requestFrom({ Country: { ...base, lifecycleStates: states3, transitions: draftTransitions } }, rules));
+  assert.equal(derived.entities[0].derivedInitial, 'preparing');
+  assert.equal(derived.normalizations.some(item => item.code === 'INITIAL_STATE_DERIVED' && item.detail === 'preparing'), true);
+  // Without the transitions into `ready` and `refused` (the L4 of before) three states have no entry: refused, as before.
+  const ambiguous = buildD1Domain(requestFrom({ Country: { ...base, lifecycleStates: states3, transitions: [draftTransitions[2]] } }, rules));
+  assert.equal(codes(ambiguous, 'error').includes('INITIAL_STATE'), true);
+  assert.equal(ambiguous.entities[0].derivedInitial, null);
+  assert.match(ambiguous.problems.find(item => item.code === 'INITIAL_STATE')!.message, /say which one a new record starts in with initialState/u);
+  // initialState says it: it wins, with no transition into the other states.
+  const explicit = buildD1Domain(requestFrom({ Country: { ...base, lifecycleStates: states3, transitions: [draftTransitions[2]], initialState: 'preparing' } }, rules));
+  assert.equal(explicit.entities[0].derivedInitial, 'preparing');
+  assert.equal(explicit.normalizations.some(item => item.code === 'INITIAL_STATE_EXPLICIT' && item.detail === 'preparing'), true);
+  assert.equal(codes(explicit, 'error').includes('INITIAL_STATE'), false);
+  // An initialState that is no state of the entity is an error on the entity.
+  const unknown = buildD1Domain(requestFrom({ Country: { ...base, lifecycleStates: states3, transitions: draftTransitions, initialState: 'nowhere' } }, rules));
+  assert.equal(codes(unknown, 'error').includes('INITIAL_STATE'), true);
+  assert.match(unknown.problems.find(item => item.code === 'INITIAL_STATE')!.message, /nowhere/u);
+  // An entity with only actor-like states and no initialState keeps the old result (the module without the field).
+  const plain = buildD1Domain(requestFrom({ Country: { ...base, lifecycleStates: [{ state: 'draft', reachedBy: 'command' }, { state: 'sent', reachedBy: 'command' }], transitions: [{ transitionId: 'send', from: ['draft'], to: 'sent', by: ['admin'], ruleRefs: [] as string[] }] } }, rules));
+  assert.equal(plain.entities[0].derivedInitial, 'draft');
+});
+
+
 void test('a system transition keeps an empty by and an empty from stays TRANSITION_SHAPE', () => {
   const rules = { rules: { ordemChegadaListaEspera: 'queue', promoverPrimeiroListaEsperaAoCancelar: 'promote' } };
   const body = {

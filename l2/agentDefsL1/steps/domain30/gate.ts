@@ -35,6 +35,7 @@ import {
   type D1PlacedRule,
   type D1RulePlacement,
 } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
+import { ns5InitialState, ns5InitialStateIssues } from '/_102035_/l2/solution/lifecycleInitial.js';
 import mdm from '/_102034_/l4/ontology/mdm.defs.js';
 
 const REACHED = ['actor', 'command', 'time'] as const;
@@ -828,27 +829,27 @@ function readLifecycle(
       blocked.add(entityId);
     }
   }
+  // d1_259 s1b: the state a new record starts in is the one reader of the NS5 (`ns5InitialState`): the `initialState` of the entity when it says
+  // one, else the only state no transition enters. Several and none chosen is an error on the entity; nothing here guesses by order.
   let derivedInitial: string | null = null;
   if (states.length > 0 && !blocked.has(entityId)) {
-    const targets = new Set(transitions.map(transition => transition.to));
-    const initials = states
-      .filter(state => state.reachedBy !== 'time' && !targets.has(state.state))
-      .map(state => state.state);
-    if (initials.length > 1) {
-      error(problems, 'INITIAL_STATE', entityId, `Entity ${entityId} has ${initials.length} states that no transition reaches.`);
+    const stateNames = states.filter(state => state.reachedBy !== 'time').map(state => state.state);
+    const explicit = typeof body.initialState === 'string' && body.initialState ? body.initialState : undefined;
+    const [issue] = ns5InitialStateIssues([{ entityId, ...(explicit ? { initialState: explicit } : {}), lifecycleStates: stateNames.map(state => ({ state })), transitions }]);
+    const initial = ns5InitialState({ entityId, ...(explicit ? { initialState: explicit } : {}), lifecycleStates: stateNames.map(state => ({ state })), transitions });
+    if (issue) {
+      error(problems, 'INITIAL_STATE', entityId, issue.message);
       blocked.add(entityId);
-    } else if (initials.length === 1) {
-      derivedInitial = initials[0];
-      normalizations.push({ code: 'INITIAL_STATE_DERIVED', path: entityId, detail: derivedInitial });
+    } else if (initial.state !== undefined) {
+      derivedInitial = initial.state;
+      normalizations.push({ code: initial.source === 'explicit' ? 'INITIAL_STATE_EXPLICIT' : 'INITIAL_STATE_DERIVED', path: entityId, detail: derivedInitial });
+    } else if (stateNames.length === 0) {
+      error(problems, 'INITIAL_STATE', entityId, `Entity ${entityId} has 0 states that no transition reaches.`);
+      blocked.add(entityId);
     } else {
-      const ordered = states.filter(state => state.reachedBy !== 'time');
-      if (ordered.length === 0) {
-        error(problems, 'INITIAL_STATE', entityId, `Entity ${entityId} has ${initials.length} states that no transition reaches.`);
-        blocked.add(entityId);
-      } else {
-        derivedInitial = ordered[0].state;
-        normalizations.push({ code: 'INITIAL_STATE_FROM_ORDER', path: entityId, detail: derivedInitial });
-      }
+      // Every state is entered by a transition (a cycle): the first one in the order of the L4, as before d1_259.
+      derivedInitial = stateNames[0];
+      normalizations.push({ code: 'INITIAL_STATE_FROM_ORDER', path: entityId, detail: derivedInitial });
     }
   }
   return {
