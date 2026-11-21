@@ -146,14 +146,15 @@ async function runStep(
   };
 }
 
-async function rederiveRun(host: TestHost, from: 'controllers60'): Promise<Array<{ stepId: string; status: string; trace: string }>> {
+async function rederiveRun(host: TestHost, from: 'controllers60', upTo: D1StepId = 'finalize80'): Promise<Array<{ stepId: string; status: string; trace: string }>> {
   const agent = createAgent();
   const ctx = contextFor(MODULE);
   const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
   await agent.beforePromptImplicit!(meta(), ctx, COMMAND(from));
   const out: Array<{ stepId: string; status: string; trace: string }> = [];
   let order = 1;
-  for (const stepId of ['input20', 'resolve25', 'domain30', 'persistence40', 'usecases50', 'controllers60', 'support70', 'finalize80'] as D1StepId[]) {
+  const flow = ['input20', 'resolve25', 'domain30', 'persistence40', 'usecases50', 'controllers60', 'support70', 'finalize80'] as D1StepId[];
+  for (const stepId of flow.slice(0, flow.indexOf(upTo) + 1)) {
     const intents = stepId === 'usecases50'
       ? (await approveUsecases(agent, ctx, parent, MODULE, order)).intents
       : (await runStep(agent, ctx, parent, MODULE, stepId, order, () => D1_GAP_NONE)).intents;
@@ -192,6 +193,12 @@ void test('d1_250: agents@1be807ab: /rederive controllers60 ends complete; listP
   assert.equal(snapshot.files.some(file => file.identity === 'listPersonalConduct'), false, 'it is not planned');
   const end = ran.find(item => item.stepId === 'finalize80' && item.status === 'completed')!.trace;
   assert.match(end, /\nrun summary:\n/u);
+  // d1_251: the def of the orphan leaves the module with the plan; the usecases the plan carries stay.
+  const left = Object.values(host.files).filter(file => file.extension === '.defs.ts' && file.folder.endsWith('layer_2_application/usecases') && file.status !== 'deleted').map(file => file.shortName);
+  assert.equal(left.includes('listPersonalConduct'), false, 'listPersonalConduct is removed');
+  assert.equal(left.includes('updatePersonalConduct'), true);
+  assert.equal(left.length, 26);
+  assert.match(ran.find(item => item.stepId === 'usecases50')!.trace, /removed 1 \(listPersonalConduct\)/u);
 });
 
 void test('d1_250: a usecase def nobody wrote (no receipt) is still an extra file', async () => {
@@ -211,3 +218,4 @@ void test('d1_250: a def the D1 wrote and someone edited since is still an extra
   await rederiveRun(host, 'controllers60');
   assert.equal(errorsOf(host).includes('EXTRA_FILE l1/agents/layer_2_application/usecases/listPersonalConduct.defs.ts'), true, errorsOf(host).join(' | '));
 });
+

@@ -32,7 +32,7 @@ import { parsePipelineDocument, pipelineIssues } from '/_102021_/l2/agentDefsL1/
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { decideEntry } from '/_102021_/l2/agentDefsL1/steps/entry10/gate.js';
-import { D1_MODEL_STEPS, D1_REDERIVE_SCHEMA, D1_REDERIVE_STEPS, defHashes, isRederiveStep, stepsFrom, writeRederive } from '/_102021_/l2/agentDefsL1/helpers/d1Rederive.js';
+import { D1_MODEL_STEPS, D1_REDERIVE_SCHEMA, D1_REDERIVE_STEPS, defHashes, isRederiveStep, readRederive, stepsFrom, writeRederive } from '/_102021_/l2/agentDefsL1/helpers/d1Rederive.js';
 import { writeExternalConnections } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import '/_102021_/l2/agentDefsL1/steps/entry10/agentD1Entry.js';
 import '/_102021_/l2/agentDefsL1/steps/input20/agentD1Input.js';
@@ -159,7 +159,11 @@ async function startRederive(project: number, moduleName: string, stepText: stri
   delete (next as { awaitingStep?: unknown }).awaitingStep;
   const issues = pipelineIssues(next);
   if (issues.length) return { refusal: `Checkpoint schema refused: ${issues[0]} Nothing was changed.` };
-  await writeRederive(project, moduleName, { schemaVersion: D1_REDERIVE_SCHEMA, from: stepText, before: await defHashes(project, snapshot.files.map(file => file.defPath)) });
+  // d1_251: a `/rederive` that did not finish leaves its marker (the targets are printed when the run ends well). The next command keeps the hashes the
+  // marker already holds: the defs the earlier attempt changed or created are still "changed since the first command", and their targets are still printed.
+  const earlier = await readRederive(project, moduleName);
+  const before = earlier ? earlier.before : await defHashes(project, snapshot.files.map(file => file.defPath));
+  await writeRederive(project, moduleName, { schemaVersion: D1_REDERIVE_SCHEMA, from: stepText, before });
   await writeJson(pipelineFile(project, moduleName), next);
   const models = Object.entries(D1_MODEL_STEPS).map(([id, why]) => `${id} (${why})`).join('; ');
   return { note: `rederive ${moduleName} from ${stepText}: the defs of ${stepText} and of the later steps are redone. Steps that may call a model: ${models}. The @@agentMaterializeL1 target of each def that changed is printed when finalize80 ends.` };

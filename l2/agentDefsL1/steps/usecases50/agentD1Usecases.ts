@@ -31,6 +31,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import {
   buildFromWork,
+  commitD1UsecaseRemovals,
   commitD1Usecases,
   loadD1UsecaseWork,
   writeD1UsecaseWork,
@@ -75,8 +76,10 @@ export async function beforeD1UsecasesPromptStep(
     const approved = withUsecasesApproved(pipeline, artifact, new Date().toISOString());
     if (JSON.stringify(approved) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, approved);
     const mutationParent = findOpenParent(context, parentStep);
+    const removal = await commitD1UsecaseRemovals(parsed.prompt.project, parsed.prompt.moduleName, snapshot);
+    if (removal.issues.length) return refuse(context, parentStep, step, hookSequential, refusedText('usecases50', removal.issues[0]));
     const keptDefs = (snapshot.files ?? []).filter(file => file.artifactType === 'usecase').map(file => file.defPath);
-    const keptRun = stepRunOf({ written: [], reported: keptDefs });
+    const keptRun = stepRunOf({ written: [], removed: removal.removed, reported: keptDefs });
       const kept = `${commitTrace('usecases50', keptRun)} No model was called.`;
     if (planPresent(context, 'usecases50-done')) {
       return [updateStatus(context, mutationParent, step, hookSequential, 'completed', kept)];

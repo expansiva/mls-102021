@@ -173,6 +173,14 @@ export async function readAttempts(project: number, moduleName: string, usecaseI
   return out;
 }
 
+/** The removals alone, for a run that keeps the usecase defs it wrote: the defs that left the plan still go. */
+export async function commitD1UsecaseRemovals(project: number, moduleName: string, snapshot: D1InputSnapshot): Promise<{ removed: string[]; issues: string[] }> {
+  const parts = removalParts(snapshot);
+  if (!parts.length) return { removed: [], issues: [] };
+  const committed = await commitD1Unit({ project, moduleName, step: 'usecases50', unitId: 'usecases50-removed', draftText: `${JSON.stringify(parts.map(part => part.defPath))}\n`, parts });
+  return { removed: committed.removed, issues: committed.issues };
+}
+
 export async function commitD1Usecases(project: number, build: D1UsecaseBuild): Promise<{ written: string[]; run?: D1StepRun; issues: string[] }> {
   const draftInfo = draftFile(project, build.moduleName, 'usecases50');
   const draftText = `${JSON.stringify(build, null, 2)}\n`;
@@ -193,9 +201,20 @@ export async function commitD1Usecases(project: number, build: D1UsecaseBuild): 
     step: 'usecases50',
     unitId: 'usecases50',
     draftText,
-    parts: rendered.parts,
+    parts: [...rendered.parts, ...removalParts(snapshot)],
   });
   return { written: committed.written, run: stepRunOf(committed), issues: committed.issues };
+}
+
+/**
+ * d1_251: a usecase def the inventory carries as removed (the L4 lists it, or d1_250 found it: the D1 wrote it and no plan carries it) leaves with the
+ * plan. Left behind, the request service of the module is offered it as a usecase of the module and imports it (my_conduct → listPersonalConduct).
+ * Only a def whose hash is the one the inventory holds goes: an edited one is refused by the commit like any other.
+ */
+export function removalParts(snapshot: D1InputSnapshot | null): D1UnitPart[] {
+  return (snapshot?.removed ?? [])
+    .filter(item => item.kind === 'usecase' && item.inventoried && !!item.defPath && !!item.contentHash)
+    .map(item => ({ defPath: item.defPath as string, source: '', action: 'remove' as const, receiptHash: item.contentHash, outputTs: [] }));
 }
 
 function renderParts(

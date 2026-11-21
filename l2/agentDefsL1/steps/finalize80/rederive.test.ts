@@ -469,3 +469,21 @@ void test('d1_249: a def edited by hand after the D1 wrote it is not vouched for
   await assert.rejects(() => runToFinalize(host, MODULE, resolver, true), /inicio.* exists without an inventoried path and hash|EXISTS_WITHOUT_RECEIPT|without a receipt/u);
   assert.equal(stored(host, `l1/${MODULE}/layer_2_application/requests/inicio.defs.ts`).content.includes('EDITADO-A-MAO'), true);
 });
+
+void test('d1_251: a second /rederive keeps the hashes of the first: what the unfinished attempt changed is still printed as changed', async () => {
+  const host = await readyHost(FIXTURE, MODULE);
+  const resolver = recordedResolver(FIXTURE, MODULE);
+  await runToFinalize(host, MODULE, resolver);
+  const portPath = [...l1Bytes(host, MODULE).keys()].find(path => path.includes('/ports/') && path.endsWith('.defs.ts'))!;
+  await command('persistence40');
+  const first = await readRederive(PROJECT, MODULE);
+  assert.ok(first?.before[portPath]);
+  // The attempt changed the def and stopped before finalize80 (the marker stays).
+  const changed = stored(host, portPath).content.replace('"status": "pending"', '"status": "generated"').replace(/("methods": \[)/u, '$1{"name":"extraMethod","params":[],"returns":"void"},');
+  assert.notEqual(changed, stored(host, portPath).content);
+  await writeText(fileInfoFromDisplay(PROJECT, portPath)!, changed);
+  await command('persistence40');
+  const second = await readRederive(PROJECT, MODULE);
+  assert.equal(second?.before[portPath], first?.before[portPath], 'the first hash stays');
+  assert.notEqual(second?.before[portPath], await sourceIdentityHash(changed));
+});
