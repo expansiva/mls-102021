@@ -1,0 +1,555 @@
+{
+  "schemaVersion": "2026-09-20-p1-pipeline-v1",
+  "flowId": "agentPlannerL1",
+  "moduleName": "agents",
+  "status": "complete",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-11-21T15:20:24.033Z",
+      "artifactPaths": [
+        "l4/agents/pool/l1/pipeline.json"
+      ]
+    },
+    "plan20": {
+      "status": "approved",
+      "updatedAt": "2026-11-21T15:20:30.286Z",
+      "artifactPaths": [
+        "l4/agents/pool/l2/web/backend.json",
+        "l4/agents/pool/l2/20261121152030_agents-20261121151954_1.json"
+      ]
+    }
+  },
+  "thread": "agents-20261121151954",
+  "round": 1,
+  "messageFile": "l4/agents/pool/l1/20261121152023_agents-20261121151954_1.json",
+  "sourceMessages": [
+    "20261121152023_agents-20261121151954_1.json"
+  ],
+  "needsFile": "l4/agents/pool/l1/web/needs.json",
+  "inventory": {
+    "routes": [
+      "agents.agent_activity.getAgentActivity",
+      "agents.agent_activity.listAgentExecutions",
+      "agents.agent_behavior.getAgentBehavior",
+      "agents.agent_behavior.listBehaviorChanges",
+      "agents.agent_behavior.requestBehaviorChange",
+      "agents.agent_configuration.getAgentConfiguration",
+      "agents.agent_configuration.saveAgentConfiguration",
+      "agents.agent_configuration.searchResponsibleCandidates",
+      "agents.agent_overview.getAgentOverview",
+      "agents.agent_simulation.findPeopleToSimulate",
+      "agents.agent_simulation.getSimulationPage",
+      "agents.agent_simulation.simulateWhatItCan",
+      "agents.agent_simulation.simulateWhatItUnderstands",
+      "agents.agent_tools.enableUnchosenTool",
+      "agents.agent_tools.getAgentToolTree",
+      "agents.agent_tools.listAutomaticToolChoices",
+      "agents.agent_tools.toggleToolChoice",
+      "agents.agents.listAgentsCollection",
+      "agents.agents.listRequestHistory",
+      "agents.agents.loadAgentsPage",
+      "agents.agents.sendNewAgentRequest",
+      "agents.cm.agentDraftReady",
+      "agents.cm.describe",
+      "agents.cm.record",
+      "agents.draft_review.activateDraft",
+      "agents.draft_review.discardDraft",
+      "agents.draft_review.getDraftReview",
+      "agents.draft_review.saveDraftTools",
+      "agents.draft_review.searchSimulationPeople",
+      "agents.draft_review.simulateDraft",
+      "agents.my_conduct.getMyConduct",
+      "agents.my_conduct.listMyConductHistory",
+      "agents.my_conduct.sendConductChange",
+      "agents.person_restrictions.getPersonRestrictions",
+      "agents.person_restrictions.listPeople",
+      "agents.person_restrictions.saveRestrictions",
+      "agents.platform.releaseCatalogChanged",
+      "agents.tool_catalog.getToolCatalog",
+      "agents.tool_catalog.listCatalogUpdates"
+    ],
+    "usecases": [
+      {
+        "usecaseId": "activate",
+        "file": "l1/agents/layer_2_application/usecases/activate.defs.ts",
+        "entityId": "AgentDraft",
+        "operation": "transition",
+        "transitionRef": "activate",
+        "functions": [],
+        "ports": [
+          "AgentDraft"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "createAgentDraft",
+        "file": "l1/agents/layer_2_application/usecases/createAgentDraft.defs.ts",
+        "entityId": "AgentDraft",
+        "operation": "create",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "AgentDraft"
+        ],
+        "rulesApplied": [
+          "adminChoiceNotOverriddenByAutomatic",
+          "agentDraftNoticeIdempotent",
+          "agentDraftSuggestedToolsOnWhenReady",
+          "agentNameUniqueAmongActive",
+          "draftDecisionOnlyWhenReady",
+          "refusalReasonShownWhenRefused"
+        ],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "createAgentTool",
+        "file": "l1/agents/layer_2_application/usecases/createAgentTool.defs.ts",
+        "entityId": "AgentTool",
+        "operation": "create",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "AgentTool"
+        ],
+        "rulesApplied": [
+          "adminChoiceNeverOverridden",
+          "describeAgentForPersonWritesNothing",
+          "draftSuggestedToolsTurnedOn",
+          "markingWithoutChoiceCreatesAdminChoice",
+          "newToolsChosenFromDescription",
+          "oneChoicePerAgentAndTool",
+          "onlyEnabledToolsSent",
+          "personRestrictionsExcludeTools",
+          "removedToolNeverSent",
+          "repeatedNoticeChangesNothing"
+        ],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "createExecutionSummary",
+        "file": "l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts",
+        "entityId": "ExecutionSummary",
+        "operation": "create",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "ExecutionSummary"
+        ],
+        "rulesApplied": [
+          "activityNewestFirst",
+          "executionNeverEdited",
+          "executionRecordedOnce",
+          "onlyInboundWritesExecution"
+        ],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "createTool",
+        "file": "l1/agents/layer_2_application/usecases/createTool.defs.ts",
+        "entityId": "Tool",
+        "operation": "create",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "Tool"
+        ],
+        "rulesApplied": [
+          "agentToolsShowWholeCatalog",
+          "catalogRebuiltOnRelease",
+          "noTechnicalIdsOnScreen",
+          "removedToolNotSent",
+          "toolKeepsWholeCatalogItem",
+          "toolKeyUnique",
+          "toolNeverDeleted"
+        ],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "discard",
+        "file": "l1/agents/layer_2_application/usecases/discard.defs.ts",
+        "entityId": "AgentDraft",
+        "operation": "transition",
+        "transitionRef": "discard",
+        "functions": [],
+        "ports": [
+          "AgentDraft"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "getAgent",
+        "file": "l1/agents/layer_2_application/usecases/getAgent.defs.ts",
+        "entityId": "Agent",
+        "operation": "get",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "Agent"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "getAgentBehavior",
+        "file": "l1/agents/layer_2_application/usecases/getAgentBehavior.defs.ts",
+        "entityId": "AgentBehavior",
+        "operation": "get",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "AgentBehavior"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "getAgentDraft",
+        "file": "l1/agents/layer_2_application/usecases/getAgentDraft.defs.ts",
+        "entityId": "AgentDraft",
+        "operation": "get",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "AgentDraft"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "getOrganizationUser",
+        "file": "l1/agents/layer_2_application/usecases/getOrganizationUser.defs.ts",
+        "entityId": "OrganizationUser",
+        "operation": "get",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "OrganizationUser"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "listAgent",
+        "file": "l1/agents/layer_2_application/usecases/listAgent.defs.ts",
+        "entityId": "Agent",
+        "operation": "list",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "Agent"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "listAgentBehavior",
+        "file": "l1/agents/layer_2_application/usecases/listAgentBehavior.defs.ts",
+        "entityId": "AgentBehavior",
+        "operation": "list",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "AgentBehavior"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "listAgentDraft",
+        "file": "l1/agents/layer_2_application/usecases/listAgentDraft.defs.ts",
+        "entityId": "AgentDraft",
+        "operation": "list",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "AgentDraft"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "listAgentSimulation",
+        "file": "l1/agents/layer_2_application/usecases/listAgentSimulation.defs.ts",
+        "entityId": "AgentSimulation",
+        "operation": "list",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "AgentSimulation"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "listAgentTool",
+        "file": "l1/agents/layer_2_application/usecases/listAgentTool.defs.ts",
+        "entityId": "AgentTool",
+        "operation": "list",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "AgentTool"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "listExecutionSummary",
+        "file": "l1/agents/layer_2_application/usecases/listExecutionSummary.defs.ts",
+        "entityId": "ExecutionSummary",
+        "operation": "list",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "ExecutionSummary"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "listOrganizationUser",
+        "file": "l1/agents/layer_2_application/usecases/listOrganizationUser.defs.ts",
+        "entityId": "OrganizationUser",
+        "operation": "list",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "OrganizationUser"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "listPersonalConduct",
+        "file": "l1/agents/layer_2_application/usecases/listPersonalConduct.defs.ts",
+        "entityId": "PersonalConduct",
+        "operation": "list",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "PersonalConduct"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "listPersonToolRestriction",
+        "file": "l1/agents/layer_2_application/usecases/listPersonToolRestriction.defs.ts",
+        "entityId": "PersonToolRestriction",
+        "operation": "list",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "PersonToolRestriction"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "listTool",
+        "file": "l1/agents/layer_2_application/usecases/listTool.defs.ts",
+        "entityId": "Tool",
+        "operation": "list",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "Tool"
+        ],
+        "rulesApplied": [],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "undoAgentChange",
+        "file": "l1/agents/layer_2_application/usecases/undoAgentChange.defs.ts",
+        "entityId": "AgentBehavior",
+        "operation": "update",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "AgentBehavior"
+        ],
+        "rulesApplied": [
+          "agentBehaviorChangedOnlyThroughCm",
+          "behaviorChangeByAdminOnly",
+          "undoRestoresPreviousBehavior"
+        ],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "updateAgent",
+        "file": "l1/agents/layer_2_application/usecases/updateAgent.defs.ts",
+        "entityId": "Agent",
+        "operation": "update",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "Agent"
+        ],
+        "rulesApplied": [
+          "agentNameUniqueAmongActive"
+        ],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "updateAgentAgentBehavior",
+        "file": "l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.defs.ts",
+        "entityId": "AgentBehavior",
+        "operation": "update",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "AgentBehavior"
+        ],
+        "rulesApplied": [
+          "agentBehaviorChangedOnlyThroughCm",
+          "behaviorChangeByAdminOnly",
+          "undoRestoresPreviousBehavior"
+        ],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "updateAgentTool",
+        "file": "l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts",
+        "entityId": "AgentTool",
+        "operation": "update",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "AgentTool"
+        ],
+        "rulesApplied": [
+          "adminChoiceNeverOverridden",
+          "describeAgentForPersonWritesNothing",
+          "draftSuggestedToolsTurnedOn",
+          "markingWithoutChoiceCreatesAdminChoice",
+          "newToolsChosenFromDescription",
+          "oneChoicePerAgentAndTool",
+          "onlyEnabledToolsSent",
+          "personRestrictionsExcludeTools",
+          "removedToolNeverSent",
+          "repeatedNoticeChangesNothing"
+        ],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "updatePersonalConduct",
+        "file": "l1/agents/layer_2_application/usecases/updatePersonalConduct.defs.ts",
+        "entityId": "PersonalConduct",
+        "operation": "update",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "PersonalConduct"
+        ],
+        "rulesApplied": [
+          "conductOnlyForAgentActingOnBehalf",
+          "ownConductOnly"
+        ],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "updatePersonToolRestriction",
+        "file": "l1/agents/layer_2_application/usecases/updatePersonToolRestriction.defs.ts",
+        "entityId": "PersonToolRestriction",
+        "operation": "update",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "PersonToolRestriction"
+        ],
+        "rulesApplied": [
+          "noTechnicalIdsOnScreen",
+          "onlyCompanyAdminRestrictsTools",
+          "removedToolRestrictionKept",
+          "restrictionAppliesThroughAnyAgent",
+          "restrictionUniquePerPersonTool"
+        ],
+        "statusBackend": ""
+      },
+      {
+        "usecaseId": "updateTool",
+        "file": "l1/agents/layer_2_application/usecases/updateTool.defs.ts",
+        "entityId": "Tool",
+        "operation": "update",
+        "transitionRef": "",
+        "functions": [],
+        "ports": [
+          "Tool"
+        ],
+        "rulesApplied": [
+          "agentToolsShowWholeCatalog",
+          "catalogRebuiltOnRelease",
+          "noTechnicalIdsOnScreen",
+          "removedToolNotSent",
+          "toolKeepsWholeCatalogItem",
+          "toolKeyUnique",
+          "toolNeverDeleted"
+        ],
+        "statusBackend": ""
+      }
+    ],
+    "ports": [
+      {
+        "portId": "AgentToolRepository",
+        "entity": "AgentTool"
+      },
+      {
+        "portId": "ExecutionSummaryRepository",
+        "entity": "ExecutionSummary"
+      },
+      {
+        "portId": "PersonToolRestrictionRepository",
+        "entity": "PersonToolRestriction"
+      },
+      {
+        "portId": "ToolRepository",
+        "entity": "Tool"
+      }
+    ],
+    "tables": [
+      {
+        "tableId": "agentTool",
+        "entity": "AgentTool"
+      },
+      {
+        "tableId": "executionSummary",
+        "entity": "ExecutionSummary"
+      },
+      {
+        "tableId": "personToolRestriction",
+        "entity": "PersonToolRestriction"
+      },
+      {
+        "tableId": "tool",
+        "entity": "Tool"
+      }
+    ],
+    "present": true
+  },
+  "updatedAt": "2026-11-21T15:20:30.286Z",
+  "pool": [
+    {
+      "at": "2026-11-21T15:20:30.286Z",
+      "file": "l4/agents/pool/l2/20261121152030_agents-20261121151954_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "agents-20261121151954",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-21T15:20:30.286Z",
+      "file": "l4/agents/pool/l1/20261121152023_agents-20261121151954_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "agents-20261121151954",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    }
+  ]
+}

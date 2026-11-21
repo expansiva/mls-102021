@@ -273,9 +273,12 @@ export function buildD1InputSnapshot(
   }
   const contractV2 = readContractV2(artifacts.contractTexts);
   // Every usecase id the plan names, active or not, and every removed one. A usecase created from the contract may not reuse them.
+  // d1_260: `removed` is the plan's "no page needs it", decided before the model resolves the routes. A route that needs a removed usecase is its
+  // reader: the usecase is taken for it and leaves `removed` (below), instead of the route being refused. `removed` keeps what nobody reads.
+  const removedByPlan = new Set([...rows(backend.removed), ...rows(effort.removed)].filter(row => text(row.kind) === 'usecase').map(row => text(row.id)));
   const planned: PlannedIds = {
     ids: new Map([...backendUsecases.values(), ...effortUsecases.values()].map(row => [text(row.usecaseId), `${text(row.entity)}.${text(row.operation)}`])),
-    removed: new Set([...rows(backend.removed), ...rows(effort.removed)].filter(row => text(row.kind) === 'usecase').map(row => text(row.id))),
+    removed: new Set<string>(),
   };
   // The contract is the source: a request may create the usecase it needs (selectedUsecases grows here).
   const requests = contractRequests(
@@ -351,7 +354,13 @@ export function buildD1InputSnapshot(
   noteExternalEffects(problems, paths.integration, integration, entityKind, selectedUsecases, artifacts.journeys);
   noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0, previous);
   noteContracts(problems, moduleName, artifacts.contracts, artifacts.contractTexts, contractV2);
-  const removed = collectRemoved(problems, paths, backend, effort, requests, selectedUsecases);
+  // The usecases the plan removed that a route (a page, a serve, an arrival, a process) now needs: created from the contract above, no longer removed.
+  const revived = new Set([...removedByPlan].filter(id => !planned.ids.has(id) && selectedUsecases.some(usecase => usecase.usecaseId === id)));
+  for (const id of [...revived].sort()) {
+    const readers = requests.filter(request => request.uses.includes(id)).map(request => request.route);
+    review(problems, 'REMOVED_USECASE_READ_BY_ROUTE', paths.backend, `Usecase ${id} was removed by the plan (no page needs it) and ${readers.length ? readers.join(', ') : 'a route'} reads it: it stays.`, id);
+  }
+  const removed = collectRemoved(problems, paths, backend, effort, requests, selectedUsecases, revived);
   // With a v2 contract, a planned usecase no request calls is not generated. The plan stays an estimate.
   const generatedUsecases = contractV2.size > 0
     ? selectedUsecases.filter(usecase => usecase.routes.length > 0)
@@ -732,7 +741,7 @@ function actionFor(
   return 'create';
 }
 
-function recomposeOrConflict(
+export function recomposeOrConflict(
   defPath: string,
   present: Map<string, string>,
   previous: D1InputSnapshot | null,
@@ -743,6 +752,9 @@ function recomposeOrConflict(
   const hash = present.get(defPath) || '';
   const view = receiptView(previous, defPath, receipts, hash);
   if (hash && view.inventoried === hash && view.agrees) return 'recompose';
+  // d1_260: the inventory is older than the receipt (a def rewritten after the snapshot, d1_253) and the disk is the bytes the receipt names: the D1 wrote
+  // them and the stale inventory does not count against them; the def is recomposed, as when the inventory is current.
+  if (hash && view.inventoried && view.written === hash && view.agrees) return 'recompose';
   if (!hash && !view.inventoried) return 'create';
   if (hash && !view.inventoried && view.written === hash && view.agrees) return 'create';
   error(problems, 'EXISTING_UNRESOLVED', defPath, `Recompose of ${ownerRef} needs an inventoried path and hash.`, ownerRef);
@@ -851,9 +863,11 @@ function collectRemoved(
   effort: Record<string, unknown>,
   requests: D1SelectedRequest[],
   usecases: D1SelectedUsecase[],
+  revived: ReadonlySet<string> = new Set(),
 ): D1RemovedItem[] {
-  const backendRemoved = rows(backend.removed).map(row => ({ kind: text(row.kind), id: text(row.id), status: text(row.status) }));
-  const effortRemoved = rows(effort.removed).map(row => ({ kind: text(row.kind), id: text(row.id), status: text(row.status) }));
+  const keep = (row: Record<string, unknown>) => !(text(row.kind) === 'usecase' && revived.has(text(row.id)));
+  const backendRemoved = rows(backend.removed).filter(keep).map(row => ({ kind: text(row.kind), id: text(row.id), status: text(row.status) }));
+  const effortRemoved = rows(effort.removed).filter(keep).map(row => ({ kind: text(row.kind), id: text(row.id), status: text(row.status) }));
   for (const item of [...backendRemoved, ...effortRemoved]) {
     if (item.status && item.status !== 'toRemove') {
       error(problems, 'STATUS_NOT_IN_REMOVED', paths.backend, `Removed ${item.kind} ${item.id} must be toRemove.`, item.id);

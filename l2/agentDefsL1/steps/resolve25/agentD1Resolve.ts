@@ -38,6 +38,7 @@ import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js'
 import { assembleD1Input, d1SourceKey, persistD1Input, readD1Derivation, readD1InputArtifacts } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractV2 } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import { D1_RESOLVE_VERSION, type D1ResolveAttempt, type D1ResolveReceipt, type D1ResolveUnit, type D1ResolveWork } from '/_102021_/l2/agentDefsL1/steps/resolve25/contracts.js';
+import { recordHeldReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/heldReport.js';
 import { answersByRoute, buildResolveReceipt, checkResolveReply, keptRoutes, receiptAnswersDerived, resolveUnits, settledGapAnswers, sourcesDrift, unaskedGaps } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
 import {
   readResolveAttempt,
@@ -361,8 +362,9 @@ async function barrier(
   const intents = await finish(context, parentStep, step, hookSequential, pipeline, receipt, message, receipt.llmCalls);
   const main = findPlanStep(context, 'resolve25');
   if (main && main.stepId !== step.stepId && main.status !== 'completed' && main.status !== 'failed') {
-    const held = intents.some(intent => intent.type === 'update-status' && intent.status === 'failed');
-    intents.push(updateStatus(context, findOpenParent(context, parentStep), main, hookSequential, held ? 'failed' : 'completed', message));
+    const heldIntent = intents.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.status === 'failed');
+    // d1_260: the task log shows the message of the main step; when the run is held it carries the reason, the codes and the routes.
+    intents.push(updateStatus(context, findOpenParent(context, parentStep), main, hookSequential, heldIntent ? 'failed' : 'completed', heldIntent?.traceMsg || message));
   }
   return intents;
 }
@@ -392,6 +394,8 @@ async function finish(
       if (issues.length > 0) throw new Error(`Checkpoint schema refused: ${issues[0]}`);
       await writeJson(pipelineFile(pipeline.project, pipeline.moduleName), held);
     }
+    // d1_260: finalize80 does not run after a hold, so the report on disk is written here: it names each error and is not `complete`.
+    await recordHeldReport(pipeline.project, pipeline.moduleName, held);
     const trace = `${message} The final ${displayPath(inputFile(pipeline.project, pipeline.moduleName))} does not release the consumer phases.${reason ? ` ${reason}` : ''}`;
     return stopStep(context, findOpenParent(context, parentStep), step, hookSequential, trace, {
       drainTrace: `stopped: consumer phases are not released.${reason ? ` ${reason}` : ''}`,

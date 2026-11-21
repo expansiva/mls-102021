@@ -1,0 +1,65 @@
+/// <mls fileReference="_102047_/l1/agents/layer_3_domain/entities/personalConduct.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "PersonalConduct",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+  ],
+  "data": {
+    "entityId": "PersonalConduct",
+    "storageTarget": "external",
+    "fields": [
+      {
+        "name": "agent",
+        "type": "record",
+        "ref": "Agent"
+      },
+      {
+        "name": "person",
+        "type": "record",
+        "ref": "OrganizationUser"
+      },
+      {
+        "name": "summary",
+        "type": "string"
+      },
+      {
+        "name": "changeRequest",
+        "type": "text"
+      },
+      {
+        "name": "history",
+        "type": "object"
+      },
+      {
+        "name": "history.changedAt",
+        "type": "timestamp"
+      },
+      {
+        "name": "history.changedBy",
+        "type": "record",
+        "ref": "OrganizationUser"
+      },
+      {
+        "name": "history.summary",
+        "type": "string"
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [
+      "ownConductOnly",
+      "conductOnlyForAgentActingOnBehalf"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

@@ -32,6 +32,9 @@ import { parseFinalizeReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/c
 import { runResolve25, type D1TestResolver } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
 import { parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { readD1UsecaseWork, writeAttempt } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
+import { loadP1PlanSources } from '/_102021_/l2/agentPlannerL1/steps/plan20/agentP1Plan.js';
+import { planP1Backend } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
+import { readL1Inventory } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 
 const PROJECT = 102047;
@@ -294,4 +297,77 @@ void test('d1_255: agents@f45e1e26: the result the manager reads at the end of t
   ]);
   assert.match((result.runSummary ?? []).join('\n'), /^domain30: wrote 0, kept 10/mu);
   assert.match((result.runSummary ?? []).join('\n'), /^support70: /mu);
+});
+
+// d1_260: `agents` at mls-102047@30f16c8e (git show) with the 18 answers the s3b of the l4_p4_140 recorded (resolve25.json, byte for byte), no model.
+const A30 = 'agents-30f16c8e';
+
+/** The pool the planner writes with the d1_259 plan20 over this state: `removed` keeps what nobody reads (getAgentDraft, getOrganizationUser). */
+async function replanPool(host: TestHost): Promise<void> {
+  const sources = await loadP1PlanSources(MODULE);
+  const inventory = await readL1Inventory(PROJECT, MODULE);
+  const planned = planP1Backend({ needs: sources.needs, inventory, ontology: sources.ontology, now: new Date(0), l4diff: sources.l4diff, actors: sources.actors, integration: sources.integration });
+  const keyOf = (end: string) => Object.keys(host.files).find(key => key.endsWith(end))!;
+  const backend = JSON.parse(host.files[keyOf('pool/l2/web/backend.json')].content);
+  backend.removed = planned.file.removed;
+  host.files[keyOf('pool/l2/web/backend.json')].content = JSON.stringify(backend, null, 2);
+  const effort = JSON.parse(host.files[keyOf('pool/l2/web/effort.json')].content);
+  effort.removed = planned.file.removed.filter(item => item.kind !== 'port').map(item => ({ kind: item.kind, id: item.id, status: item.status }));
+  host.files[keyOf('pool/l2/web/effort.json')].content = JSON.stringify(effort, null, 2);
+}
+
+function seedEvidenceAnswers(host: TestHost): void {
+  const key = Object.keys(host.files).find(item => item.endsWith('pipeline/agentDefsL1/resolve25.json'))!;
+  host.files[key].content = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'fixtures/resolve25Evidence30f16c8e.recorded.txt'), 'utf8');
+}
+
+void test('d1_260: agents@30f16c8e with the recorded answers: the resolve25 reuses them with no model and releases the consumer phases', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, A30, PROJECT);
+  await replanPool(host);
+  seedEvidenceAnswers(host);
+  const ran = await rederiveRun(host, 'controllers60', 'resolve25');
+  assert.deepEqual(failedOf(ran), []);
+  assert.match(ran.find(item => item.stepId === 'resolve25')!.trace, /kept the answered routes for agents from the previous receipt\. No model was called\./u);
+  const snapshot = JSON.parse(host.files[fileKey(inputFile(PROJECT, MODULE))].content) as D1InputSnapshot;
+  assert.equal(snapshot.consumersReleased, true);
+  assert.deepEqual(snapshot.problems.filter(problem => problem.severity === 'error'), []);
+  // The six routes that need OrganizationUser.get read the usecase the plan had removed: it stays, and the review says who reads it.
+  const review = snapshot.problems.find(problem => problem.code === 'REMOVED_USECASE_READ_BY_ROUTE' && problem.ownerRef === 'getOrganizationUser');
+  assert.ok(review);
+  for (const route of ['agents.agent_configuration.getAgentConfiguration', 'agents.agent_configuration.saveAgentConfiguration', 'agents.agent_simulation.getSimulationPage', 'agents.agent_simulation.simulateWhatItCan', 'agents.person_restrictions.getPersonRestrictions', 'agents.person_restrictions.saveRestrictions']) {
+    assert.match(review.message, new RegExp(route.replace(/\./gu, '\\.'), 'u'));
+  }
+  assert.equal(snapshot.removed.some(item => item.id === 'getOrganizationUser'), false);
+  assert.equal(snapshot.removed.some(item => item.id === 'getAgentDraft'), true, 'what no route reads stays removed');
+  // The controller and the request service of my_conduct: the receipt names the def on disk and the inventory is older: recomposed, not unresolved.
+  for (const type of ['httpController', 'requestService']) {
+    const file = snapshot.files.find(item => item.artifactType === type && item.identity === 'my_conduct');
+    assert.equal(file?.action, 'recompose', type);
+  }
+});
+
+void test('d1_260: a run that holds at resolve25 says why in the step and in the report, and the report is not complete', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, A30, PROJECT);
+  await replanPool(host);
+  seedEvidenceAnswers(host);
+  await rederiveRun(host, 'controllers60', 'input20');
+  // Someone edits the def of the my_conduct controller after input20: the disk is neither the inventory nor the receipt, so it is not recomposed.
+  const controller = Object.values(host.files).find(file => file.shortName === 'my_conduct' && file.folder.endsWith('adapters/http/controllers') && file.extension === '.defs.ts')!;
+  controller.content = controller.content.replace('"pageId"', '"note": "EDITADO-A-MAO", "pageId"');
+  assert.equal(controller.content.includes('EDITADO-A-MAO'), true);
+  const agent = createAgent();
+  const ctx = contextFor(MODULE);
+  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  const held = await runStep(agent, ctx, parent, MODULE, 'resolve25', 2);
+  assert.match(held.trace, /does not release the consumer phases\. EXISTING_UNRESOLVED:1 \(controller:my_conduct\)/u);
+  const report = JSON.parse(host.files[fileKey(reportFile(PROJECT, MODULE))].content) as { outcome: string; blocking: string; findings: Array<{ code: string; severity: string; ownerRef: string }> };
+  assert.notEqual(report.outcome, 'complete');
+  assert.equal(report.outcome, 'held');
+  assert.match(report.blocking, /EXISTING_UNRESOLVED/u);
+  assert.equal(report.findings.some(finding => finding.code === 'EXISTING_UNRESOLVED' && finding.severity === 'error' && finding.ownerRef === 'controller:my_conduct'), true);
+  const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content) as { steps: { resolve25?: { status: string; error?: string } } };
+  assert.equal(pipeline.steps.resolve25?.status, 'failed');
+  assert.match(pipeline.steps.resolve25?.error ?? '', /EXISTING_UNRESOLVED:1 \(controller:my_conduct\)/u);
 });

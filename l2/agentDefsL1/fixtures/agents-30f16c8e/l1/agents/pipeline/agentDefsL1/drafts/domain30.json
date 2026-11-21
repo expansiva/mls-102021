@@ -1,0 +1,3143 @@
+{
+  "schemaVersion": "2026-09-21-d1-domain-v1",
+  "project": 102047,
+  "moduleName": "agents",
+  "llmCalls": 0,
+  "ok": true,
+  "entities": [
+    {
+      "entityId": "Agent",
+      "action": "create",
+      "defPath": "l1/agents/layer_3_domain/entities/agent.defs.ts",
+      "storageTarget": "external",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [],
+      "enumerations": [],
+      "rules": [
+        {
+          "ruleId": "agentNameUniqueAmongActive",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "Agent",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "Agent",
+          "storageTarget": "external",
+          "fields": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "definition",
+              "type": "text"
+            },
+            {
+              "name": "talksTo",
+              "type": "text"
+            },
+            {
+              "name": "onBehalfOf",
+              "type": "text"
+            },
+            {
+              "name": "isOn",
+              "type": "boolean"
+            },
+            {
+              "name": "responsible",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "limits",
+              "type": "object"
+            },
+            {
+              "name": "limits.label",
+              "type": "string"
+            },
+            {
+              "name": "limits.value",
+              "type": "string"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "agentNameUniqueAmongActive"
+          ],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "AgentBehavior",
+      "action": "create",
+      "defPath": "l1/agents/layer_3_domain/entities/agentBehavior.defs.ts",
+      "storageTarget": "external",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [],
+      "enumerations": [],
+      "rules": [
+        {
+          "ruleId": "agentBehaviorChangedOnlyThroughCm",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "behaviorChangeByAdminOnly",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "undoRestoresPreviousBehavior",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "AgentBehavior",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "AgentBehavior",
+          "storageTarget": "external",
+          "fields": [
+            {
+              "name": "agent",
+              "type": "record",
+              "ref": "Agent"
+            },
+            {
+              "name": "currentBehavior",
+              "type": "text"
+            },
+            {
+              "name": "summary",
+              "type": "string"
+            },
+            {
+              "name": "changeRequest",
+              "type": "text"
+            },
+            {
+              "name": "changes",
+              "type": "object"
+            },
+            {
+              "name": "changes.changeRef",
+              "type": "string"
+            },
+            {
+              "name": "changes.changedBy",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "changes.changedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "changes.summary",
+              "type": "string"
+            },
+            {
+              "name": "changes.undone",
+              "type": "boolean"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "agentBehaviorChangedOnlyThroughCm",
+            "behaviorChangeByAdminOnly",
+            "undoRestoresPreviousBehavior"
+          ],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "AgentDraft",
+      "action": "create",
+      "defPath": "l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+      "storageTarget": "external",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [],
+      "enumerations": [
+        {
+          "path": "situation",
+          "values": [
+            "preparing",
+            "ready",
+            "refused",
+            "activated",
+            "discarded"
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "ruleId": "agentDraftSuggestedToolsOnWhenReady",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "agentDraftNoticeIdempotent",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "agentNameUniqueAmongActive",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "adminChoiceNotOverriddenByAutomatic",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "draftDecisionOnlyWhenReady",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "refusalReasonShownWhenRefused",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "AgentDraft",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "AgentDraft",
+          "storageTarget": "external",
+          "fields": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "prompt",
+              "type": "text"
+            },
+            {
+              "name": "situation",
+              "type": "enum"
+            },
+            {
+              "name": "refusalReason",
+              "type": "text"
+            },
+            {
+              "name": "summary",
+              "type": "text"
+            },
+            {
+              "name": "audience",
+              "type": "text"
+            },
+            {
+              "name": "onBehalfOf",
+              "type": "text"
+            },
+            {
+              "name": "proposedBehavior",
+              "type": "text"
+            },
+            {
+              "name": "suggestedTools",
+              "type": "record",
+              "ref": "Tool"
+            },
+            {
+              "name": "requestedBy",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "requestedAt",
+              "type": "timestamp"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "agentDraftSuggestedToolsOnWhenReady",
+            "agentDraftNoticeIdempotent",
+            "agentNameUniqueAmongActive",
+            "adminChoiceNotOverriddenByAutomatic",
+            "draftDecisionOnlyWhenReady",
+            "refusalReasonShownWhenRefused"
+          ],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "AgentSimulation",
+      "action": "create",
+      "defPath": "l1/agents/layer_3_domain/entities/agentSimulation.defs.ts",
+      "storageTarget": "external",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [],
+      "enumerations": [
+        {
+          "path": "level",
+          "values": [
+            "whatItCan",
+            "whatItUnderstands"
+          ]
+        },
+        {
+          "path": "subjectKind",
+          "values": [
+            "person",
+            "role"
+          ]
+        },
+        {
+          "path": "toolVerdicts.reason",
+          "values": [
+            "allowed",
+            "restrictedForPerson",
+            "notPermittedForRole",
+            "removedFromRelease"
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "ruleId": "simulationSavesNothing",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "memberSimulatesOnlyAsSelf",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "adminSimulatesByRole",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "onlyToolsOnAreConsidered",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "personRestrictionAppliesInRequest",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "noTechnicalIdsOnScreen",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "AgentSimulation",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "AgentSimulation",
+          "storageTarget": "external",
+          "fields": [
+            {
+              "name": "agent",
+              "type": "record",
+              "ref": "Agent"
+            },
+            {
+              "name": "level",
+              "type": "enum"
+            },
+            {
+              "name": "subjectKind",
+              "type": "enum"
+            },
+            {
+              "name": "person",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "roleName",
+              "type": "string"
+            },
+            {
+              "name": "sentence",
+              "type": "text"
+            },
+            {
+              "name": "toolVerdicts",
+              "type": "object"
+            },
+            {
+              "name": "toolVerdicts.tool",
+              "type": "record",
+              "ref": "Tool"
+            },
+            {
+              "name": "toolVerdicts.moduleName",
+              "type": "string"
+            },
+            {
+              "name": "toolVerdicts.subjectName",
+              "type": "string"
+            },
+            {
+              "name": "toolVerdicts.actionName",
+              "type": "string"
+            },
+            {
+              "name": "toolVerdicts.canUse",
+              "type": "boolean"
+            },
+            {
+              "name": "toolVerdicts.reason",
+              "type": "enum"
+            },
+            {
+              "name": "toolVerdicts.reasonText",
+              "type": "string"
+            },
+            {
+              "name": "understanding",
+              "type": "object"
+            },
+            {
+              "name": "understanding.asksForAction",
+              "type": "boolean"
+            },
+            {
+              "name": "understanding.moduleName",
+              "type": "string"
+            },
+            {
+              "name": "understanding.subjectName",
+              "type": "string"
+            },
+            {
+              "name": "understanding.actions",
+              "type": "object"
+            },
+            {
+              "name": "understanding.actions.tool",
+              "type": "record",
+              "ref": "Tool"
+            },
+            {
+              "name": "understanding.actions.actionName",
+              "type": "string"
+            },
+            {
+              "name": "understanding.explanation",
+              "type": "text"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "simulationSavesNothing",
+            "memberSimulatesOnlyAsSelf",
+            "adminSimulatesByRole",
+            "onlyToolsOnAreConsidered",
+            "personRestrictionAppliesInRequest",
+            "noTechnicalIdsOnScreen"
+          ],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "AgentTool",
+      "action": "create",
+      "defPath": "l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+      "storageTarget": "moduleDatabase",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [
+        [
+          "agentId",
+          "toolId"
+        ]
+      ],
+      "enumerations": [
+        {
+          "path": "choiceSource",
+          "values": [
+            "admin",
+            "automatic"
+          ]
+        },
+        {
+          "path": "details.automaticOrigin",
+          "values": [
+            "draftSuggestion",
+            "catalogRefresh"
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "ruleId": "adminChoiceNeverOverridden",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "oneChoicePerAgentAndTool",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "onlyEnabledToolsSent",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "removedToolNeverSent",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "personRestrictionsExcludeTools",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "repeatedNoticeChangesNothing",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "draftSuggestedToolsTurnedOn",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "newToolsChosenFromDescription",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "describeAgentForPersonWritesNothing",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "markingWithoutChoiceCreatesAdminChoice",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "AgentTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "AgentTool",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "agentId",
+              "type": "record",
+              "ref": "Agent"
+            },
+            {
+              "name": "toolId",
+              "type": "record",
+              "ref": "Tool"
+            },
+            {
+              "name": "enabled",
+              "type": "boolean"
+            },
+            {
+              "name": "choiceSource",
+              "type": "enum"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.decidedAt",
+              "type": "timestamp",
+              "derived": true
+            },
+            {
+              "name": "details.decidedBy",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "details.automaticOrigin",
+              "type": "enum"
+            },
+            {
+              "name": "details.toolName",
+              "type": "string",
+              "derived": true
+            },
+            {
+              "name": "details.toolRemoved",
+              "type": "boolean",
+              "derived": true
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "adminChoiceNeverOverridden",
+            "oneChoicePerAgentAndTool",
+            "onlyEnabledToolsSent",
+            "removedToolNeverSent",
+            "personRestrictionsExcludeTools",
+            "repeatedNoticeChangesNothing",
+            "draftSuggestedToolsTurnedOn",
+            "newToolsChosenFromDescription",
+            "describeAgentForPersonWritesNothing",
+            "markingWithoutChoiceCreatesAdminChoice"
+          ],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "ExecutionSummary",
+      "action": "create",
+      "defPath": "l1/agents/layer_3_domain/entities/executionSummary.defs.ts",
+      "storageTarget": "moduleDatabase",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [
+        [
+          "executionRef"
+        ]
+      ],
+      "enumerations": [
+        {
+          "path": "details.actions.result",
+          "values": [
+            "succeeded",
+            "failed",
+            "refused"
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "ruleId": "executionRecordedOnce",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "onlyInboundWritesExecution",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "executionNeverEdited",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "activityNewestFirst",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "ExecutionSummary",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "ExecutionSummary",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "agentId",
+              "type": "record",
+              "ref": "Agent"
+            },
+            {
+              "name": "personId",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "executionRef",
+              "type": "string"
+            },
+            {
+              "name": "startedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.durationMs",
+              "type": "integer"
+            },
+            {
+              "name": "details.cost",
+              "type": "money"
+            },
+            {
+              "name": "details.tookOver",
+              "type": "boolean"
+            },
+            {
+              "name": "details.conversationLink",
+              "type": "string"
+            },
+            {
+              "name": "details.actions",
+              "type": "object"
+            },
+            {
+              "name": "details.actions.toolName",
+              "type": "string"
+            },
+            {
+              "name": "details.actions.result",
+              "type": "enum"
+            },
+            {
+              "name": "details.actions.resultNote",
+              "type": "text"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "executionRecordedOnce",
+            "onlyInboundWritesExecution",
+            "executionNeverEdited",
+            "activityNewestFirst"
+          ],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "OrganizationUser",
+      "action": "create",
+      "defPath": "l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+      "storageTarget": "mdm",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [],
+      "enumerations": [
+        {
+          "path": "details.identification.status",
+          "values": [
+            "Active",
+            "Inactive",
+            "Merged",
+            "Blocked"
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "ruleId": "rule-foreign-namespace-refused",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        },
+        {
+          "ruleId": "rule-identity-never-in-namespace",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        },
+        {
+          "ruleId": "rule-document-shape-validated",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        },
+        {
+          "ruleId": "onlyActiveUsersRestricted",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "OrganizationUser",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "OrganizationUser",
+          "storageTarget": "mdm",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.identification",
+              "type": "object"
+            },
+            {
+              "name": "details.identification.name",
+              "type": "string"
+            },
+            {
+              "name": "details.identification.status",
+              "type": "enum",
+              "derived": true
+            },
+            {
+              "name": "details.identification.tags",
+              "type": "string",
+              "derived": true
+            },
+            {
+              "name": "details.base",
+              "type": "object"
+            },
+            {
+              "name": "details.person",
+              "type": "object"
+            },
+            {
+              "name": "details.general",
+              "type": "object"
+            },
+            {
+              "name": "details.agents",
+              "type": "object"
+            },
+            {
+              "name": "details.agents.loginEmail",
+              "type": "string",
+              "derived": true
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "onlyActiveUsersRestricted"
+          ],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "PersonalConduct",
+      "action": "create",
+      "defPath": "l1/agents/layer_3_domain/entities/personalConduct.defs.ts",
+      "storageTarget": "external",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [],
+      "enumerations": [],
+      "rules": [
+        {
+          "ruleId": "ownConductOnly",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "conductOnlyForAgentActingOnBehalf",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "PersonalConduct",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "PersonalConduct",
+          "storageTarget": "external",
+          "fields": [
+            {
+              "name": "agent",
+              "type": "record",
+              "ref": "Agent"
+            },
+            {
+              "name": "person",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "summary",
+              "type": "string"
+            },
+            {
+              "name": "changeRequest",
+              "type": "text"
+            },
+            {
+              "name": "history",
+              "type": "object"
+            },
+            {
+              "name": "history.changedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "history.changedBy",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "history.summary",
+              "type": "string"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "ownConductOnly",
+            "conductOnlyForAgentActingOnBehalf"
+          ],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "PersonToolRestriction",
+      "action": "create",
+      "defPath": "l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts",
+      "storageTarget": "moduleDatabase",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [
+        [
+          "personId",
+          "toolId"
+        ]
+      ],
+      "enumerations": [],
+      "rules": [
+        {
+          "ruleId": "restrictionUniquePerPersonTool",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "restrictionAppliesThroughAnyAgent",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "onlyCompanyAdminRestrictsTools",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "removedToolRestrictionKept",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "noTechnicalIdsOnScreen",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "PersonToolRestriction",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "PersonToolRestriction",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "personId",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "toolId",
+              "type": "record",
+              "ref": "Tool"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.markedAt",
+              "type": "timestamp",
+              "derived": true
+            },
+            {
+              "name": "details.toolName",
+              "type": "string",
+              "derived": true
+            },
+            {
+              "name": "details.toolPath",
+              "type": "string",
+              "derived": true
+            },
+            {
+              "name": "details.toolRemoved",
+              "type": "boolean",
+              "derived": true
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "restrictionUniquePerPersonTool",
+            "restrictionAppliesThroughAnyAgent",
+            "onlyCompanyAdminRestrictsTools",
+            "removedToolRestrictionKept",
+            "noTechnicalIdsOnScreen"
+          ],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "Tool",
+      "action": "create",
+      "defPath": "l1/agents/layer_3_domain/entities/tool.defs.ts",
+      "storageTarget": "moduleDatabase",
+      "emitsLocalPersistence": false,
+      "derivedInitial": "available",
+      "uniqueKeys": [
+        [
+          "toolKey"
+        ]
+      ],
+      "enumerations": [
+        {
+          "path": "origin",
+          "values": [
+            "appModule",
+            "cm"
+          ]
+        },
+        {
+          "path": "status",
+          "values": [
+            "available",
+            "removed"
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "ruleId": "toolKeyUnique",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "toolNeverDeleted",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "catalogRebuiltOnRelease",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "removedToolNotSent",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "noTechnicalIdsOnScreen",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "toolKeepsWholeCatalogItem",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "agentToolsShowWholeCatalog",
+          "owner": "module",
+          "source": "l4/agents/rules.defs.ts",
+          "placement": "invariant"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "Tool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "Tool",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "toolKey",
+              "type": "string"
+            },
+            {
+              "name": "origin",
+              "type": "enum"
+            },
+            {
+              "name": "moduleName",
+              "type": "string"
+            },
+            {
+              "name": "subject",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "status",
+              "type": "enum"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.moduleTitle",
+              "type": "string"
+            },
+            {
+              "name": "details.subjectTitle",
+              "type": "string"
+            },
+            {
+              "name": "details.description",
+              "type": "text"
+            },
+            {
+              "name": "details.releaseLabel",
+              "type": "string"
+            },
+            {
+              "name": "details.addedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "details.removedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "details.usedByAgents",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "details.catalogItem",
+              "type": "json"
+            }
+          ],
+          "lifecycle": {
+            "states": [
+              {
+                "state": "available",
+                "reachedBy": "command"
+              },
+              {
+                "state": "removed",
+                "reachedBy": "command"
+              }
+            ],
+            "transitions": [
+              {
+                "transitionId": "removeFromRelease",
+                "from": [
+                  "available"
+                ],
+                "to": "removed",
+                "by": [],
+                "ruleRefs": []
+              },
+              {
+                "transitionId": "restoreToRelease",
+                "from": [
+                  "removed"
+                ],
+                "to": "available",
+                "by": [],
+                "ruleRefs": []
+              }
+            ]
+          },
+          "invariants": [
+            "toolKeyUnique",
+            "toolNeverDeleted",
+            "catalogRebuiltOnRelease",
+            "removedToolNotSent",
+            "noTechnicalIdsOnScreen",
+            "toolKeepsWholeCatalogItem",
+            "agentToolsShowWholeCatalog"
+          ],
+          "imports": []
+        }
+      }
+    }
+  ],
+  "valueObjects": [],
+  "problems": [],
+  "normalizations": [
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Agent.record.fields.definition",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Agent.record.fields.isOn",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Agent.record.fields.limits.label",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Agent.record.fields.limits.value",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Agent.record.fields.limits",
+      "detail": "collection,description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Agent.record.fields.name",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Agent.record.fields.onBehalfOf",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Agent.record.fields.responsible",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Agent.record.fields.talksTo",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentBehavior.record.fields.agent",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentBehavior.record.fields.changeRequest",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentBehavior.record.fields.changes.changedAt",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentBehavior.record.fields.changes.changedBy",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentBehavior.record.fields.changes.changeRef",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentBehavior.record.fields.changes.summary",
+      "detail": "description,maxLength,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentBehavior.record.fields.changes.undone",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentBehavior.record.fields.changes",
+      "detail": "collection,description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentBehavior.record.fields.currentBehavior",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentBehavior.record.fields.summary",
+      "detail": "description,maxLength,required,title"
+    },
+    {
+      "code": "EXTERNAL_STORAGE",
+      "path": "AgentBehavior",
+      "detail": "kind external has no storage target"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "AgentBehavior",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentDraft.record.fields.audience",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentDraft.record.fields.name",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentDraft.record.fields.onBehalfOf",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentDraft.record.fields.prompt",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentDraft.record.fields.proposedBehavior",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentDraft.record.fields.refusalReason",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentDraft.record.fields.requestedAt",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentDraft.record.fields.requestedBy",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentDraft.record.fields.situation",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentDraft.record.fields.suggestedTools",
+      "detail": "collection,description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentDraft.record.fields.summary",
+      "detail": "description,title"
+    },
+    {
+      "code": "EXTERNAL_STORAGE",
+      "path": "AgentDraft",
+      "detail": "kind external has no storage target"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "AgentDraft",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "EXTERNAL_STORAGE",
+      "path": "Agent",
+      "detail": "kind external has no storage target"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "Agent",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.agent",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.level",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.person",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.roleName",
+      "detail": "description,maxLength,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.sentence",
+      "detail": "description,maxLength,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.subjectKind",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.toolVerdicts.actionName",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.toolVerdicts.canUse",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.toolVerdicts.moduleName",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.toolVerdicts.reason",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.toolVerdicts.reasonText",
+      "detail": "description,maxLength,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.toolVerdicts.subjectName",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.toolVerdicts.tool",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.toolVerdicts",
+      "detail": "collection,description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.understanding.actions.actionName",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.understanding.actions.tool",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.understanding.actions",
+      "detail": "collection,description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.understanding.asksForAction",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.understanding.explanation",
+      "detail": "description,maxLength,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.understanding.moduleName",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.understanding.subjectName",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentSimulation.record.fields.understanding",
+      "detail": "description,title"
+    },
+    {
+      "code": "EXTERNAL_STORAGE",
+      "path": "AgentSimulation",
+      "detail": "kind external has no storage target"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "AgentSimulation",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "NESTED_KEPT",
+      "path": "agents",
+      "detail": "No nested object is the target of a record reference. Nested fields stay on the entity."
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentTool.record.fields.agentId",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentTool.record.fields.choiceSource",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentTool.record.fields.details.automaticOrigin",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentTool.record.fields.details.decidedAt",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentTool.record.fields.details.decidedBy",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentTool.record.fields.details.toolName",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentTool.record.fields.details.toolRemoved",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentTool.record.fields.details",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentTool.record.fields.enabled",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentTool.record.fields.id",
+      "detail": "indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentTool.record.fields.toolId",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "AgentTool.record.fields.version",
+      "detail": "required"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "AgentTool",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.agentId",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.details.actions.result",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.details.actions.resultNote",
+      "detail": "description,maxLength,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.details.actions.toolName",
+      "detail": "description,maxLength,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.details.actions",
+      "detail": "collection,description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.details.conversationLink",
+      "detail": "description,maxLength,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.details.cost",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.details.durationMs",
+      "detail": "description,min,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.details.tookOver",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.details",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.executionRef",
+      "detail": "description,indexed,maxLength,required,title,unique"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.id",
+      "detail": "indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.personId",
+      "detail": "description,indexed,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.startedAt",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ExecutionSummary.record.fields.version",
+      "detail": "required"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "ExecutionSummary",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "OrganizationUser.record.fields.details.agents.loginEmail",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "OrganizationUser.record.fields.details.agents",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "OrganizationUser.record.fields.details.base",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "OrganizationUser.record.fields.details.general",
+      "detail": "description,open,owner"
+    },
+    {
+      "code": "OBJECT_LEAF",
+      "path": "OrganizationUser.record.fields.details.general",
+      "detail": "no nested field map"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "OrganizationUser.record.fields.details.identification.name",
+      "detail": "description,indexed,maxLength,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "OrganizationUser.record.fields.details.identification.status",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "OrganizationUser.record.fields.details.identification.tags",
+      "detail": "collection,description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "OrganizationUser.record.fields.details.identification",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "OrganizationUser.record.fields.details.person",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "OrganizationUser.record.fields.details",
+      "detail": "description,required"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "OrganizationUser.record.fields.id",
+      "detail": "description,indexed,required"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "OrganizationUser.record.fields.version",
+      "detail": "description,required,writePrecondition"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "OrganizationUser",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "ROLE_STORAGE_MDM",
+      "path": "OrganizationUser",
+      "detail": "kind role has no storage target"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonalConduct.record.fields.agent",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonalConduct.record.fields.changeRequest",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonalConduct.record.fields.history.changedAt",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonalConduct.record.fields.history.changedBy",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonalConduct.record.fields.history.summary",
+      "detail": "description,maxLength,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonalConduct.record.fields.history",
+      "detail": "collection,description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonalConduct.record.fields.person",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonalConduct.record.fields.summary",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "EXTERNAL_STORAGE",
+      "path": "PersonalConduct",
+      "detail": "kind external has no storage target"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "PersonalConduct",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonToolRestriction.record.fields.details.markedAt",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonToolRestriction.record.fields.details.toolName",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonToolRestriction.record.fields.details.toolPath",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonToolRestriction.record.fields.details.toolRemoved",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonToolRestriction.record.fields.details",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonToolRestriction.record.fields.id",
+      "detail": "indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonToolRestriction.record.fields.personId",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonToolRestriction.record.fields.toolId",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "PersonToolRestriction.record.fields.version",
+      "detail": "required"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "PersonToolRestriction",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.details.addedAt",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.details.catalogItem",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.details.description",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.details.moduleTitle",
+      "detail": "description,maxLength,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.details.releaseLabel",
+      "detail": "description,maxLength,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.details.removedAt",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.details.subjectTitle",
+      "detail": "description,maxLength,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.details.usedByAgents",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.details",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.id",
+      "detail": "indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.moduleName",
+      "detail": "description,indexed,maxLength,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.name",
+      "detail": "description,indexed,maxLength,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.origin",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.status",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.subject",
+      "detail": "description,indexed,maxLength,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.toolKey",
+      "detail": "description,indexed,maxLength,required,title,unique"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Tool.record.fields.version",
+      "detail": "required"
+    },
+    {
+      "code": "TRANSITION_KEYS_OMITTED",
+      "path": "Tool.transitions.0",
+      "detail": "description"
+    },
+    {
+      "code": "TRANSITION_KEYS_OMITTED",
+      "path": "Tool.transitions.1",
+      "detail": "description"
+    },
+    {
+      "code": "INITIAL_STATE_FROM_ORDER",
+      "path": "Tool",
+      "detail": "available"
+    }
+  ],
+  "preserved": [],
+  "removed": [],
+  "emit": [
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "Agent",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+        ],
+        "data": {
+          "entityId": "Agent",
+          "storageTarget": "external",
+          "fields": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "definition",
+              "type": "text"
+            },
+            {
+              "name": "talksTo",
+              "type": "text"
+            },
+            {
+              "name": "onBehalfOf",
+              "type": "text"
+            },
+            {
+              "name": "isOn",
+              "type": "boolean"
+            },
+            {
+              "name": "responsible",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "limits",
+              "type": "object"
+            },
+            {
+              "name": "limits.label",
+              "type": "string"
+            },
+            {
+              "name": "limits.value",
+              "type": "string"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "agentNameUniqueAmongActive"
+          ],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/domainEntity/Agent",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_3_domain/entities/agent.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/OrganizationUser"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "AgentBehavior",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+        ],
+        "data": {
+          "entityId": "AgentBehavior",
+          "storageTarget": "external",
+          "fields": [
+            {
+              "name": "agent",
+              "type": "record",
+              "ref": "Agent"
+            },
+            {
+              "name": "currentBehavior",
+              "type": "text"
+            },
+            {
+              "name": "summary",
+              "type": "string"
+            },
+            {
+              "name": "changeRequest",
+              "type": "text"
+            },
+            {
+              "name": "changes",
+              "type": "object"
+            },
+            {
+              "name": "changes.changeRef",
+              "type": "string"
+            },
+            {
+              "name": "changes.changedBy",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "changes.changedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "changes.summary",
+              "type": "string"
+            },
+            {
+              "name": "changes.undone",
+              "type": "boolean"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "agentBehaviorChangedOnlyThroughCm",
+            "behaviorChangeByAdminOnly",
+            "undoRestoresPreviousBehavior"
+          ],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/domainEntity/AgentBehavior",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+            "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/Agent",
+            "102047/agents/domainEntity/OrganizationUser"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "AgentDraft",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+        ],
+        "data": {
+          "entityId": "AgentDraft",
+          "storageTarget": "external",
+          "fields": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "prompt",
+              "type": "text"
+            },
+            {
+              "name": "situation",
+              "type": "enum"
+            },
+            {
+              "name": "refusalReason",
+              "type": "text"
+            },
+            {
+              "name": "summary",
+              "type": "text"
+            },
+            {
+              "name": "audience",
+              "type": "text"
+            },
+            {
+              "name": "onBehalfOf",
+              "type": "text"
+            },
+            {
+              "name": "proposedBehavior",
+              "type": "text"
+            },
+            {
+              "name": "suggestedTools",
+              "type": "record",
+              "ref": "Tool"
+            },
+            {
+              "name": "requestedBy",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "requestedAt",
+              "type": "timestamp"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "agentDraftSuggestedToolsOnWhenReady",
+            "agentDraftNoticeIdempotent",
+            "agentNameUniqueAmongActive",
+            "adminChoiceNotOverriddenByAutomatic",
+            "draftDecisionOnlyWhenReady",
+            "refusalReasonShownWhenRefused"
+          ],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/domainEntity/AgentDraft",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_3_domain/entities/agentDraft.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+            "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/OrganizationUser",
+            "102047/agents/domainEntity/Tool"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "AgentSimulation",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+        ],
+        "data": {
+          "entityId": "AgentSimulation",
+          "storageTarget": "external",
+          "fields": [
+            {
+              "name": "agent",
+              "type": "record",
+              "ref": "Agent"
+            },
+            {
+              "name": "level",
+              "type": "enum"
+            },
+            {
+              "name": "subjectKind",
+              "type": "enum"
+            },
+            {
+              "name": "person",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "roleName",
+              "type": "string"
+            },
+            {
+              "name": "sentence",
+              "type": "text"
+            },
+            {
+              "name": "toolVerdicts",
+              "type": "object"
+            },
+            {
+              "name": "toolVerdicts.tool",
+              "type": "record",
+              "ref": "Tool"
+            },
+            {
+              "name": "toolVerdicts.moduleName",
+              "type": "string"
+            },
+            {
+              "name": "toolVerdicts.subjectName",
+              "type": "string"
+            },
+            {
+              "name": "toolVerdicts.actionName",
+              "type": "string"
+            },
+            {
+              "name": "toolVerdicts.canUse",
+              "type": "boolean"
+            },
+            {
+              "name": "toolVerdicts.reason",
+              "type": "enum"
+            },
+            {
+              "name": "toolVerdicts.reasonText",
+              "type": "string"
+            },
+            {
+              "name": "understanding",
+              "type": "object"
+            },
+            {
+              "name": "understanding.asksForAction",
+              "type": "boolean"
+            },
+            {
+              "name": "understanding.moduleName",
+              "type": "string"
+            },
+            {
+              "name": "understanding.subjectName",
+              "type": "string"
+            },
+            {
+              "name": "understanding.actions",
+              "type": "object"
+            },
+            {
+              "name": "understanding.actions.tool",
+              "type": "record",
+              "ref": "Tool"
+            },
+            {
+              "name": "understanding.actions.actionName",
+              "type": "string"
+            },
+            {
+              "name": "understanding.explanation",
+              "type": "text"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "simulationSavesNothing",
+            "memberSimulatesOnlyAsSelf",
+            "adminSimulatesByRole",
+            "onlyToolsOnAreConsidered",
+            "personRestrictionAppliesInRequest",
+            "noTechnicalIdsOnScreen"
+          ],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/domainEntity/AgentSimulation",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agents/layer_3_domain/entities/agentSimulation.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_3_domain/entities/agentSimulation.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+            "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+            "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/Agent",
+            "102047/agents/domainEntity/OrganizationUser",
+            "102047/agents/domainEntity/Tool"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "AgentTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+        ],
+        "data": {
+          "entityId": "AgentTool",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "agentId",
+              "type": "record",
+              "ref": "Agent"
+            },
+            {
+              "name": "toolId",
+              "type": "record",
+              "ref": "Tool"
+            },
+            {
+              "name": "enabled",
+              "type": "boolean"
+            },
+            {
+              "name": "choiceSource",
+              "type": "enum"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.decidedAt",
+              "type": "timestamp",
+              "derived": true
+            },
+            {
+              "name": "details.decidedBy",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "details.automaticOrigin",
+              "type": "enum"
+            },
+            {
+              "name": "details.toolName",
+              "type": "string",
+              "derived": true
+            },
+            {
+              "name": "details.toolRemoved",
+              "type": "boolean",
+              "derived": true
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "adminChoiceNeverOverridden",
+            "oneChoicePerAgentAndTool",
+            "onlyEnabledToolsSent",
+            "removedToolNeverSent",
+            "personRestrictionsExcludeTools",
+            "repeatedNoticeChangesNothing",
+            "draftSuggestedToolsTurnedOn",
+            "newToolsChosenFromDescription",
+            "describeAgentForPersonWritesNothing",
+            "markingWithoutChoiceCreatesAdminChoice"
+          ],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/domainEntity/AgentTool",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_3_domain/entities/agentTool.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+            "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+            "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/Agent",
+            "102047/agents/domainEntity/OrganizationUser",
+            "102047/agents/domainEntity/Tool"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "ExecutionSummary",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+        ],
+        "data": {
+          "entityId": "ExecutionSummary",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "agentId",
+              "type": "record",
+              "ref": "Agent"
+            },
+            {
+              "name": "personId",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "executionRef",
+              "type": "string"
+            },
+            {
+              "name": "startedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.durationMs",
+              "type": "integer"
+            },
+            {
+              "name": "details.cost",
+              "type": "money"
+            },
+            {
+              "name": "details.tookOver",
+              "type": "boolean"
+            },
+            {
+              "name": "details.conversationLink",
+              "type": "string"
+            },
+            {
+              "name": "details.actions",
+              "type": "object"
+            },
+            {
+              "name": "details.actions.toolName",
+              "type": "string"
+            },
+            {
+              "name": "details.actions.result",
+              "type": "enum"
+            },
+            {
+              "name": "details.actions.resultNote",
+              "type": "text"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "executionRecordedOnce",
+            "onlyInboundWritesExecution",
+            "executionNeverEdited",
+            "activityNewestFirst"
+          ],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/domainEntity/ExecutionSummary",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agents/layer_3_domain/entities/executionSummary.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_3_domain/entities/executionSummary.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+            "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/Agent",
+            "102047/agents/domainEntity/OrganizationUser"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "OrganizationUser",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "OrganizationUser",
+          "storageTarget": "mdm",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.identification",
+              "type": "object"
+            },
+            {
+              "name": "details.identification.name",
+              "type": "string"
+            },
+            {
+              "name": "details.identification.status",
+              "type": "enum",
+              "derived": true
+            },
+            {
+              "name": "details.identification.tags",
+              "type": "string",
+              "derived": true
+            },
+            {
+              "name": "details.base",
+              "type": "object"
+            },
+            {
+              "name": "details.person",
+              "type": "object"
+            },
+            {
+              "name": "details.general",
+              "type": "object"
+            },
+            {
+              "name": "details.agents",
+              "type": "object"
+            },
+            {
+              "name": "details.agents.loginEmail",
+              "type": "string",
+              "derived": true
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "onlyActiveUsersRestricted"
+          ],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/domainEntity/OrganizationUser",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_3_domain/entities/organizationUser.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [],
+          "dependsOn": [],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "PersonalConduct",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+        ],
+        "data": {
+          "entityId": "PersonalConduct",
+          "storageTarget": "external",
+          "fields": [
+            {
+              "name": "agent",
+              "type": "record",
+              "ref": "Agent"
+            },
+            {
+              "name": "person",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "summary",
+              "type": "string"
+            },
+            {
+              "name": "changeRequest",
+              "type": "text"
+            },
+            {
+              "name": "history",
+              "type": "object"
+            },
+            {
+              "name": "history.changedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "history.changedBy",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "history.summary",
+              "type": "string"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "ownConductOnly",
+            "conductOnlyForAgentActingOnBehalf"
+          ],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/domainEntity/PersonalConduct",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agents/layer_3_domain/entities/personalConduct.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_3_domain/entities/personalConduct.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+            "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/Agent",
+            "102047/agents/domainEntity/OrganizationUser"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "PersonToolRestriction",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+        ],
+        "data": {
+          "entityId": "PersonToolRestriction",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "personId",
+              "type": "record",
+              "ref": "OrganizationUser"
+            },
+            {
+              "name": "toolId",
+              "type": "record",
+              "ref": "Tool"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.markedAt",
+              "type": "timestamp",
+              "derived": true
+            },
+            {
+              "name": "details.toolName",
+              "type": "string",
+              "derived": true
+            },
+            {
+              "name": "details.toolPath",
+              "type": "string",
+              "derived": true
+            },
+            {
+              "name": "details.toolRemoved",
+              "type": "boolean",
+              "derived": true
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "restrictionUniquePerPersonTool",
+            "restrictionAppliesThroughAnyAgent",
+            "onlyCompanyAdminRestrictsTools",
+            "removedToolRestrictionKept",
+            "noTechnicalIdsOnScreen"
+          ],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/domainEntity/PersonToolRestriction",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+            "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/OrganizationUser",
+            "102047/agents/domainEntity/Tool"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "Tool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "Tool",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "toolKey",
+              "type": "string"
+            },
+            {
+              "name": "origin",
+              "type": "enum"
+            },
+            {
+              "name": "moduleName",
+              "type": "string"
+            },
+            {
+              "name": "subject",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "status",
+              "type": "enum"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.moduleTitle",
+              "type": "string"
+            },
+            {
+              "name": "details.subjectTitle",
+              "type": "string"
+            },
+            {
+              "name": "details.description",
+              "type": "text"
+            },
+            {
+              "name": "details.releaseLabel",
+              "type": "string"
+            },
+            {
+              "name": "details.addedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "details.removedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "details.usedByAgents",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "details.catalogItem",
+              "type": "json"
+            }
+          ],
+          "lifecycle": {
+            "states": [
+              {
+                "state": "available",
+                "reachedBy": "command"
+              },
+              {
+                "state": "removed",
+                "reachedBy": "command"
+              }
+            ],
+            "transitions": [
+              {
+                "transitionId": "removeFromRelease",
+                "from": [
+                  "available"
+                ],
+                "to": "removed",
+                "by": [],
+                "ruleRefs": []
+              },
+              {
+                "transitionId": "restoreToRelease",
+                "from": [
+                  "removed"
+                ],
+                "to": "available",
+                "by": [],
+                "ruleRefs": []
+              }
+            ]
+          },
+          "invariants": [
+            "toolKeyUnique",
+            "toolNeverDeleted",
+            "catalogRebuiltOnRelease",
+            "removedToolNotSent",
+            "noTechnicalIdsOnScreen",
+            "toolKeepsWholeCatalogItem",
+            "agentToolsShowWholeCatalog"
+          ],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/domainEntity/Tool",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_3_domain/entities/tool.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [],
+          "dependsOn": [],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    }
+  ]
+}

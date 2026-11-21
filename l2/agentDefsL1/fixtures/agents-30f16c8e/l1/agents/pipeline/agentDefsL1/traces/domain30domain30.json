@@ -1,0 +1,159 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agents",
+  "step": "domain30",
+  "unitId": "domain30",
+  "runId": "sha256:c47a25f916248370fc352997fb725ee686de120a05622b70aecefc15a9735941",
+  "snapshotHash": "sha256:c47a25f916248370fc352997fb725ee686de120a05622b70aecefc15a9735941",
+  "draftHash": "sha256:6cd2565f28e242e695357acda40b6d2a6f4d2c1980991f2135d9d6adaeb5866b",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agents/layer_3_domain/entities/agent.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/agentDraft.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/agentSimulation.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/agentTool.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/executionSummary.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/organizationUser.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/personalConduct.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/tool.ts",
+    "l1/agents/layer_3_domain/entities/agent.ts",
+    "l1/agents/layer_3_domain/entities/agentBehavior.ts",
+    "l1/agents/layer_3_domain/entities/agentDraft.ts",
+    "l1/agents/layer_3_domain/entities/agentSimulation.ts",
+    "l1/agents/layer_3_domain/entities/agentTool.ts",
+    "l1/agents/layer_3_domain/entities/executionSummary.ts",
+    "l1/agents/layer_3_domain/entities/organizationUser.ts",
+    "l1/agents/layer_3_domain/entities/personToolRestriction.ts",
+    "l1/agents/layer_3_domain/entities/personalConduct.ts",
+    "l1/agents/layer_3_domain/entities/tool.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agent.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:10ef1ca527f94ec3ca7aad0adb2943f4a8a40874d707fe43adca62447133e7eb",
+      "desiredHash": "sha256:10ef1ca527f94ec3ca7aad0adb2943f4a8a40874d707fe43adca62447133e7eb",
+      "written": "sha256:10ef1ca527f94ec3ca7aad0adb2943f4a8a40874d707fe43adca62447133e7eb",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_3_domain/entities/agent.ts",
+        "l1/agents/layer_3_domain/entities/agent.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agentBehavior.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:9ab4f6f41476f95332cfd1cabbe329d4ab4926565954d59a415949ae986c36cf",
+      "desiredHash": "sha256:9ab4f6f41476f95332cfd1cabbe329d4ab4926565954d59a415949ae986c36cf",
+      "written": "sha256:9ab4f6f41476f95332cfd1cabbe329d4ab4926565954d59a415949ae986c36cf",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.ts",
+        "l1/agents/layer_3_domain/entities/agentBehavior.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:e75ee9618e40621c95b8549e2a320386f609ee923b76a26121970f920e003b43",
+      "desiredHash": "sha256:e75ee9618e40621c95b8549e2a320386f609ee923b76a26121970f920e003b43",
+      "written": "sha256:e75ee9618e40621c95b8549e2a320386f609ee923b76a26121970f920e003b43",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_3_domain/entities/agentDraft.ts",
+        "l1/agents/layer_3_domain/entities/agentDraft.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agentSimulation.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:27d74324cb1c8f845ee05be05766492bc5c979180bda7f0a60f144c53f0fd2db",
+      "desiredHash": "sha256:27d74324cb1c8f845ee05be05766492bc5c979180bda7f0a60f144c53f0fd2db",
+      "written": "sha256:27d74324cb1c8f845ee05be05766492bc5c979180bda7f0a60f144c53f0fd2db",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_3_domain/entities/agentSimulation.ts",
+        "l1/agents/layer_3_domain/entities/agentSimulation.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:4ec65b2ebc7cf0d24e1ed19f2d90469e7d0b3adacc2a16af7312a2132f39f035",
+      "desiredHash": "sha256:4ec65b2ebc7cf0d24e1ed19f2d90469e7d0b3adacc2a16af7312a2132f39f035",
+      "written": "sha256:4ec65b2ebc7cf0d24e1ed19f2d90469e7d0b3adacc2a16af7312a2132f39f035",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_3_domain/entities/agentTool.ts",
+        "l1/agents/layer_3_domain/entities/agentTool.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/executionSummary.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:f8b6f72b5c7ba233edc07e71d7f7d3c0a10cc9614730c7651af4aa3b9cc6b974",
+      "desiredHash": "sha256:f8b6f72b5c7ba233edc07e71d7f7d3c0a10cc9614730c7651af4aa3b9cc6b974",
+      "written": "sha256:f8b6f72b5c7ba233edc07e71d7f7d3c0a10cc9614730c7651af4aa3b9cc6b974",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_3_domain/entities/executionSummary.ts",
+        "l1/agents/layer_3_domain/entities/executionSummary.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:a85426aa12a639fed47d05c0e528ffb32c4805334db29f7101c461c57b357155",
+      "desiredHash": "sha256:a85426aa12a639fed47d05c0e528ffb32c4805334db29f7101c461c57b357155",
+      "written": "sha256:a85426aa12a639fed47d05c0e528ffb32c4805334db29f7101c461c57b357155",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_3_domain/entities/organizationUser.ts",
+        "l1/agents/layer_3_domain/entities/organizationUser.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/personalConduct.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:4c022eab7669a9d3a74e0adadef39c11d27dcf7bc5733a84be4cf36c333081ac",
+      "desiredHash": "sha256:4c022eab7669a9d3a74e0adadef39c11d27dcf7bc5733a84be4cf36c333081ac",
+      "written": "sha256:4c022eab7669a9d3a74e0adadef39c11d27dcf7bc5733a84be4cf36c333081ac",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_3_domain/entities/personalConduct.ts",
+        "l1/agents/layer_3_domain/entities/personalConduct.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:730a39ffa408236a3a51e7a4a30b2e9baddf190b538190e8faac8efc8a88ef5d",
+      "desiredHash": "sha256:730a39ffa408236a3a51e7a4a30b2e9baddf190b538190e8faac8efc8a88ef5d",
+      "written": "sha256:730a39ffa408236a3a51e7a4a30b2e9baddf190b538190e8faac8efc8a88ef5d",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.ts",
+        "l1/agents/layer_3_domain/entities/personToolRestriction.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_3_domain/entities/tool.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:caef4834f93531f1020e6a34ccc671cbc2e53299e1730ea8d996ee8291960d04",
+      "desiredHash": "sha256:caef4834f93531f1020e6a34ccc671cbc2e53299e1730ea8d996ee8291960d04",
+      "written": "sha256:caef4834f93531f1020e6a34ccc671cbc2e53299e1730ea8d996ee8291960d04",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_3_domain/entities/tool.ts",
+        "l1/agents/layer_3_domain/entities/tool.ts"
+      ]
+    }
+  ],
+  "issues": [],
+  "sourceKey": "sha256:4feef8b01fb2884739c48e606af0f8453042cbe041f4d1057972937858843fc8"
+}

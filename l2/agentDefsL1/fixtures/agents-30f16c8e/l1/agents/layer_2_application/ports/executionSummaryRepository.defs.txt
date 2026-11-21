@@ -1,0 +1,34 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryPort",
+  "artifactId": "ExecutionSummaryRepository",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/executionSummary.defs.ts"
+  ],
+  "data": {
+    "entityId": "ExecutionSummary",
+    "interfaceName": "ExecutionSummaryRepository",
+    "methods": [
+      {
+        "name": "create",
+        "params": [
+          "ExecutionSummary"
+        ],
+        "returns": "ExecutionSummary"
+      },
+      {
+        "name": "list",
+        "params": [
+          "ExecutionSummaryFilter"
+        ],
+        "returns": "ExecutionSummary[]"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

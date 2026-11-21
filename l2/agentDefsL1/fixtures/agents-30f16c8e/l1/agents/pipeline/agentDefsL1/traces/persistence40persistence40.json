@@ -1,0 +1,187 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agents",
+  "step": "persistence40",
+  "unitId": "persistence40",
+  "runId": "sha256:c47a25f916248370fc352997fb725ee686de120a05622b70aecefc15a9735941",
+  "snapshotHash": "sha256:c47a25f916248370fc352997fb725ee686de120a05622b70aecefc15a9735941",
+  "draftHash": "sha256:9f1355fd6d43d45ba5908c4c72b735b4367f78a1567bf2dc9cf5e9353101c732",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/agentTool.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/executionSummary.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/personToolRestriction.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/tool.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.ts",
+    "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.ts",
+    "_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.ts",
+    "_102047_/l1/agents/layer_2_application/ports/personToolRestrictionRepository.ts",
+    "_102047_/l1/agents/layer_2_application/ports/toolRepository.ts",
+    "l1/agents/layer_1_external/adapters/persistence/agentTool.ts",
+    "l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.ts",
+    "l1/agents/layer_1_external/adapters/persistence/executionSummary.ts",
+    "l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.ts",
+    "l1/agents/layer_1_external/adapters/persistence/personToolRestriction.ts",
+    "l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.ts",
+    "l1/agents/layer_1_external/adapters/persistence/tool.ts",
+    "l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.ts",
+    "l1/agents/layer_2_application/ports/agentToolRepository.ts",
+    "l1/agents/layer_2_application/ports/executionSummaryRepository.ts",
+    "l1/agents/layer_2_application/ports/personToolRestrictionRepository.ts",
+    "l1/agents/layer_2_application/ports/toolRepository.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentTool.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:caa44a100101b9fd22c733567c86d995afe5f3e49b6e7d1713955ba21145973e",
+      "desiredHash": "sha256:caa44a100101b9fd22c733567c86d995afe5f3e49b6e7d1713955ba21145973e",
+      "written": "sha256:caa44a100101b9fd22c733567c86d995afe5f3e49b6e7d1713955ba21145973e",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/persistence/agentTool.ts",
+        "l1/agents/layer_1_external/adapters/persistence/agentTool.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:9591cca7edf01aaa2b166216520fe0762e25317bc42ece0414da05d5ad1e306a",
+      "desiredHash": "sha256:9591cca7edf01aaa2b166216520fe0762e25317bc42ece0414da05d5ad1e306a",
+      "written": "sha256:9591cca7edf01aaa2b166216520fe0762e25317bc42ece0414da05d5ad1e306a",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.ts",
+        "l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/executionSummary.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:6544739725b37493b15cdd051af8f77419f0e7840bd3ec6c402becf6420c0f5f",
+      "desiredHash": "sha256:6544739725b37493b15cdd051af8f77419f0e7840bd3ec6c402becf6420c0f5f",
+      "written": "sha256:6544739725b37493b15cdd051af8f77419f0e7840bd3ec6c402becf6420c0f5f",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/persistence/executionSummary.ts",
+        "l1/agents/layer_1_external/adapters/persistence/executionSummary.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:fb87e72d912ab3b6ce1ee287b0c8f5b86bb8427575b3183ba150a2668e06e0c9",
+      "desiredHash": "sha256:fb87e72d912ab3b6ce1ee287b0c8f5b86bb8427575b3183ba150a2668e06e0c9",
+      "written": "sha256:fb87e72d912ab3b6ce1ee287b0c8f5b86bb8427575b3183ba150a2668e06e0c9",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.ts",
+        "l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/personToolRestriction.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:7a0344f0ce64d8afabf082fa013627c101b5144feb0712aa9f6d1e190d30f396",
+      "desiredHash": "sha256:7a0344f0ce64d8afabf082fa013627c101b5144feb0712aa9f6d1e190d30f396",
+      "written": "sha256:7a0344f0ce64d8afabf082fa013627c101b5144feb0712aa9f6d1e190d30f396",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/persistence/personToolRestriction.ts",
+        "l1/agents/layer_1_external/adapters/persistence/personToolRestriction.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:69873850d6c47d4616125eda2337813630966968452f1005eddf10baa25bf468",
+      "desiredHash": "sha256:69873850d6c47d4616125eda2337813630966968452f1005eddf10baa25bf468",
+      "written": "sha256:69873850d6c47d4616125eda2337813630966968452f1005eddf10baa25bf468",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.ts",
+        "l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/tool.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:8539e9e94bd93ed836bcf982cdbd0f051dbe22fd593adbe4ce5e44718a09e11d",
+      "desiredHash": "sha256:8539e9e94bd93ed836bcf982cdbd0f051dbe22fd593adbe4ce5e44718a09e11d",
+      "written": "sha256:8539e9e94bd93ed836bcf982cdbd0f051dbe22fd593adbe4ce5e44718a09e11d",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/persistence/tool.ts",
+        "l1/agents/layer_1_external/adapters/persistence/tool.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:de89c312d4d10f91859bc092cce1e45d55b89af8663e5cbd7fe0186b28691932",
+      "desiredHash": "sha256:de89c312d4d10f91859bc092cce1e45d55b89af8663e5cbd7fe0186b28691932",
+      "written": "sha256:de89c312d4d10f91859bc092cce1e45d55b89af8663e5cbd7fe0186b28691932",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.ts",
+        "l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:1907436579fa85ef1fe0421bbe3af64f8d884007aad7680673a53defdac4f2db",
+      "desiredHash": "sha256:1907436579fa85ef1fe0421bbe3af64f8d884007aad7680673a53defdac4f2db",
+      "written": "sha256:1907436579fa85ef1fe0421bbe3af64f8d884007aad7680673a53defdac4f2db",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.ts",
+        "l1/agents/layer_2_application/ports/agentToolRepository.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:1d058a119593ec5b5c7b277008aa5af2a6f712840b981f269803216862f8c271",
+      "desiredHash": "sha256:1d058a119593ec5b5c7b277008aa5af2a6f712840b981f269803216862f8c271",
+      "written": "sha256:1d058a119593ec5b5c7b277008aa5af2a6f712840b981f269803216862f8c271",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.ts",
+        "l1/agents/layer_2_application/ports/executionSummaryRepository.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:47f01c264f3825a5084a7e04a467f17aa981f4f22c6b5478ce8a88c886f5b3bc",
+      "desiredHash": "sha256:47f01c264f3825a5084a7e04a467f17aa981f4f22c6b5478ce8a88c886f5b3bc",
+      "written": "sha256:47f01c264f3825a5084a7e04a467f17aa981f4f22c6b5478ce8a88c886f5b3bc",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/ports/personToolRestrictionRepository.ts",
+        "l1/agents/layer_2_application/ports/personToolRestrictionRepository.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:a49e27af42f523b512292532f29e24ee24b767e0978b0007681bf7fd7454a923",
+      "desiredHash": "sha256:a49e27af42f523b512292532f29e24ee24b767e0978b0007681bf7fd7454a923",
+      "written": "sha256:a49e27af42f523b512292532f29e24ee24b767e0978b0007681bf7fd7454a923",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/ports/toolRepository.ts",
+        "l1/agents/layer_2_application/ports/toolRepository.ts"
+      ]
+    }
+  ],
+  "issues": [],
+  "sourceKey": "sha256:4feef8b01fb2884739c48e606af0f8453042cbe041f4d1057972937858843fc8"
+}

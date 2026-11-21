@@ -1,0 +1,43 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/registerRepositories.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryRegistration",
+  "artifactId": "registerRepositories",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/adapters/integration/outbound.defs.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.defs.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.defs.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.defs.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.defs.ts"
+  ],
+  "data": {
+    "registrationId": "registerRepositories",
+    "adapters": [
+      {
+        "portId": "AgentToolRepository",
+        "adapterArtifactId": "AgentToolRepository"
+      },
+      {
+        "portId": "CmGateway",
+        "adapterArtifactId": "outbound"
+      },
+      {
+        "portId": "ExecutionSummaryRepository",
+        "adapterArtifactId": "ExecutionSummaryRepository"
+      },
+      {
+        "portId": "PersonToolRestrictionRepository",
+        "adapterArtifactId": "PersonToolRestrictionRepository"
+      },
+      {
+        "portId": "ToolRepository",
+        "adapterArtifactId": "ToolRepository"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

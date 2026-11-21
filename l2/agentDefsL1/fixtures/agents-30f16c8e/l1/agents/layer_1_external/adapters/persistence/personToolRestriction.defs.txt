@@ -1,0 +1,52 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/personToolRestriction.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "table",
+  "artifactId": "personToolRestriction",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts"
+  ],
+  "data": {
+    "tableId": "personToolRestriction",
+    "entityId": "PersonToolRestriction",
+    "physicalName": "agents_persontoolrestriction",
+    "primaryKey": [
+      "id"
+    ],
+    "uniqueKeys": [
+      [
+        "personId",
+        "toolId"
+      ]
+    ],
+    "indexes": [
+      {
+        "name": "agents_persontoolrestriction_personId_toolId",
+        "columns": [
+          "personId",
+          "toolId"
+        ],
+        "unique": true
+      },
+      {
+        "name": "agents_persontoolrestriction_personId",
+        "columns": [
+          "personId"
+        ],
+        "unique": false
+      },
+      {
+        "name": "agents_persontoolrestriction_toolId",
+        "columns": [
+          "toolId"
+        ],
+        "unique": false
+      }
+    ]
+  }
+} as const;
+
+export default definition;

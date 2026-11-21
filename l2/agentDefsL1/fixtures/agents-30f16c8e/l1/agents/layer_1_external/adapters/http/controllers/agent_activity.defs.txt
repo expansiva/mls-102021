@@ -1,0 +1,45 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_activity.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "agent_activity",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agent_activity.defs.ts",
+    "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "agent_activity",
+    "handlers": [
+      {
+        "route": "agents.agent_activity.getAgentActivity",
+        "kind": "query",
+        "grantIds": [
+          "adminManageAgents",
+          "memberSeeAgents",
+          "adminReadActivity",
+          "memberReadActivity"
+        ],
+        "serviceFunction": "agents.agent_activity.getAgentActivity",
+        "contractPath": "l2/agents/web/contracts/agent_activity.defs.ts",
+        "contractInterface": "Agent_activityContracts"
+      },
+      {
+        "route": "agents.agent_activity.listAgentExecutions",
+        "kind": "query",
+        "grantIds": [
+          "adminReadActivity",
+          "memberReadActivity"
+        ],
+        "serviceFunction": "agents.agent_activity.listAgentExecutions",
+        "contractPath": "l2/agents/web/contracts/agent_activity.defs.ts",
+        "contractInterface": "Agent_activityContracts"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

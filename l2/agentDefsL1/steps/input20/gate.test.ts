@@ -13,7 +13,7 @@ import {
   type D1InputArtifacts,
   type D1InputSnapshot,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
+import { buildD1InputSnapshot, recomposeOrConflict } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import { parseD1Source, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
@@ -800,4 +800,63 @@ void test('the snapshot carries the serve catalog digest, so a catalog change ch
   changed.sources = changed.sources.map(source => source.path === CATALOG_PATH ? { ...source, sha256: 'sha256:changed' } : source);
   const second = build(changed);
   assert.notEqual(second.sources.find(source => source.path === CATALOG_PATH)?.sha256, first.sources.find(source => source.path === CATALOG_PATH)?.sha256);
+});
+
+/** d1_260: the plan removed `listProduto` ("no page needs it") and a route of the contract needs it. */
+function removedButRead(): { snapshot: D1InputSnapshot; artifacts: D1InputArtifacts } {
+  const artifacts = clone(loadHead());
+  for (const file of [artifacts.backend, artifacts.effort] as Array<{ usecases: Array<Record<string, unknown>>; endpoints?: Array<Record<string, unknown>>; removed: Array<Record<string, unknown>>; totals?: { usecases: Record<string, number> } }>) {
+    const row = file.usecases.find(item => item.usecaseId === 'listProduto')!;
+    file.usecases = file.usecases.filter(item => item.usecaseId !== 'listProduto');
+    if (file.endpoints) file.endpoints = file.endpoints.filter(item => item.usecaseRef !== 'listProduto');
+    if (file.totals) file.totals.usecases[String(row.status)] -= 1;
+    file.removed.push({ kind: 'usecase', id: 'listProduto', status: 'toRemove', reason: 'exists in l1, no page needs it', tableRefs: [], noTable: 'none' });
+  }
+  return { snapshot: build(artifacts), artifacts };
+}
+
+void test('d1_260: a usecase the plan removed that a route reads is taken for the route and leaves removed', () => {
+  const { snapshot } = removedButRead();
+  const codesOf = snapshot.problems.filter(problem => problem.severity === 'error').map(problem => problem.code);
+  assert.equal(codesOf.includes('REQUEST_USECASE_UNPLANNED'), false, codesOf.join(','));
+  assert.equal(codesOf.includes('REMOVE_STILL_REFERENCED'), false, codesOf.join(','));
+  assert.ok(snapshot.selection.usecases.some(usecase => usecase.usecaseId === 'listProduto'));
+  assert.ok(fileOf(snapshot, 'usecase', 'listProduto'));
+  assert.equal(snapshot.removed.some(item => item.id === 'listProduto'), false);
+  const review = snapshot.problems.find(problem => problem.code === 'REMOVED_USECASE_READ_BY_ROUTE');
+  assert.ok(review);
+  assert.match(review.message, /Usecase listProduto was removed by the plan \(no page needs it\) and controleEstoque\./u);
+});
+
+void test('d1_260: what no route reads stays removed, and a usecase both planned and removed is still an error', () => {
+  const artifacts = clone(loadHead());
+  const backend = artifacts.backend as { removed: Array<Record<string, unknown>> };
+  const effort = artifacts.effort as { removed: Array<Record<string, unknown>> };
+  for (const file of [backend, effort]) file.removed.push({ kind: 'usecase', id: 'nobodyReadsThis', status: 'toRemove', reason: 'exists in l1, no page needs it', tableRefs: [], noTable: 'none' });
+  const alone = build(artifacts);
+  assert.equal(alone.removed.some(item => item.id === 'nobodyReadsThis'), true);
+  assert.equal(alone.problems.some(problem => problem.code === 'REMOVED_USECASE_READ_BY_ROUTE'), false);
+  // The same id planned and removed: the plan contradicts itself, which no route can settle.
+  for (const file of [backend, effort]) file.removed.push({ kind: 'usecase', id: 'listProduto', status: 'toRemove', reason: 'x', tableRefs: [], noTable: 'none' });
+  const both = build(artifacts);
+  assert.equal(both.problems.some(problem => problem.code === 'REMOVE_STILL_REFERENCED'), true);
+});
+
+void test('d1_260: a def rewritten after the snapshot (the receipt names the disk) is recomposed; an edited one is not', () => {
+  const path = 'l1/controleEstoque/layer_1_external/adapters/http/controllers/produtos.defs.ts';
+  const previous = { files: [{ defPath: path, contentHash: 'sha256:old' }], removed: [] } as unknown as D1InputSnapshot;
+  const receipts = (written: string) => ({ hash: new Map([[path, written]]), conflict: new Map<string, string[]>() }) as never;
+  const run = (disk: string, written: string, snapshot: D1InputSnapshot | null = previous) => {
+    const problems: Array<{ code: string }> = [];
+    const action = recomposeOrConflict(path, new Map(disk ? [[path, disk]] : []), snapshot, receipts(written), problems as never, 'controller:produtos');
+    return { action, codes: problems.map(item => item.code) };
+  };
+  // The inventory is current: as before.
+  assert.deepEqual(run('sha256:old', 'sha256:old'), { action: 'recompose', codes: [] });
+  // The inventory is older than the receipt and the disk is what the receipt names: the D1 wrote it.
+  assert.deepEqual(run('sha256:new', 'sha256:new'), { action: 'recompose', codes: [] });
+  // The disk is neither the inventory nor the receipt: someone edited the def.
+  assert.deepEqual(run('sha256:hand', 'sha256:new'), { action: 'conflict', codes: ['EXISTING_UNRESOLVED'] });
+  // No file yet: create.
+  assert.deepEqual(run('', '', null), { action: 'create', codes: [] });
 });

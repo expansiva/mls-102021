@@ -1,0 +1,84 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/http/controllers/draft_review.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "draft_review",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/agents/layer_2_application/requests/draft_review.defs.ts",
+    "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "draft_review",
+    "handlers": [
+      {
+        "route": "agents.draft_review.activateDraft",
+        "kind": "command",
+        "grantIds": [
+          "adminManageAgents"
+        ],
+        "serviceFunction": "agents.draft_review.activateDraft",
+        "contractPath": "l2/agents/web/contracts/draft_review.defs.ts",
+        "contractInterface": "Draft_reviewContracts"
+      },
+      {
+        "route": "agents.draft_review.discardDraft",
+        "kind": "command",
+        "grantIds": [
+          "adminManageAgents"
+        ],
+        "serviceFunction": "agents.draft_review.discardDraft",
+        "contractPath": "l2/agents/web/contracts/draft_review.defs.ts",
+        "contractInterface": "Draft_reviewContracts"
+      },
+      {
+        "route": "agents.draft_review.getDraftReview",
+        "kind": "query",
+        "grantIds": [
+          "adminManageAgents",
+          "adminManageTools"
+        ],
+        "serviceFunction": "agents.draft_review.getDraftReview",
+        "contractPath": "l2/agents/web/contracts/draft_review.defs.ts",
+        "contractInterface": "Draft_reviewContracts"
+      },
+      {
+        "route": "agents.draft_review.saveDraftTools",
+        "kind": "command",
+        "grantIds": [
+          "adminManageTools"
+        ],
+        "serviceFunction": "agents.draft_review.saveDraftTools",
+        "contractPath": "l2/agents/web/contracts/draft_review.defs.ts",
+        "contractInterface": "Draft_reviewContracts"
+      },
+      {
+        "route": "agents.draft_review.searchSimulationPeople",
+        "kind": "query",
+        "grantIds": [
+          "adminManageAgents",
+          "adminManageTools",
+          "adminChoosePeople"
+        ],
+        "serviceFunction": "agents.draft_review.searchSimulationPeople",
+        "contractPath": "l2/agents/web/contracts/draft_review.defs.ts",
+        "contractInterface": "Draft_reviewContracts"
+      },
+      {
+        "route": "agents.draft_review.simulateDraft",
+        "kind": "query",
+        "grantIds": [
+          "adminManageAgents"
+        ],
+        "serviceFunction": "agents.draft_review.simulateDraft",
+        "contractPath": "l2/agents/web/contracts/draft_review.defs.ts",
+        "contractInterface": "Draft_reviewContracts"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

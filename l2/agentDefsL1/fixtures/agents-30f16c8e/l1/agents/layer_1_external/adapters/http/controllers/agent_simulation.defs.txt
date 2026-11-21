@@ -1,0 +1,70 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_simulation.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "agent_simulation",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agent_simulation.defs.ts",
+    "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "agent_simulation",
+    "handlers": [
+      {
+        "route": "agents.agent_simulation.findPeopleToSimulate",
+        "kind": "query",
+        "grantIds": [
+          "adminChoosePeople",
+          "memberSeePeopleNames"
+        ],
+        "serviceFunction": "agents.agent_simulation.findPeopleToSimulate",
+        "contractPath": "l2/agents/web/contracts/agent_simulation.defs.ts",
+        "contractInterface": "Agent_simulationContracts"
+      },
+      {
+        "route": "agents.agent_simulation.getSimulationPage",
+        "kind": "query",
+        "grantIds": [
+          "adminManageAgents",
+          "memberSeeAgents",
+          "memberSimulateAsMyself",
+          "adminChoosePeople",
+          "memberSeePeopleNames"
+        ],
+        "serviceFunction": "agents.agent_simulation.getSimulationPage",
+        "contractPath": "l2/agents/web/contracts/agent_simulation.defs.ts",
+        "contractInterface": "Agent_simulationContracts"
+      },
+      {
+        "route": "agents.agent_simulation.simulateWhatItCan",
+        "kind": "query",
+        "grantIds": [
+          "adminManageAgents",
+          "memberSimulateAsMyself",
+          "adminChoosePeople",
+          "memberSeePeopleNames"
+        ],
+        "serviceFunction": "agents.agent_simulation.simulateWhatItCan",
+        "contractPath": "l2/agents/web/contracts/agent_simulation.defs.ts",
+        "contractInterface": "Agent_simulationContracts"
+      },
+      {
+        "route": "agents.agent_simulation.simulateWhatItUnderstands",
+        "kind": "query",
+        "grantIds": [
+          "adminManageAgents",
+          "memberSimulateAsMyself"
+        ],
+        "serviceFunction": "agents.agent_simulation.simulateWhatItUnderstands",
+        "contractPath": "l2/agents/web/contracts/agent_simulation.defs.ts",
+        "contractInterface": "Agent_simulationContracts"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

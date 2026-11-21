@@ -1,0 +1,106 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/my_conduct.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "my_conduct",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/usecases/updatePersonalConduct.defs.ts"
+  ],
+  "data": {
+    "pageId": "my_conduct",
+    "requests": [
+      {
+        "route": "agents.my_conduct.getMyConduct",
+        "kind": "qry",
+        "uses": [],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "unresolved",
+            "path": "conduct",
+            "reason": "Interface MyConduct: fields summary, version are not all fields of one entity or of one entity linked to it by an N:1 relationship."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "ownConductOnly",
+          "conductOnlyForAgentActingOnBehalf"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads the signed-in person’s current conduct with the chosen agent, together with the agent’s @name and on whose behalf it acts.\nInput: agentId: the agent chosen in the URL.\nProcessing: Reads the agent from the cm (name, onBehalfOf) and the personal conduct of the logged-in person with that agent from the cm, with its current version. ownConductOnly: only the conduct of the person signed in is read, never another person’s. conductOnlyForAgentActingOnBehalf: if the agent does not act on this person’s behalf, the query refuses with a clear error.\nOutput: The personal conduct of the signed-in person with that agent: the agent’s name and onBehalfOf, the current conduct summary in plain language and its version.",
+          "purpose": "Loads the signed-in person’s current conduct with the chosen agent, together with the agent’s @name and on whose behalf it acts.",
+          "input": "agentId: the agent chosen in the URL.",
+          "processing": "Reads the agent from the cm (name, onBehalfOf) and the personal conduct of the logged-in person with that agent from the cm, with its current version. ownConductOnly: only the conduct of the person signed in is read, never another person’s. conductOnlyForAgentActingOnBehalf: if the agent does not act on this person’s behalf, the query refuses with a clear error.",
+          "output": "The personal conduct of the signed-in person with that agent: the agent’s name and onBehalfOf, the current conduct summary in plain language and its version."
+        }
+      },
+      {
+        "route": "agents.my_conduct.listMyConductHistory",
+        "kind": "qry",
+        "uses": [],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "unresolved",
+            "path": "history.changedAt",
+            "reason": "Interface ConductHistoryEntry: field changedAt is not a field of any entity."
+          },
+          {
+            "kind": "unresolved",
+            "path": "history.changedBy",
+            "reason": "Interface ConductHistoryEntry: field changedBy is not a field of any entity."
+          },
+          {
+            "kind": "unresolved",
+            "path": "history",
+            "reason": "Interface ConductHistoryEntry: fields summary are fields of AgentBehavior, AgentDraft, PersonalConduct; the types do not say which."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "ownConductOnly",
+          "conductOnlyForAgentActingOnBehalf"
+        ],
+        "doc": {
+          "raw": "Purpose: Lists the signed-in person’s own earlier changes to their conduct with the chosen agent, newest first, page by page.\nInput: agentId: the agent chosen in the URL. page and pageSize: the page of history requested.\nProcessing: Reads from the cm the history of the logged-in person’s conduct with that agent, ordered by changedAt descending, and returns the requested page. ownConductOnly: only the history of the person signed in. conductOnlyForAgentActingOnBehalf: refuses for an agent that does not act on this person’s behalf. changedBy is returned as the person’s readable name, never an id.\nOutput: One page of history entries { items, page, pageSize, hasMore }, each with when it happened, who made it and a one-line summary.",
+          "purpose": "Lists the signed-in person’s own earlier changes to their conduct with the chosen agent, newest first, page by page.",
+          "input": "agentId: the agent chosen in the URL. page and pageSize: the page of history requested.",
+          "processing": "Reads from the cm the history of the logged-in person’s conduct with that agent, ordered by changedAt descending, and returns the requested page. ownConductOnly: only the history of the person signed in. conductOnlyForAgentActingOnBehalf: refuses for an agent that does not act on this person’s behalf. changedBy is returned as the person’s readable name, never an id.",
+          "output": "One page of history entries { items, page, pageSize, hasMore }, each with when it happened, who made it and a one-line summary."
+        }
+      },
+      {
+        "route": "agents.my_conduct.sendConductChange",
+        "kind": "cmd",
+        "uses": [
+          "updatePersonalConduct"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "unresolved",
+            "path": "conduct",
+            "reason": "Interface MyConduct: fields summary, version are not all fields of one entity or of one entity linked to it by an N:1 relationship."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "ownConductOnly",
+          "conductOnlyForAgentActingOnBehalf"
+        ],
+        "doc": {
+          "raw": "Purpose: Sends to the cm, in plain words, what the signed-in person wants to change in how the agent behaves for them.\nInput: agentId: the agent whose conduct changes. expectVersion: the version of the conduct the person read; the update is refused if the conduct changed since. changeRequest: what the person wrote should change.\nProcessing: Sends the change request to the cm as an update of the personal conduct of the logged-in person with that agent, checking expectVersion against the current version and refusing on conflict; the person is taken from the session, never from the input. ownConductOnly: only the caller’s own conduct is updated, no one else’s. conductOnlyForAgentActingOnBehalf: refuses when the agent does not act on this person’s behalf. Refuses an empty change request. The cm records the change in the person’s history.\nOutput: The personal conduct of the signed-in person with that agent in its new state: the agent’s name and onBehalfOf, the updated current conduct summary and its new version.",
+          "purpose": "Sends to the cm, in plain words, what the signed-in person wants to change in how the agent behaves for them.",
+          "input": "agentId: the agent whose conduct changes. expectVersion: the version of the conduct the person read; the update is refused if the conduct changed since. changeRequest: what the person wrote should change.",
+          "processing": "Sends the change request to the cm as an update of the personal conduct of the logged-in person with that agent, checking expectVersion against the current version and refusing on conflict; the person is taken from the session, never from the input. ownConductOnly: only the caller’s own conduct is updated, no one else’s. conductOnlyForAgentActingOnBehalf: refuses when the agent does not act on this person’s behalf. Refuses an empty change request. The cm records the change in the person’s history.",
+          "output": "The personal conduct of the signed-in person with that agent in its new state: the agent’s name and onBehalfOf, the updated current conduct summary and its new version."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

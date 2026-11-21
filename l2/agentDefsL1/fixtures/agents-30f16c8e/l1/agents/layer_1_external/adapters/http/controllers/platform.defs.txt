@@ -1,0 +1,29 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/http/controllers/platform.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "platform",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/agents/layer_2_application/requests/platform.defs.ts",
+    "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "platform",
+    "handlers": [
+      {
+        "route": "agents.platform.releaseCatalogChanged",
+        "kind": "command",
+        "grantIds": [
+          "connection_platform"
+        ],
+        "serviceFunction": "agents.platform.releaseCatalogChanged"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

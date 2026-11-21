@@ -1,0 +1,373 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "agents",
+  "userLanguage": "en",
+  "device": "web",
+  "tree": [
+    {
+      "id": "agents",
+      "kind": "page",
+      "label": "Agents",
+      "organisms": [
+        {
+          "kind": "inbox",
+          "text": "Drafts the cm has prepared and that are waiting for your review, and requests for new agents you are still describing"
+        },
+        {
+          "kind": "list",
+          "text": "All company agents and drafts: name, who the agent talks to, whether it is on, who is responsible, and for drafts whether they are preparing, ready or refused with the reason"
+        },
+        {
+          "kind": "form",
+          "text": "Create a new virtual employee: describe the agent and its functions in plain words and send it to the cm"
+        },
+        {
+          "kind": "timeline",
+          "text": "What happened to each request: sent, draft ready with suggested tools turned on, or refused with the reason"
+        }
+      ],
+      "icon": "bot",
+      "action": "new"
+    },
+    {
+      "id": "draft_review",
+      "kind": "page",
+      "label": "Review draft",
+      "organisms": [
+        {
+          "kind": "detail",
+          "text": "The ready draft: who the new agent is, what it will do and who it talks to"
+        },
+        {
+          "kind": "list",
+          "text": "Tools suggested for the draft, grouped by module and subject, with a checkbox to turn each one on or off"
+        },
+        {
+          "kind": "form",
+          "text": "Try the draft: pick a person or role to see what it can do, or type a sentence to see how it reads it"
+        },
+        {
+          "kind": "actions",
+          "text": "Activate the agent or discard the draft"
+        }
+      ],
+      "icon": "file-check",
+      "action": "new"
+    },
+    {
+      "id": "agent",
+      "kind": "hub",
+      "label": "Agent",
+      "context": "Agent",
+      "text": "Pick an agent to see what it is, what it did, and to work with it.",
+      "children": [
+        {
+          "id": "agent_overview",
+          "kind": "page",
+          "label": "Overview",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "What the agent is, who it talks to, on whose behalf it acts and who is responsible for it"
+            }
+          ],
+          "icon": "info",
+          "action": "new"
+        },
+        {
+          "id": "agent_behavior",
+          "kind": "page",
+          "label": "Behavior",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "How the agent behaves today, in plain language"
+            },
+            {
+              "kind": "form",
+              "text": "What do you want to change? Tell the agent in plain words how it should behave differently"
+            },
+            {
+              "kind": "timeline",
+              "text": "History of changes: who, when and a one-line summary, with undo on each change"
+            }
+          ],
+          "icon": "message-square",
+          "action": "new"
+        },
+        {
+          "id": "agent_tools",
+          "kind": "page",
+          "label": "Tools",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Tools by module, subject and action with readable names and descriptions, when each was chosen and whether it was removed from the release; tick to turn an action on or off for this agent"
+            },
+            {
+              "kind": "timeline",
+              "text": "Tools turned on automatically: suggested by a ready draft or chosen after a new release, never overriding your own choices"
+            }
+          ],
+          "icon": "wrench",
+          "action": "new"
+        },
+        {
+          "id": "agent_configuration",
+          "kind": "page",
+          "label": "Configuration",
+          "organisms": [
+            {
+              "kind": "form",
+              "text": "The @name people use to call the agent in a chat, on or off, and the responsible person; you are told if another active agent already uses the name"
+            },
+            {
+              "kind": "detail",
+              "text": "The agent's limits as the cm lists them"
+            }
+          ],
+          "icon": "settings",
+          "action": "new"
+        },
+        {
+          "id": "agent_activity",
+          "kind": "page",
+          "label": "Activity",
+          "organisms": [
+            {
+              "kind": "timeline",
+              "text": "What the agent did, newest first: when, how long, cost, the actions and their results, whether a person took over, who called it and the link to the conversation"
+            }
+          ],
+          "icon": "activity",
+          "action": "new"
+        },
+        {
+          "id": "agent_simulation",
+          "kind": "page",
+          "label": "Simulation",
+          "organisms": [
+            {
+              "kind": "form",
+              "text": "What it can: see which tools the agent can or cannot use and why, for yourself or, as admin, for a chosen person or role"
+            },
+            {
+              "kind": "form",
+              "text": "What it understands: type a sentence and see whether it asks for an action, which part of the tree and which actions"
+            }
+          ],
+          "icon": "flask-conical",
+          "action": "new"
+        },
+        {
+          "id": "my_conduct",
+          "kind": "page",
+          "label": "My conduct",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "How this agent behaves for you when it acts on your behalf"
+            },
+            {
+              "kind": "form",
+              "text": "Change how the agent behaves for you"
+            },
+            {
+              "kind": "timeline",
+              "text": "Your past changes to this agent's conduct: when and a one-line summary"
+            }
+          ],
+          "icon": "user-cog",
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "person_restrictions",
+      "kind": "page",
+      "label": "People restrictions",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Choose a person from the organization, with their login e-mail"
+        },
+        {
+          "kind": "list",
+          "text": "Tools that person may not use through any agent: tool, where it sits, when it was marked and whether it left the release; tick or untick each one"
+        }
+      ],
+      "icon": "user-x",
+      "action": "new"
+    },
+    {
+      "id": "tool_catalog",
+      "kind": "page",
+      "label": "Tool catalog",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Which agents use each tool"
+        },
+        {
+          "kind": "list",
+          "text": "All actions of the app modules and the cm tools, by module and subject, with removed tools marked"
+        },
+        {
+          "kind": "timeline",
+          "text": "Catalog updates after a new module or release: tools added and tools marked removed"
+        }
+      ],
+      "icon": "library",
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:companyAdmin": [
+      "agents",
+      "draft_review",
+      "agent",
+      "person_restrictions",
+      "tool_catalog"
+    ],
+    "actor:organizationMember": [
+      "agents",
+      "agent_overview",
+      "agent_activity",
+      "agent_simulation",
+      "my_conduct",
+      "tool_catalog"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "createVirtualEmployee": [
+        "agents"
+      ],
+      "reviewAndActivateDraft": [
+        "agents",
+        "draft_review"
+      ],
+      "changeAgentBehavior": [
+        "agents",
+        "agent_behavior"
+      ],
+      "adjustAgentTools": [
+        "agents",
+        "agent_tools"
+      ],
+      "configureAgent": [
+        "agents",
+        "agent_configuration"
+      ],
+      "simulateAgentByRole": [
+        "agents",
+        "agent_simulation"
+      ],
+      "restrictPersonTools": [
+        "person_restrictions"
+      ],
+      "followAgentActivity": [
+        "agents",
+        "agent_overview",
+        "agent_activity"
+      ],
+      "simulateAsMyself": [
+        "agents",
+        "agent_simulation"
+      ],
+      "changeMyConduct": [
+        "agents",
+        "my_conduct"
+      ]
+    },
+    "processes": {
+      "virtualEmployeeCreation": [
+        "agents",
+        "draft_review",
+        "agent_tools"
+      ],
+      "toolCatalogRefresh": [
+        "tool_catalog",
+        "agent_tools"
+      ],
+      "executionRecording": [
+        "agent_activity"
+      ]
+    },
+    "records": {},
+    "placements": [
+      {
+        "journeyId": "createVirtualEmployee",
+        "actorRef": "companyAdmin",
+        "placement": "listWithAdd",
+        "pageId": "agents",
+        "reason": "The agents list is the collection the admin administers and offers the + to create a new virtual employee."
+      },
+      {
+        "journeyId": "reviewAndActivateDraft",
+        "actorRef": "companyAdmin",
+        "placement": "screenAction",
+        "pageId": "draft_review",
+        "reason": "Reviewing, simulating, activating or discarding acts on the draft the screen shows."
+      },
+      {
+        "journeyId": "changeAgentBehavior",
+        "actorRef": "companyAdmin",
+        "placement": "screenAction",
+        "pageId": "agent_behavior",
+        "reason": "The change box and undo act on the behavior already shown for the chosen agent."
+      },
+      {
+        "journeyId": "adjustAgentTools",
+        "actorRef": "companyAdmin",
+        "placement": "screenAction",
+        "pageId": "agent_tools",
+        "reason": "The checkboxes act on the tool tree shown for the chosen agent."
+      },
+      {
+        "journeyId": "configureAgent",
+        "actorRef": "companyAdmin",
+        "placement": "screenAction",
+        "pageId": "agent_configuration",
+        "reason": "Saving the name, on/off and responsible person acts on the configuration on screen."
+      },
+      {
+        "journeyId": "simulateAgentByRole",
+        "actorRef": "companyAdmin",
+        "placement": "screenAction",
+        "pageId": "agent_simulation",
+        "reason": "The simulation runs on the agent already chosen."
+      },
+      {
+        "journeyId": "restrictPersonTools",
+        "actorRef": "companyAdmin",
+        "placement": "menuItem",
+        "pageId": "person_restrictions",
+        "reason": "Restricting a person's tools starts from a person, not from an agent, so it has its own menu item."
+      },
+      {
+        "journeyId": "followAgentActivity",
+        "actorRef": "organizationMember",
+        "placement": "screenAction",
+        "pageId": "agent_activity",
+        "reason": "The member reads what the chosen agent did on its activity screen."
+      },
+      {
+        "journeyId": "simulateAsMyself",
+        "actorRef": "organizationMember",
+        "placement": "screenAction",
+        "pageId": "agent_simulation",
+        "reason": "The member simulates the agent already chosen, as themselves."
+      },
+      {
+        "journeyId": "changeMyConduct",
+        "actorRef": "organizationMember",
+        "placement": "screenAction",
+        "pageId": "my_conduct",
+        "reason": "The member changes their own conduct shown for the chosen agent and sees its history there."
+      }
+    ],
+    "removed": []
+  }
+}
