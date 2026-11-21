@@ -6,6 +6,7 @@ import { draftFile, type D1FileInfo } from '/_102021_/l2/agentDefsL1/helpers/d1C
 import { commitD1Unit, type D1UnitPart } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { parseDefinitionSource, readDefinition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { D1_DOMAIN_VERSION, type D1DomainBuild } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
@@ -143,6 +144,22 @@ export function preservedDefPaths(snapshot: D1InputSnapshot | null): Set<string>
   return new Set(preservedUsecaseFiles(snapshot).map(file => file.defPath));
 }
 
+/**
+ * d1_266: a preserved usecase def whose `dependencies` are not the ones the plan gives it now. The def of `activate` was written on 18/11, when AgentDraft was
+ * kept outside the module and had no port; AgentDraft is a module table now, and the def still did not name its port, so the port never reached the model
+ * (it wrote `findById`, a method the port does not have). The dependencies are derived from the plan, so the def is written again with them; a def whose
+ * dependencies are the same stays untouched.
+ */
+async function dependenciesStale(project: number, defPath: string, wanted: readonly string[]): Promise<boolean> {
+  const info = artifactFile(project, defPath);
+  const text = info ? await readText(info) : null;
+  const parsed = text ? parseDefinitionSource(text) : null;
+  const definition = parsed && 'definition' in parsed ? readDefinition(parsed.definition) : null;
+  if (!definition || 'issues' in definition) return false;
+  const have = new Set(definition.dependencies);
+  return wanted.length !== have.size || wanted.some(path => !have.has(path));
+}
+
 /** Usecase ids the plan marks `preserve`. */
 export function preservedUsecaseIds(snapshot: D1InputSnapshot | null): Set<string> {
   return new Set(preservedUsecaseFiles(snapshot).map(file => file.identity));
@@ -184,7 +201,11 @@ export async function commitD1Usecases(project: number, build: D1UsecaseBuild): 
   }
   const snapshot = await readD1Input(project, build.moduleName);
   const preserved = preservedDefPaths(snapshot);
-  const writable = build.emit.filter(part => !preserved.has(logicalDefPath(part.pipeline[0]?.defPath || '')));
+  const writable: D1UsecaseBuild['emit'] = [];
+  for (const part of build.emit) {
+    const defPath = part.pipeline[0]?.defPath || '';
+    if (!preserved.has(logicalDefPath(defPath)) || await dependenciesStale(project, defPath, part.definition.dependencies)) writable.push(part);
+  }
   const rendered = writable.length > 0 ? renderParts(project, writable) : { parts: [], issues: [] };
   if (rendered.issues.length > 0) return { written: [], issues: rendered.issues };
   const committed = await commitD1Unit({

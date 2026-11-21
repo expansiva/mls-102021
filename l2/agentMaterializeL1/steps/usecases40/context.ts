@@ -265,6 +265,24 @@ export function consumerCallsOf(ctx: M12Context, functionName: string, artifactI
 }
 
 /**
+ * d1_266: the body of a type the catalog declares (`export interface X { ... }`), on one line, so the model sees the fields the call takes and not only the
+ * name of the type (activate passed `{ agentId }` to `CmActivateAgentInput`, which is `{ draftId }`). '' when the source does not declare it or it is long.
+ */
+export function catalogTypeBody(source: string | null, name: string): string {
+  if (!source) return '';
+  const start = new RegExp(`export\\s+interface\\s+${name}\\b[^{]*\\{`, 'u').exec(source);
+  if (!start) return '';
+  let depth = 1;
+  let end = start.index + start[0].length;
+  for (; end < source.length && depth > 0; end += 1) {
+    if (source[end] === '{') depth += 1;
+    else if (source[end] === '}') depth -= 1;
+  }
+  const body = source.slice(start.index + start[0].length - 1, end).replace(/\/\*[\s\S]*?\*\//gu, '').replace(/\/\/[^\n]*/gu, '').replace(/\s+/gu, ' ').trim();
+  return body.length > 0 && body.length <= 700 ? body : '';
+}
+
+/**
  * Gateways this usecase consumes: the interface, the import, and only its operations, with the catalog types.
  */
 export async function connectionGatewaySection(ctx: M12Context, functionName: string, artifactId: string): Promise<string> {
@@ -310,7 +328,12 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
       const later = operation.reply === 'later'
         ? ` The method returns the id of the work (\`${operation.outputType}\`). The usecase returns that id as its output and does not wait for the result. Do not create a column or a correlation table for it. Store it only when an l4 rule or entity says to store it. The result arrives later through the serve operation \`${operation.resultOperation}\`.`
         : '';
-      return `- \`${operation.operationId}(input: ${operation.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${operation.outputType}>\`.${effect}${version}${later}`;
+      const shapes = [operation.inputType, operation.outputType].flatMap(name => {
+        const body = catalogTypeBody(catalogSource, name);
+        return body ? [`\`${name}\` is \`${body}\``] : [];
+      });
+      const typed = shapes.length ? ` The catalog types: ${shapes.join('; ')}. The call takes the fields of the input type, none else.` : '';
+      return `- \`${operation.operationId}(input: ${operation.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${operation.outputType}>\`.${effect}${typed}${version}${later}`;
     });
     blocks.push([
       `### ${gateway}`,

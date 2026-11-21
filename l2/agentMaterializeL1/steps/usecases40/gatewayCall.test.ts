@@ -195,3 +195,13 @@ void test('d1_265: the entity the usecase works on decides the text, not the ent
     assert.match(await connectionGatewaySection(ctx, 'createContentFile', 'createContentFile'), /The entity is kept outside this module/u);
   });
 });
+
+void test('d1_266: the section shows the fields of the catalog types of each call, not only their names', async () => {
+  const { catalogTypeBody } = await import('/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js');
+  const source = 'export interface CmActivateAgentInput {\n  draftId: string;\n}\nexport interface CmActivateAgentOutput {\n  /** The same id. */\n  agentId: string;\n}\nexport interface Other { a: { b: number }; }\n';
+  assert.equal(catalogTypeBody(source, 'CmActivateAgentInput'), '{ draftId: string; }');
+  assert.equal(catalogTypeBody(source, 'CmActivateAgentOutput'), '{ agentId: string; }', 'a comment inside is dropped');
+  assert.equal(catalogTypeBody(source, 'Other'), '{ a: { b: number }; }', 'a nested brace closes at its own level');
+  assert.equal(catalogTypeBody(source, 'Missing'), '');
+  assert.equal(catalogTypeBody(null, 'CmActivateAgentInput'), '');
+});

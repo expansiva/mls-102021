@@ -2,7 +2,8 @@
 
 // d1_221: the entity the L4 says is written by its parent. The rule is the one of the NS5 (`ns5ResolveEntityWriter`, a pure file of the
 // platform), not a copy: this file only hands it the L4 of the module and reads its answer. An entity whose writer resolves as `parent`
-// is recorded inside the usecase that writes the parent (for an `external` parent: after the call to the connection).
+// is recorded inside the usecase that writes the parent (for an `external` parent: after the call to the connection). d1_266: so is an entity an act step
+// lists in `affects` (its `parentId` is the entity of that step).
 //
 // What the NS5 answers is what counts: an entity another writer owns (an inbound line, a serve route, a process) does not resolve `parent`, because the
 // resolver is given the map of what is written outside the journeys (`ns5WrittenOutsideJourneys`, from the L4 workflows and integration).
@@ -53,10 +54,30 @@ export function childWritersOf(
   const out: D1ChildWriter[] = [];
   for (const view of views) {
     const resolved = ns5ResolveEntityWriter(ns5WriterViewOfEntity(view), plan, read, outside);
+    if (resolved.kind === 'affects') {
+      // d1_266: an entity an act step lists in `affects` is written by the usecase of that step: there is no relationship to a parent, the step is the link.
+      const parentId = affectingEntity(journeys, view.entityId);
+      if (parentId) out.push({ childId: view.entityId, parentId, relationshipId: '' });
+      continue;
+    }
     if (resolved.kind !== 'parent' || !resolved.via) continue;
     out.push({ childId: view.entityId, parentId: resolved.via.entityId, relationshipId: resolved.via.relationshipId });
   }
   return out.sort((left, right) => `${left.childId}\u0000${left.parentId}`.localeCompare(`${right.childId}\u0000${right.parentId}`));
+}
+
+/**
+ * The entity of the first act step (journeys in order) that lists `entityId` in `affects`, when it is another entity and the step writes (any effect but a read).
+ * `PersonalConduct` for the step `changeConduct` that affects `ConductChange`: the cm updates the conduct and the module records the change.
+ */
+function affectingEntity(journeys: readonly D1WriterJourney[], entityId: string): string {
+  for (const journey of journeys) {
+    for (const step of journey.steps) {
+      if (step.kind !== 'act' || !step.entity || step.entity === entityId || step.effect === 'read') continue;
+      if (step.affects.includes(entityId)) return step.entity;
+    }
+  }
+  return '';
 }
 
 /** The journeys of the module as the resolver reads them: the index lists the ids, each file has the steps. A file that is not there is not a journey. */

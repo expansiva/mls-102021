@@ -602,3 +602,25 @@ void test('d1_264 (2): on 30f16c8e the cm list of agents is not consumed by the 
   assert.deepEqual(consumers('activateAgent'), ['activate']);
   assert.deepEqual(consumers('discardAgentDraft'), ['discard']);
 });
+
+void test('d1_266 (b): on 7c4030ec-like state the usecase defs written when AgentDraft was external get the port the entity has now; the ones already right stay', async () => {
+  const host = await seedA30Ready();
+  const deps = (name: string): string[] => {
+    const file = Object.values(host.files).find(item => item.shortName === name && item.extension === '.defs.ts' && item.folder.endsWith('layer_2_application/usecases'))!;
+    return (JSON.parse(file.content.slice(file.content.indexOf('{'), file.content.lastIndexOf('}') + 1).replace(' as const', '')) as { dependencies: string[] }).dependencies;
+  };
+  const port = '_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts';
+  const before = Object.fromEntries(['activate', 'discard', 'createAgentDraft'].map(name => [name, deps(name).includes(port)]));
+  assert.deepEqual(failedOf(await rederiveRun(host, 'controllers60')), []);
+  for (const name of ['activate', 'discard', 'createAgentDraft', 'updateAgentDraft']) assert.equal(deps(name).includes(port), true, `${name} names the port of AgentDraft`);
+  assert.deepEqual(before, { activate: false, discard: false, createAgentDraft: false }, 'the fixture defs predate the port');
+});
+
+void test('d1_266 (a): on 30f16c8e the usecase of the step changeConduct records the ConductChange the step affects', async () => {
+  const host = await seedA30Ready();
+  assert.deepEqual(failedOf(await rederiveRun(host, 'controllers60')), []);
+  const def = Object.values(host.files).find(item => item.shortName === 'updatePersonalConduct' && item.extension === '.defs.ts' && item.folder.endsWith('layer_2_application/usecases'))!;
+  assert.match(def.content, /ports\/conductChangeRepository\.defs\.ts/u, 'updatePersonalConduct names the port of ConductChange');
+  const other = Object.values(host.files).find(item => item.shortName === 'updateAgent' && item.extension === '.defs.ts' && item.folder.endsWith('layer_2_application/usecases'))!;
+  assert.equal(other.content.includes('conductChangeRepository'), false, 'the usecase of another entity does not');
+});
