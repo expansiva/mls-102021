@@ -1,0 +1,55 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_configuration.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "agent_configuration",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agent_configuration.defs.ts",
+    "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "agent_configuration",
+    "handlers": [
+      {
+        "route": "agents.agent_configuration.getAgentConfiguration",
+        "kind": "query",
+        "grantIds": [
+          "adminReadActivity",
+          "adminChoosePeople",
+          "adminManageAgents"
+        ],
+        "serviceFunction": "agents.agent_configuration.getAgentConfiguration",
+        "contractPath": "l2/agents/web/contracts/agent_configuration.defs.ts",
+        "contractInterface": "Agent_configurationContracts"
+      },
+      {
+        "route": "agents.agent_configuration.saveAgentConfiguration",
+        "kind": "command",
+        "grantIds": [
+          "adminManageAgents",
+          "adminReadActivity",
+          "adminChoosePeople"
+        ],
+        "serviceFunction": "agents.agent_configuration.saveAgentConfiguration",
+        "contractPath": "l2/agents/web/contracts/agent_configuration.defs.ts",
+        "contractInterface": "Agent_configurationContracts"
+      },
+      {
+        "route": "agents.agent_configuration.searchResponsibleCandidates",
+        "kind": "query",
+        "grantIds": [
+          "adminChoosePeople"
+        ],
+        "serviceFunction": "agents.agent_configuration.searchResponsibleCandidates",
+        "contractPath": "l2/agents/web/contracts/agent_configuration.defs.ts",
+        "contractInterface": "Agent_configurationContracts"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

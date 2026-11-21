@@ -1,0 +1,235 @@
+/// <mls fileReference="_102047_/l4/agents/ontology/AgentDraft.defs.ts" enhancement="_blank"/>
+
+import type { Ns5OntologyEntityV3, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const agentsEntityAgentDraft = {
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "agents",
+  "entityId": "AgentDraft",
+  "title": "Agent draft",
+  "description": "A request for a new virtual employee kept in this module: what the admin wrote, who asked and when. It is sent to the cm and starts as preparing; the cm's arrival agentDraftReady updates it to ready (keeping the suggested tools, which are turned on) or to refused (keeping the reason), and a repeated arrival changes nothing. The admin then chooses, activates or discards a ready draft, each its own step.",
+  "displayField": "name",
+  "relationships": {},
+  "capabilities": {
+  "create": "Records the admin's request for a new agent with the prompt, the requester and the time, as preparing, before it is sent to the cm; used by the company admin in createVirtualEmployee.",
+  "read.byId": "Reads one draft to show it for review; used by the company admin.",
+  "locate.byColumn": "Lists drafts by situation for the first screen; used by the company admin.",
+  "update": "Applies the cm arrival agentDraftReady: a preparing draft becomes ready keeping the suggested tools, or refused keeping the reason; a repeated arrival changes nothing; used by the arrival with no screen open.",
+  "read.mdmRecord": "Reads the admin who asked for the draft to show their name, never an id."
+},
+  "rules": [
+    "agentDraftSuggestedToolsOnWhenReady",
+    "agentDraftNoticeIdempotent",
+    "agentNameUniqueAmongActive",
+    "adminChoiceNotOverriddenByAutomatic",
+    "draftDecisionOnlyWhenReady",
+    "refusalReasonShownWhenRefused",
+    "agentDraftRecordedBeforeSending",
+    "refusedDraftKeepsReason"
+  ],
+  "kind": "entity",
+  "record": {
+    "fields": {
+      "name": {
+        "type": "string",
+        "required": true,
+        "title": "Name",
+        "description": "The name the new virtual employee would be called by in a chat (shown as @name)."
+      },
+      "prompt": {
+        "type": "text",
+        "required": true,
+        "title": "Description of the new agent",
+        "description": "What the admin wrote to describe the new agent and its functions, in plain words."
+      },
+      "refusalReason": {
+        "type": "text",
+        "title": "Reason for refusal",
+        "description": "Why the cm refused to prepare the draft, kept from the cm arrival; shown only when the draft was refused."
+      },
+      "summary": {
+        "type": "text",
+        "title": "What the agent is",
+        "description": "A plain-language description of the proposed agent, prepared by the cm."
+      },
+      "audience": {
+        "type": "text",
+        "title": "Who it talks to",
+        "description": "The people or groups the proposed agent would talk to."
+      },
+      "onBehalfOf": {
+        "type": "text",
+        "title": "On whose behalf it acts",
+        "description": "Whether the agent acts in its own name or on behalf of a person, as proposed by the cm."
+      },
+      "proposedBehavior": {
+        "type": "text",
+        "title": "Proposed behavior",
+        "description": "The behavior the cm proposes for the agent, in plain language."
+      },
+      "suggestedTools": {
+        "type": "record",
+        "collection": true,
+        "to": [
+          "Tool"
+        ],
+        "title": "Suggested tools",
+        "description": "The tools from the catalog the cm suggested for this agent, kept from the cm arrival; the module turns them on for it when the draft becomes ready."
+      },
+      "requestedBy": {
+        "type": "record",
+        "to": [
+          "OrganizationUser"
+        ],
+        "title": "Requested by",
+        "description": "The company admin who described the new agent.",
+        "required": true
+      },
+      "requestedAt": {
+        "type": "timestamp",
+        "title": "Requested on",
+        "description": "When the admin asked for the new agent, recorded before the request is sent to the cm.",
+        "required": true
+      },
+      "id": {
+        "type": "uuid",
+        "required": true,
+        "derived": true,
+        "indexed": true,
+        "title": "Id"
+      },
+      "version": {
+        "type": "integer",
+        "required": true,
+        "derived": true
+      },
+      "status": {
+        "type": "enum",
+        "required": true,
+        "indexed": true,
+        "values": [
+          {
+            "value": "preparing",
+            "title": "Preparing"
+          },
+          {
+            "value": "ready",
+            "title": "Ready"
+          },
+          {
+            "value": "refused",
+            "title": "Refused"
+          },
+          {
+            "value": "activated",
+            "title": "Activated"
+          },
+          {
+            "value": "discarded",
+            "title": "Discarded"
+          }
+        ],
+        "title": "Situation",
+        "description": "Where the draft stands, as shown on the first screen."
+      }
+    }
+  },
+  "class": "core",
+  "storage": {
+    "target": "moduleDatabase",
+    "table": "agents_agentdraft",
+    "kind": "relational"
+  },
+  "lifecycleStates": [
+    {
+      "state": "preparing",
+      "reachedBy": "command"
+    },
+    {
+      "state": "ready",
+      "reachedBy": "command"
+    },
+    {
+      "state": "refused",
+      "reachedBy": "command"
+    },
+    {
+      "state": "activated",
+      "reachedBy": "actor"
+    },
+    {
+      "state": "discarded",
+      "reachedBy": "actor"
+    }
+  ],
+  "transitions": [
+    {
+      "transitionId": "activate",
+      "from": [
+        "ready"
+      ],
+      "to": "activated",
+      "by": [
+        "companyAdmin"
+      ],
+      "description": "The admin activates a ready draft after choosing that outcome.",
+      "payload": [],
+      "ruleRefs": [
+        "draftDecisionOnlyWhenReady"
+      ]
+    },
+    {
+      "transitionId": "discard",
+      "from": [
+        "ready"
+      ],
+      "to": "discarded",
+      "by": [
+        "companyAdmin"
+      ],
+      "description": "The admin discards a ready draft after choosing that outcome.",
+      "payload": [],
+      "ruleRefs": [
+        "draftDecisionOnlyWhenReady"
+      ]
+    },
+    {
+      "transitionId": "markReady",
+      "from": [
+        "preparing"
+      ],
+      "to": "ready",
+      "by": [],
+      "description": "The cm's agentDraftReady report marks a preparing draft as ready, keeping the proposal and the suggested tools, which are turned on; no one on the screen makes this move.",
+      "payload": [
+        "summary",
+        "audience",
+        "proposedBehavior",
+        "suggestedTools"
+      ],
+      "ruleRefs": [
+        "agentDraftSuggestedToolsOnWhenReady"
+      ]
+    },
+    {
+      "transitionId": "markRefused",
+      "from": [
+        "preparing"
+      ],
+      "to": "refused",
+      "by": [],
+      "description": "The cm's agentDraftReady report marks a preparing draft as refused, keeping the reason; no one on the screen makes this move.",
+      "payload": [
+        "refusalReason"
+      ],
+      "ruleRefs": [
+        "refusedDraftKeepsReason"
+      ]
+    }
+  ],
+  "initialState": "preparing"
+} as const satisfies Ns5Readonly<Ns5OntologyEntityV3>;
+
+export type AgentsEntityAgentDraftType = typeof agentsEntityAgentDraft;
+
+export default agentsEntityAgentDraft;

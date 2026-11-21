@@ -10,7 +10,7 @@ import { D1_FLOW_STEP_IDS, type D1FileInfo, type D1StepId } from '/_102021_/l2/a
 import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, removeOwned, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { pageJourneyIds, processStartEvent, routeReachableOperations, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
+import { pageJourneyIds, processReceives, processStartEvent, routeReachableOperations, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
 import { parseDefinitionSource, readDefinition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 
@@ -147,7 +147,7 @@ async function readersOfChanged(project: number, candidates: readonly string[], 
     const shared = artifactFile(project, `_${project}_/l2/${moduleOf(defPath)}/web/shared/${String(def.data.pageId ?? def.artifactId)}.defs.ts`);
     const journeys = pageJourneyIds(shared ? await readText(shared) : null);
     for (const [processPath, process] of processes) {
-      const reached = routeReachableOperations(process.data, journeys).some(name => operations.has(name)) || serves.has(processStartEvent(process.data));
+      const reached = routeReachableOperations(process.data, journeys).some(name => operations.has(name)) || serves.has(processStartEvent(process.data)) || [...processReceives(process.data).keys()].some(arrival => serves.has(arrival));
       if (reached && !reads.get(defPath)?.includes(processPath)) reads.get(defPath)?.push(processPath);
     }
   }

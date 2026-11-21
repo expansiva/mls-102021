@@ -59,3 +59,23 @@ void test('d1_273: a request whose route is a step of a journey the process cite
   assert.equal(targets.includes(targetOf('l1/agents/layer_2_application/requests/agent_tools.defs.ts')), false, 'agent_tools is adjustAgentTools, not cited by the process');
   assert.equal(targets.includes(targetOf('l1/agents/layer_2_application/requests/agent_overview.defs.ts')), false, 'agent_overview reaches no process');
 });
+
+// d1_275: a request that serves the arrival a function of the process receives is listed when the process def changed.
+void test('d1_275 (on 2e3e5a1b): the request cm, which serves the arrival the process receives, is listed when the workflow def changed', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'agents-2e3e5a1b', PROJECT);
+  const inventory = Object.values(host.files)
+    .filter(file => file.level === 1 && file.extension === '.defs.ts' && file.folder.startsWith('agents/') && !file.folder.includes('/pipeline'))
+    .map(file => `l1/${file.folder}/${file.shortName}.defs.ts`)
+    .sort();
+  // The recorded L1 def predates the field: the D1 writes `receives` when it plans the process.
+  const workflow = Object.values(host.files).find(file => file.level === 1 && file.shortName === 'virtualEmployeeCreation' && file.extension === '.defs.ts');
+  assert.ok(workflow && typeof workflow.content === 'string');
+  workflow.content = workflow.content.replace('"operations": [', '"receives": [{ "function": "receiveDraftOutcome", "arrival": "cm.agentDraftReady" }],\n    "operations": [');
+  const before = await defHashes(PROJECT, inventory);
+  before[WORKFLOW] = 'sha256:before';
+  await writeRederive(PROJECT, 'agents', { schemaVersion: D1_REDERIVE_SCHEMA, from: 'usecases50', before });
+  const targets = await finishRederive(PROJECT, 'agents', inventory);
+  assert.ok(targets?.includes(targetOf('l1/agents/layer_2_application/requests/cm.defs.ts')), 'cm serves cm.agentDraftReady');
+  assert.equal(targets?.includes(targetOf('l1/agents/layer_2_application/requests/agent_tools.defs.ts')), false);
+});

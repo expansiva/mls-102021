@@ -91,7 +91,7 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
   integrationOutbound: { required: ['integrationId', 'events'], optional: ['processes', 'inbound', 'plugins', 'connections', 'gaps'], nonempty: [] },
   workflowProcess: {
     required: ['processId', 'trigger', 'functions', 'operations'],
-    optional: ['occurrence'],
+    optional: ['occurrence', 'receives'],
     nonempty: [],
   },
   // d1_208: what the L4 says of a system outside the app (a copy of `externalSystems`). The generated declaration is born later.

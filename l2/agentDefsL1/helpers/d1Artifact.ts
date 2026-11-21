@@ -323,6 +323,8 @@ export interface D1WorkflowProcessData {
   trigger: { kind: 'manual' | 'event' | 'scheduled'; actorRef?: string; event?: string; schedule?: string };
   occurrence?: { entityId: string };
   functions: string[];
+  /** d1_275: the arrivals (`<connectionId>.<operationId>` a module serves) that a function of the process receives. */
+  receives?: Array<{ function: string; arrival: string }>;
   operations: Array<{ operation: string; steps: string[] }>;
 }
 
@@ -949,6 +951,26 @@ export function workflowProcessIssues(data: unknown): string[] {
     if (seenFunctions.has(name)) issues.push(`Duplicate data.functions ${name}.`);
     seenFunctions.add(name);
   });
+  if (data.receives !== undefined) {
+    if (!Array.isArray(data.receives) || data.receives.length === 0) issues.push('data.receives must be a non-empty list.');
+    else {
+      const seenArrivals = new Set<string>();
+      data.receives.forEach((row, index) => {
+        const path = `data.receives.${index}`;
+        if (!isRecord(row)) {
+          issues.push(`Missing field ${path}.`);
+          return;
+        }
+        unknownKeys(row, ['function', 'arrival'], path, issues);
+        const name = needString(row, 'function', path, issues);
+        if (name && !functions.includes(name)) issues.push(`${path}.function ${name} is not in data.functions.`);
+        const arrival = needString(row, 'arrival', path, issues);
+        if (arrival && !SERVES_MARK.test(arrival)) issues.push(`${path}.arrival must be <connectionId>.<operationId>.`);
+        if (arrival && seenArrivals.has(arrival)) issues.push(`Duplicate ${path}.arrival ${arrival}.`);
+        if (arrival) seenArrivals.add(arrival);
+      });
+    }
+  }
   if (!Array.isArray(data.operations)) issues.push('Missing field data.operations.');
   else {
     const seenOperations = new Set<string>();

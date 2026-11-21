@@ -54,7 +54,10 @@ interface CatalogOperation {
   inputType: string;
 }
 
-/** The serves the processes of the L4 `workflows` start on: `trigger.event` of each `kind: 'event'` process. */
+/**
+ * The serves the processes of the L4 `workflows` own: `trigger.event` of each `kind: 'event'` process, and (d1_275) the arrival a function says it
+ * `receives` (the cm notice a wait ends on). The process writes what that message carries; the route hands it over and calls no usecase of its effect.
+ */
 export function processTriggerServes(workflows: Readonly<Record<string, unknown>>): Set<string> {
   const events = new Set<string>();
   const processes: unknown = workflows.processes;
@@ -62,6 +65,8 @@ export function processTriggerServes(workflows: Readonly<Record<string, unknown>
   for (const process of processes) {
     const trigger = isRecord(process) ? process.trigger : undefined;
     if (isRecord(trigger) && trigger.kind === 'event' && typeof trigger.event === 'string' && trigger.event) events.add(trigger.event);
+    const functions = isRecord(process) && Array.isArray(process.functions) ? process.functions : [];
+    for (const item of functions) if (isRecord(item) && typeof item.receives === 'string' && item.receives) events.add(item.receives);
   }
   return events;
 }

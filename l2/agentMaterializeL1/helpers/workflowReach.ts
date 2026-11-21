@@ -52,6 +52,19 @@ export function processStartEvent(processData: Record<string, unknown>): string 
   return isRecord(trigger) && trigger.kind === 'event' && typeof trigger.event === 'string' ? trigger.event : '';
 }
 
+/**
+ * d1_275: the arrival each function of the process receives (`data.receives`, read by the D1 from the L4 `functions[].receives`, never from prose):
+ * `<connectionId>.<operationId>` → function. The route that serves that arrival hands the message to the function.
+ */
+export function processReceives(processData: Record<string, unknown>): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!Array.isArray(processData.receives)) return out;
+  for (const row of processData.receives) {
+    if (isRecord(row) && typeof row.arrival === 'string' && row.arrival && typeof row.function === 'string' && row.function) out.set(row.arrival, row.function);
+  }
+  return out;
+}
+
 /** The `Entity.operation` names of a usecase def: its operation, and its transition when it is one. */
 export function usecaseOperationNames(usecaseData: Record<string, unknown>): string[] {
   const entityId = String(usecaseData.entityId ?? '');

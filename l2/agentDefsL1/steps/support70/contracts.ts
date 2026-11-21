@@ -329,6 +329,8 @@ export interface D1ProcessPlan {
   trigger: { kind: 'manual' | 'event' | 'scheduled'; actorRef?: string; event?: string; schedule?: string };
   occurrence: string;
   functions: string[];
+  /** d1_275: the arrival each function receives, as the L4 says it (`functions[].receives`). */
+  receives?: Array<{ function: string; arrival: string }>;
   operations: Array<{ operation: string; steps: string[]; selected: boolean }>;
   humanJourneys: string[];
 }

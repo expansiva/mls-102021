@@ -1162,6 +1162,7 @@ export function emitProcesses(
       processId: plan.processId,
       trigger: triggerOf(plan.trigger),
       functions: [...plan.functions],
+      ...(plan.receives?.length ? { receives: plan.receives.map(item => ({ ...item })) } : {}),
       operations: plan.operations.map(operation => ({ operation: operation.operation, steps: [...operation.steps] })),
     };
     if (plan.occurrence) data.occurrence = { entityId: plan.occurrence };

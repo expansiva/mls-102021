@@ -1,0 +1,95 @@
+/// <mls fileReference="_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "AgentTool",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+  ],
+  "data": {
+    "entityId": "AgentTool",
+    "storageTarget": "moduleDatabase",
+    "fields": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "derived": true
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "agentId",
+        "type": "record",
+        "ref": "Agent"
+      },
+      {
+        "name": "toolId",
+        "type": "record",
+        "ref": "Tool"
+      },
+      {
+        "name": "enabled",
+        "type": "boolean"
+      },
+      {
+        "name": "choiceSource",
+        "type": "enum"
+      },
+      {
+        "name": "details",
+        "type": "object"
+      },
+      {
+        "name": "details.decidedAt",
+        "type": "timestamp",
+        "derived": true
+      },
+      {
+        "name": "details.decidedBy",
+        "type": "record",
+        "ref": "OrganizationUser"
+      },
+      {
+        "name": "details.automaticOrigin",
+        "type": "enum"
+      },
+      {
+        "name": "details.toolName",
+        "type": "string",
+        "derived": true
+      },
+      {
+        "name": "details.toolRemoved",
+        "type": "boolean",
+        "derived": true
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [
+      "adminChoiceNeverOverridden",
+      "oneChoicePerAgentAndTool",
+      "onlyEnabledToolsSent",
+      "removedToolNeverSent",
+      "personRestrictionsExcludeTools",
+      "repeatedNoticeChangesNothing",
+      "draftSuggestedToolsTurnedOn",
+      "newToolsChosenFromDescription",
+      "describeAgentForPersonWritesNothing",
+      "markingWithoutChoiceCreatesAdminChoice"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

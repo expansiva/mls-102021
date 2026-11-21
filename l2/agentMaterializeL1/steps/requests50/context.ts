@@ -18,7 +18,8 @@ import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, infoOfRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { l4Process } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
-import { pageJourneyIds, routeReachableOperations, processStartEvent, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
+import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
+import { pageJourneyIds, processReceives, routeReachableOperations, processStartEvent, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
 import { moduleSpecifier, workflowFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { routeChildWrites } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import { childRecordsOf } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
@@ -354,6 +355,8 @@ export interface M12WorkflowRoute {
   operation: string;
   /** The import specifier of the workflow service of the process. */
   specifier: string;
+  /** d1_275: the function of the process that receives the message of this route (the L4 `receives`); the route must call it. Absent for the others. */
+  fn?: string;
 }
 
 /**
@@ -395,10 +398,16 @@ export function eventWorkflowRoutes(units: readonly M12Unit[], serves: readonly 
   const out: M12WorkflowRoute[] = [];
   for (const process of units.filter(unit => unit.definition.artifactType === 'workflowProcess')) {
     const event = processStartEvent(process.definition.data);
-    if (!event) continue;
     const processId = String(process.definition.data.processId ?? process.unitId);
-    for (const item of serves.filter(row => row.serves === event)) {
-      out.push({ route: item.route, processId, operation: `event ${event}`, specifier: moduleSpecifier(workflowFile(project, moduleName, processId)) });
+    const specifier = moduleSpecifier(workflowFile(project, moduleName, processId));
+    if (event) {
+      for (const item of serves.filter(row => row.serves === event)) out.push({ route: item.route, processId, operation: `event ${event}`, specifier });
+    }
+    // d1_275: a route that serves the arrival a function of the process receives (the notice a wait ends on) hands the message to that function.
+    for (const [arrival, fn] of processReceives(process.definition.data)) {
+      for (const item of serves.filter(row => row.serves === arrival && !out.some(known => known.route === row.route && known.processId === processId))) {
+        out.push({ route: item.route, processId, operation: `receives ${arrival}`, specifier, fn });
+      }
     }
   }
   return out;
@@ -427,7 +436,9 @@ async function processFunctionNotes(ctx: M12Context, processId: string): Promise
 export function workflowRouteProblems(code: string, routes: readonly M12WorkflowRoute[]): string[] {
   const missing = new Map<string, M12WorkflowRoute[]>();
   for (const route of routes) if (!code.includes(route.specifier)) missing.set(route.specifier, [...(missing.get(route.specifier) ?? []), route]);
-  return [...missing.entries()].map(([specifier, items]) => `${items.map(item => `${item.route} (${item.operation})`).join(', ')} reach the process ${items[0].processId}: call its function from \`${specifier}\` (it reuses the usecase and keeps the occurrence), not the usecase alone.`);
+  // d1_275: the route of an arrival a process receives calls the function that receives it: importing the service is not calling it.
+  const notCalled = routes.filter(route => route.fn && code.includes(route.specifier) && !new RegExp(`(?<![\\w$.])${route.fn}\\s*\\(`, 'u').test(withoutComments(code)));
+  return [...notCalled.map(route => `${route.route} (${route.operation}) is the message the process ${route.processId} receives: call \`${route.fn}\` from \`${route.specifier}\` with it. Without that call the occurrence of the process never moves, and the write the function owns does not happen.`), ...[...missing.entries()].map(([specifier, items]) => `${items.map(item => `${item.route} (${item.operation})`).join(', ')} reach the process ${items[0].processId}: call its function from \`${specifier}\` (it reuses the usecase and keeps the occurrence), not the usecase alone.`)];
 }
 
 /** The routes of a contract whose input carries one of the unowned MDM entities. */
@@ -669,10 +680,12 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     const items = flows.filter(item => item.specifier === specifier);
     const info = infoOfRef(specifier, project);
     const generated = info ? await readOptional(info) : null;
-    parts.push(section(`Workflow service of process ${items[0].processId} (the message of these routes starts it)`, [
-      ...items.map(item => `- ${item.route}: ${item.operation}`),
+    const receiving = items.filter(item => item.fn);
+    parts.push(section(`Workflow service of process ${items[0].processId} (${receiving.length === items.length ? 'the message of these routes is received by a function of it' : 'the message of these routes starts it'})`, [
+      ...items.map(item => `- ${item.route}: ${item.operation}${item.fn ? ` → \`${item.fn}\`` : ''}`),
       '',
-      `Import from \`${specifier}\`. The route does not call a usecase for this message: it checks the catalog input as above, builds the input of the entry function of the process (the one that opens the occurrence, chosen by its signature and by the l4 prose) from the message, calls it with \`ctx\`, and returns the catalog output. The function owns the occurrence and the writes; the route does not repeat them.`,
+      ...(receiving.length ? [`The l4 says which function receives the message of ${receiving.map(item => item.route).join(', ')}: ${[...new Set(receiving.map(item => `\`${item.fn}\``))].join(', ')} (\`receives\`). Import it from \`${specifier}\`, build its input from the message and call it with \`ctx\`. The function owns the occurrence and the writes this message carries (the draft, its tools), so the route calls no usecase for it and does not write them again; it returns the catalog output.`] : []),
+      ...(receiving.length === items.length ? [`Import from \`${specifier}\`.`] : [`Import from \`${specifier}\`. The route does not call a usecase for this message: it checks the catalog input as above, builds the input of the entry function of the process (the one that opens the occurrence, chosen by its signature and by the l4 prose) from the message, calls it with \`ctx\`, and returns the catalog output. The function owns the occurrence and the writes; the route does not repeat them.`]),
       generated ? fence('ts', exportSignatures(generated)) : '(the workflow service was not generated: the phase before this one failed for it)',
       ...(generated ? [await resolvedInputSection(ctx, generated)].filter(Boolean) : []),
       ...[await processFunctionNotes(ctx, items[0].processId)].filter(Boolean),

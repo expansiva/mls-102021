@@ -789,6 +789,10 @@ export const D1_FIELD_READERS = {
   'workflowProcess.occurrence': 'workflowProcessIssues',
   'workflowProcess.occurrence.entityId': 'workflowProcessIssues',
   'workflowProcess.functions': 'workflowProcessIssues',
+  // d1_275: the arrival a function of the process receives; read by workflowProcessIssues (the shape) and by the request unit of the materializer (eventWorkflowRoutes).
+  'workflowProcess.receives': 'workflowProcessIssues',
+  'workflowProcess.receives.function': 'workflowProcessIssues',
+  'workflowProcess.receives.arrival': 'workflowProcessIssues',
   'workflowProcess.operations': 'workflowProcessIssues',
   'workflowProcess.operations.operation': 'workflowProcessIssues',
   'workflowProcess.operations.steps': 'workflowProcessIssues',

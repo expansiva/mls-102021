@@ -1,0 +1,52 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/workflows/toolCatalogRefresh.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "workflowProcess",
+  "artifactId": "toolCatalogRefresh",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/usecases/createTool.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateTool.defs.ts",
+    "_102047_/l4/agents/ontology/Tool.defs.ts",
+    "_102047_/l4/agents/workflows.defs.ts"
+  ],
+  "data": {
+    "processId": "toolCatalogRefresh",
+    "trigger": {
+      "kind": "event",
+      "event": "platform.releaseCatalogChanged"
+    },
+    "functions": [
+      "applyReleaseCatalog",
+      "chooseToolsForAgents"
+    ],
+    "operations": [
+      {
+        "operation": "AgentTool.update",
+        "steps": [
+          "task:chooseNewToolsPerAgent"
+        ]
+      },
+      {
+        "operation": "Tool.create",
+        "steps": [
+          "task:rebuildCatalog"
+        ]
+      },
+      {
+        "operation": "Tool.update",
+        "steps": [
+          "task:rebuildCatalog"
+        ]
+      }
+    ],
+    "occurrence": {
+      "entityId": "Tool"
+    }
+  }
+} as const;
+
+export default definition;

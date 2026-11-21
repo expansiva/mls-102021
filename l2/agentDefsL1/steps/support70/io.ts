@@ -1096,11 +1096,17 @@ export async function processesOf(
     const functions = arrayOf(row.functions).flatMap(item => (
       isRecord(item) && typeof item.functionId === 'string' && item.functionId ? [item.functionId] : []
     ));
+    const receives = arrayOf(row.functions).flatMap(item => (
+      isRecord(item) && typeof item.functionId === 'string' && item.functionId && typeof item.receives === 'string' && item.receives
+        ? [{ function: item.functionId, arrival: item.receives }]
+        : []
+    )).sort((left, right) => left.function.localeCompare(right.function));
     plans.push({
       processId: row.processId,
       trigger: triggerOf(isRecord(row.trigger) ? row.trigger : {}),
       occurrence: occurrenceOf(isRecord(row.trigger) ? row.trigger : {}, tasks, acts, serves),
       functions: [...new Set(functions)],
+      receives,
       operations: [...lines.values()].sort((left, right) => left.operation.localeCompare(right.operation)),
       humanJourneys: [...new Set(humanJourneys)],
     });

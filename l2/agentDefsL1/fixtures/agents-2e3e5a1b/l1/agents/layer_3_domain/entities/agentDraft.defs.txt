@@ -1,0 +1,159 @@
+/// <mls fileReference="_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "AgentDraft",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+  ],
+  "data": {
+    "entityId": "AgentDraft",
+    "storageTarget": "moduleDatabase",
+    "fields": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "prompt",
+        "type": "text"
+      },
+      {
+        "name": "refusalReason",
+        "type": "text"
+      },
+      {
+        "name": "summary",
+        "type": "text"
+      },
+      {
+        "name": "audience",
+        "type": "text"
+      },
+      {
+        "name": "onBehalfOf",
+        "type": "text"
+      },
+      {
+        "name": "proposedBehavior",
+        "type": "text"
+      },
+      {
+        "name": "suggestedTools",
+        "type": "record",
+        "ref": "Tool"
+      },
+      {
+        "name": "requestedBy",
+        "type": "record",
+        "ref": "OrganizationUser"
+      },
+      {
+        "name": "requestedAt",
+        "type": "timestamp"
+      },
+      {
+        "name": "id",
+        "type": "uuid",
+        "derived": true
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "status",
+        "type": "enum"
+      }
+    ],
+    "lifecycle": {
+      "states": [
+        {
+          "state": "preparing",
+          "reachedBy": "command"
+        },
+        {
+          "state": "ready",
+          "reachedBy": "command"
+        },
+        {
+          "state": "refused",
+          "reachedBy": "command"
+        },
+        {
+          "state": "activated",
+          "reachedBy": "actor"
+        },
+        {
+          "state": "discarded",
+          "reachedBy": "actor"
+        }
+      ],
+      "transitions": [
+        {
+          "transitionId": "activate",
+          "from": [
+            "ready"
+          ],
+          "to": "activated",
+          "by": [
+            "companyAdmin"
+          ],
+          "ruleRefs": [
+            "draftDecisionOnlyWhenReady"
+          ]
+        },
+        {
+          "transitionId": "discard",
+          "from": [
+            "ready"
+          ],
+          "to": "discarded",
+          "by": [
+            "companyAdmin"
+          ],
+          "ruleRefs": [
+            "draftDecisionOnlyWhenReady"
+          ]
+        },
+        {
+          "transitionId": "markReady",
+          "from": [
+            "preparing"
+          ],
+          "to": "ready",
+          "by": [],
+          "ruleRefs": [
+            "agentDraftSuggestedToolsOnWhenReady"
+          ]
+        },
+        {
+          "transitionId": "markRefused",
+          "from": [
+            "preparing"
+          ],
+          "to": "refused",
+          "by": [],
+          "ruleRefs": [
+            "refusedDraftKeepsReason"
+          ]
+        }
+      ]
+    },
+    "invariants": [
+      "agentDraftNoticeIdempotent",
+      "agentNameUniqueAmongActive",
+      "adminChoiceNotOverriddenByAutomatic",
+      "refusalReasonShownWhenRefused",
+      "agentDraftRecordedBeforeSending"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

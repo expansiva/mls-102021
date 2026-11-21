@@ -1,0 +1,383 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agents",
+  "step": "controllers60",
+  "unitId": "controllers60",
+  "runId": "sha256:470941bfd709b68407b8ace58679770165271ee94f4931e990143a3056890e2c",
+  "snapshotHash": "sha256:470941bfd709b68407b8ace58679770165271ee94f4931e990143a3056890e2c",
+  "draftHash": "sha256:727e8ea977b7bde063a997e1f708c344c33d3b926cf81c3e28cc2ed91f5d079e",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_activity.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_behavior.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_configuration.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_overview.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_simulation.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_tools.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agents.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/cm.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/draft_review.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/my_conduct.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/person_restrictions.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/platform.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/http/controllers/tool_catalog.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agent_activity.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agent_behavior.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agent_configuration.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agent_overview.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agent_simulation.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agent_tools.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agents.ts",
+    "_102047_/l1/agents/layer_2_application/requests/cm.ts",
+    "_102047_/l1/agents/layer_2_application/requests/draft_review.ts",
+    "_102047_/l1/agents/layer_2_application/requests/my_conduct.ts",
+    "_102047_/l1/agents/layer_2_application/requests/person_restrictions.ts",
+    "_102047_/l1/agents/layer_2_application/requests/platform.ts",
+    "_102047_/l1/agents/layer_2_application/requests/tool_catalog.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/agent_activity.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/agent_behavior.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/agent_configuration.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/agent_overview.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/agent_simulation.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/agent_tools.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/agents.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/cm.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/draft_review.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/my_conduct.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/person_restrictions.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/platform.ts",
+    "l1/agents/layer_1_external/adapters/http/controllers/tool_catalog.ts",
+    "l1/agents/layer_2_application/requests/agent_activity.ts",
+    "l1/agents/layer_2_application/requests/agent_behavior.ts",
+    "l1/agents/layer_2_application/requests/agent_configuration.ts",
+    "l1/agents/layer_2_application/requests/agent_overview.ts",
+    "l1/agents/layer_2_application/requests/agent_simulation.ts",
+    "l1/agents/layer_2_application/requests/agent_tools.ts",
+    "l1/agents/layer_2_application/requests/agents.ts",
+    "l1/agents/layer_2_application/requests/cm.ts",
+    "l1/agents/layer_2_application/requests/draft_review.ts",
+    "l1/agents/layer_2_application/requests/my_conduct.ts",
+    "l1/agents/layer_2_application/requests/person_restrictions.ts",
+    "l1/agents/layer_2_application/requests/platform.ts",
+    "l1/agents/layer_2_application/requests/tool_catalog.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_activity.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:b22de8eebfb651769f149a3f47dab72bd5f7ebe99c9d8ed648198b77601e23a9",
+      "desiredHash": "sha256:b22de8eebfb651769f149a3f47dab72bd5f7ebe99c9d8ed648198b77601e23a9",
+      "written": "sha256:b22de8eebfb651769f149a3f47dab72bd5f7ebe99c9d8ed648198b77601e23a9",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_activity.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/agent_activity.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_behavior.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:28d1edbf767fd752f16e543f404e5c9f6af87de36525c2172804d14393950f10",
+      "desiredHash": "sha256:28d1edbf767fd752f16e543f404e5c9f6af87de36525c2172804d14393950f10",
+      "written": "sha256:28d1edbf767fd752f16e543f404e5c9f6af87de36525c2172804d14393950f10",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_behavior.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/agent_behavior.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_configuration.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:24318d92282707f56a71d09a88ee3aa41714ee9d1882e22d3ecf79e6f7bab313",
+      "desiredHash": "sha256:24318d92282707f56a71d09a88ee3aa41714ee9d1882e22d3ecf79e6f7bab313",
+      "written": "sha256:24318d92282707f56a71d09a88ee3aa41714ee9d1882e22d3ecf79e6f7bab313",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_configuration.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/agent_configuration.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_overview.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:737b106d26887ef6b64cd389dd4fd041b3f24d4b028de2c77f5a161c6aaf7c9e",
+      "desiredHash": "sha256:737b106d26887ef6b64cd389dd4fd041b3f24d4b028de2c77f5a161c6aaf7c9e",
+      "written": "sha256:737b106d26887ef6b64cd389dd4fd041b3f24d4b028de2c77f5a161c6aaf7c9e",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_overview.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/agent_overview.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_simulation.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:cfc13179c589aac02758ffe27a4ab1a34cc23217084136822f0601111c49fd11",
+      "desiredHash": "sha256:cfc13179c589aac02758ffe27a4ab1a34cc23217084136822f0601111c49fd11",
+      "written": "sha256:cfc13179c589aac02758ffe27a4ab1a34cc23217084136822f0601111c49fd11",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_simulation.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/agent_simulation.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agent_tools.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:7f85d99f436e1e1416063c972cebc5faaa84f3cc9c26653de3dace16dd5c2c39",
+      "desiredHash": "sha256:7f85d99f436e1e1416063c972cebc5faaa84f3cc9c26653de3dace16dd5c2c39",
+      "written": "sha256:7f85d99f436e1e1416063c972cebc5faaa84f3cc9c26653de3dace16dd5c2c39",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_tools.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/agent_tools.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/agents.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:af523b54e0a9649ad562475c565ae9d8299e4bf1b0b62f8833d9cda4dee62e6f",
+      "desiredHash": "sha256:af523b54e0a9649ad562475c565ae9d8299e4bf1b0b62f8833d9cda4dee62e6f",
+      "written": "sha256:af523b54e0a9649ad562475c565ae9d8299e4bf1b0b62f8833d9cda4dee62e6f",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/agents.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/agents.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/cm.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:996ab9811979bb89790350ad2868cf9053b38bfa9cd349d1983c4d8164c9613e",
+      "desiredHash": "sha256:996ab9811979bb89790350ad2868cf9053b38bfa9cd349d1983c4d8164c9613e",
+      "written": "sha256:996ab9811979bb89790350ad2868cf9053b38bfa9cd349d1983c4d8164c9613e",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/cm.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/cm.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/draft_review.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:f64ed0de001cb1337a1ca7f843977c5539cf3d108805da17ef6526f71f904c35",
+      "desiredHash": "sha256:f64ed0de001cb1337a1ca7f843977c5539cf3d108805da17ef6526f71f904c35",
+      "written": "sha256:f64ed0de001cb1337a1ca7f843977c5539cf3d108805da17ef6526f71f904c35",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/draft_review.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/draft_review.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/my_conduct.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:5dca47ef3cbf64f7f0e4a7de58b41bb12adc14b138723fe708ed4d80d312e520",
+      "desiredHash": "sha256:f2eb378fe41a9e4953c9ca0fac8e89e14c95fd1048bfb9a0d5477fdcf68a4ebd",
+      "written": "sha256:f2eb378fe41a9e4953c9ca0fac8e89e14c95fd1048bfb9a0d5477fdcf68a4ebd",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/my_conduct.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/my_conduct.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/person_restrictions.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:80f227614fb5083a0b0e52ee84615a293c9dc50fe7b5bc2b93ab6feb225ee522",
+      "desiredHash": "sha256:80f227614fb5083a0b0e52ee84615a293c9dc50fe7b5bc2b93ab6feb225ee522",
+      "written": "sha256:80f227614fb5083a0b0e52ee84615a293c9dc50fe7b5bc2b93ab6feb225ee522",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/person_restrictions.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/person_restrictions.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/platform.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:94e8bc79fcd75006d8e7e1ecc81dc0b53c244517952a1273683d8e7d1917b1a8",
+      "desiredHash": "sha256:94e8bc79fcd75006d8e7e1ecc81dc0b53c244517952a1273683d8e7d1917b1a8",
+      "written": "sha256:94e8bc79fcd75006d8e7e1ecc81dc0b53c244517952a1273683d8e7d1917b1a8",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/platform.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/platform.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/http/controllers/tool_catalog.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:d475b18a8958acea3802543592d0f1029fd3ace48a93d9212c48eb151e6b21f2",
+      "desiredHash": "sha256:d475b18a8958acea3802543592d0f1029fd3ace48a93d9212c48eb151e6b21f2",
+      "written": "sha256:d475b18a8958acea3802543592d0f1029fd3ace48a93d9212c48eb151e6b21f2",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/http/controllers/tool_catalog.ts",
+        "l1/agents/layer_1_external/adapters/http/controllers/tool_catalog.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_activity.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:fb7b41adb6b427c7cf469b48d7ffdfe1678c8f1f452fa315492323eb93110757",
+      "desiredHash": "sha256:fb7b41adb6b427c7cf469b48d7ffdfe1678c8f1f452fa315492323eb93110757",
+      "written": "sha256:fb7b41adb6b427c7cf469b48d7ffdfe1678c8f1f452fa315492323eb93110757",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/agent_activity.ts",
+        "l1/agents/layer_2_application/requests/agent_activity.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_behavior.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:7eb64c7a899f4d61495f584d3192becb0c9f2b469a3924178877603afe6d54c7",
+      "desiredHash": "sha256:35f64803e028a2decb2d059ad859fe5061b8f101b68972db35d2f12967234161",
+      "written": "sha256:35f64803e028a2decb2d059ad859fe5061b8f101b68972db35d2f12967234161",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/agent_behavior.ts",
+        "l1/agents/layer_2_application/requests/agent_behavior.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_configuration.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:7c988992c80a25595881d4ccd3579291f1c3e1a1cdb6755ef1e830045253679f",
+      "desiredHash": "sha256:7c988992c80a25595881d4ccd3579291f1c3e1a1cdb6755ef1e830045253679f",
+      "written": "sha256:7c988992c80a25595881d4ccd3579291f1c3e1a1cdb6755ef1e830045253679f",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/agent_configuration.ts",
+        "l1/agents/layer_2_application/requests/agent_configuration.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_overview.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:1447c4265c038521ce359df4aeb7119cf63a17de743550e7b30bf4341d88e36d",
+      "desiredHash": "sha256:1447c4265c038521ce359df4aeb7119cf63a17de743550e7b30bf4341d88e36d",
+      "written": "sha256:1447c4265c038521ce359df4aeb7119cf63a17de743550e7b30bf4341d88e36d",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/agent_overview.ts",
+        "l1/agents/layer_2_application/requests/agent_overview.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_simulation.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:8b1757efd31f51d85b128067c2b534c05a4146e7f4e62f83c7e13a80773319a5",
+      "desiredHash": "sha256:8b1757efd31f51d85b128067c2b534c05a4146e7f4e62f83c7e13a80773319a5",
+      "written": "sha256:8b1757efd31f51d85b128067c2b534c05a4146e7f4e62f83c7e13a80773319a5",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/agent_simulation.ts",
+        "l1/agents/layer_2_application/requests/agent_simulation.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agent_tools.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:7f2b5895891b7e89b465c10ff2f78475dc5cc08b96380a360248a8635d08e7ac",
+      "desiredHash": "sha256:7f2b5895891b7e89b465c10ff2f78475dc5cc08b96380a360248a8635d08e7ac",
+      "written": "sha256:7f2b5895891b7e89b465c10ff2f78475dc5cc08b96380a360248a8635d08e7ac",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/agent_tools.ts",
+        "l1/agents/layer_2_application/requests/agent_tools.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/agents.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:bbe63fb115bd9a6b22e1f773e72a3ad54bcbcca279c8dae1025b3855a5256d7c",
+      "desiredHash": "sha256:bbe63fb115bd9a6b22e1f773e72a3ad54bcbcca279c8dae1025b3855a5256d7c",
+      "written": "sha256:bbe63fb115bd9a6b22e1f773e72a3ad54bcbcca279c8dae1025b3855a5256d7c",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/agents.ts",
+        "l1/agents/layer_2_application/requests/agents.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/cm.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:3d86c9590ee53454260957b105cdca6cdd1f85a0c80acfc4cc03dc0bb250ca22",
+      "desiredHash": "sha256:3d86c9590ee53454260957b105cdca6cdd1f85a0c80acfc4cc03dc0bb250ca22",
+      "written": "sha256:3d86c9590ee53454260957b105cdca6cdd1f85a0c80acfc4cc03dc0bb250ca22",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/cm.ts",
+        "l1/agents/layer_2_application/requests/cm.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/draft_review.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:7f27b0779307365db3101a25970732f791916df216e36d1a2e74a9c37155f190",
+      "desiredHash": "sha256:7f27b0779307365db3101a25970732f791916df216e36d1a2e74a9c37155f190",
+      "written": "sha256:7f27b0779307365db3101a25970732f791916df216e36d1a2e74a9c37155f190",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/draft_review.ts",
+        "l1/agents/layer_2_application/requests/draft_review.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/my_conduct.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:04db23b507d65b1731f8940d78fa524d4b68e087f73d2c9d146726eecec26dd3",
+      "desiredHash": "sha256:2740a88312f535346badefd5c63dbb728cb2925bb89d367d1c3c83793e52fe5a",
+      "written": "sha256:2740a88312f535346badefd5c63dbb728cb2925bb89d367d1c3c83793e52fe5a",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/my_conduct.ts",
+        "l1/agents/layer_2_application/requests/my_conduct.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/person_restrictions.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:31869390559d05266d179c9edd54ea2d8d14dd9fc217315c4d1f25a69f633c04",
+      "desiredHash": "sha256:31869390559d05266d179c9edd54ea2d8d14dd9fc217315c4d1f25a69f633c04",
+      "written": "sha256:31869390559d05266d179c9edd54ea2d8d14dd9fc217315c4d1f25a69f633c04",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/person_restrictions.ts",
+        "l1/agents/layer_2_application/requests/person_restrictions.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/platform.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:c50ce2977926eab821204fbaab6fc9b90c66cd3214bd9d8744119fb6b15c09ce",
+      "desiredHash": "sha256:c50ce2977926eab821204fbaab6fc9b90c66cd3214bd9d8744119fb6b15c09ce",
+      "written": "sha256:c50ce2977926eab821204fbaab6fc9b90c66cd3214bd9d8744119fb6b15c09ce",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/platform.ts",
+        "l1/agents/layer_2_application/requests/platform.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/requests/tool_catalog.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:8febadf443fcc8f10732323017f3eb9ab907d697a1dd73a8d62065d4ce31e6eb",
+      "desiredHash": "sha256:8febadf443fcc8f10732323017f3eb9ab907d697a1dd73a8d62065d4ce31e6eb",
+      "written": "sha256:8febadf443fcc8f10732323017f3eb9ab907d697a1dd73a8d62065d4ce31e6eb",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/requests/tool_catalog.ts",
+        "l1/agents/layer_2_application/requests/tool_catalog.ts"
+      ]
+    }
+  ],
+  "issues": [],
+  "sourceKey": "sha256:12c180e809daa0d2108f4623b79d705014d4a534ff2df2b16409b5b364eb8d12"
+}

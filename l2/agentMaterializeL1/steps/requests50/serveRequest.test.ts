@@ -7,7 +7,7 @@ import test from 'node:test';
 import { unitInputHash } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { maskCode, requestsObjectBodies } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
-import { loadRequestContext, normalizeRequestsTyping, requestGate, serveUsecaseProblems, workflowRouteProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
+import { eventWorkflowRoutes, loadRequestContext, normalizeRequestsTyping, requestGate, serveUsecaseProblems, workflowRouteProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
 const CATALOG = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/connections/cm.ts'), 'utf8');
@@ -503,4 +503,35 @@ void test('d1_272: the connection catalog section quotes a cited type that the c
   assert.match(loaded.human, /\[field: string\]: unknown;/u);
   const without = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [describe], read: async (ref: string) => (ref.replace(/^\//u, '') === CATALOG_REF.slice(1) ? CATALOG : null) } as never, describe);
   assert.doesNotMatch(without.human, /export interface AssistantCatalogItem/u);
+});
+
+// d1_275: the arrival a function of a process receives (the L4 `receives`, in the process def) is handed to that function: the context names it, and the gate asks
+// for the call, not only the import.
+void test('d1_275: the route of the arrival a process receives gets the function in the context, and the gate refuses a request that does not call it', async () => {
+  const draftReady = unit('requestService', 'cm', {
+    pageId: 'cm',
+    requests: [{ route: `${MODULE}.cm.agentDraftReady`, serves: 'cm.agentDraftReady', uses: [], entityRefs: ['AgentDraft'], effect: 'update' }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/cm.ts`);
+  const process = unit('workflowProcess', 'virtualEmployeeCreation', {
+    processId: 'virtualEmployeeCreation',
+    trigger: { kind: 'manual', actorRef: 'companyAdmin' },
+    functions: ['startVirtualEmployeeRequest', 'receiveDraftOutcome'],
+    receives: [{ function: 'receiveDraftOutcome', arrival: 'cm.agentDraftReady' }],
+    operations: [],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/virtualEmployeeCreation.ts`);
+  const flows = eventWorkflowRoutes([process], [{ route: `${MODULE}.cm.agentDraftReady`, serves: 'cm.agentDraftReady' }, { route: `${MODULE}.cm.describe`, serves: 'cm.describe' }], PROJECT, MODULE);
+  assert.deepEqual(flows.map(item => [item.route, item.fn]), [[`${MODULE}.cm.agentDraftReady`, 'receiveDraftOutcome']]);
+  const files = new Map<string, string>([[CATALOG_REF, CATALOG], [TYPES_REF, TYPES]]);
+  const read = async (ref: string) => files.get(ref.startsWith('/') ? ref : `/${ref}`) ?? null;
+  const loaded = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [draftReady, process], read } as never, draftReady);
+  assert.match(loaded.human, /receiveDraftOutcome/u);
+  assert.match(loaded.human, /is received by a function of it/u);
+  assert.deepEqual(loaded.workflowRoutes.map(item => item.fn), ['receiveDraftOutcome']);
+  const specifier = flows[0].specifier;
+  const imported = `import { receiveDraftOutcome } from '${specifier}';\nexport const requests = {};\n`;
+  assert.equal(workflowRouteProblems(imported, flows).length, 1, 'imported and not called');
+  assert.match(workflowRouteProblems(imported, flows)[0], /call `receiveDraftOutcome`/u);
+  assert.deepEqual(workflowRouteProblems(`${imported}const done = await receiveDraftOutcome({ id: input.draftId }, ctx);\n`, flows), []);
+  assert.equal(workflowRouteProblems("// receiveDraftOutcome(x)\nconst y = 1;\n", flows).length, 1, 'no import: the old problem is the one reported');
+  assert.equal(workflowRouteProblems(`${imported}// await receiveDraftOutcome(x)\n`, flows).length, 1, 'a comment is not a call');
 });

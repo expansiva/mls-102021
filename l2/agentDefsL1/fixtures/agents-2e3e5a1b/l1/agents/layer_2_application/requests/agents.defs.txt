@@ -1,0 +1,597 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/agents.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "agents",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/usecases/createAgentDraft.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listAgentDraft.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listExecutionSummary.defs.ts"
+  ],
+  "data": {
+    "pageId": "agents",
+    "requests": [
+      {
+        "route": "agents.agents.loadAgentsPage",
+        "kind": "qry",
+        "uses": [
+          "listAgentDraft",
+          "listExecutionSummary"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "list",
+            "path": "inbox",
+            "entity": "AgentDraft",
+            "items": "",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              },
+              {
+                "field": "summary",
+                "path": "summary"
+              },
+              {
+                "field": "prompt",
+                "path": "prompt"
+              },
+              {
+                "field": "requestedAt",
+                "path": "requestedAt"
+              },
+              {
+                "field": "requestedBy",
+                "path": "requestedBy"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "inbox.draftId",
+            "entity": "AgentDraft",
+            "rules": [
+              "refusalReasonShownWhenRefused",
+              "agentDraftSuggestedToolsOnWhenReady",
+              "noTechnicalIdsOnScreen"
+            ]
+          },
+          {
+            "kind": "entity",
+            "path": "agents.items.agent",
+            "entity": "ExecutionSummary",
+            "fields": [
+              {
+                "field": "agentId",
+                "path": "agentId"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "agents.items.agent",
+            "entity": "Agent",
+            "relationship": "executionAgent",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "talksTo",
+                "path": "talksTo"
+              },
+              {
+                "field": "isOn",
+                "path": "isOn"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "agents.items.agent.responsibleName",
+            "reason": "COMPUTED_NOT_DISCLOSED: agents.agents.loadAgentsPage items.agent.responsibleName"
+          },
+          {
+            "kind": "entity",
+            "path": "agents.items.draft",
+            "entity": "AgentDraft",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              },
+              {
+                "field": "refusalReason",
+                "path": "refusalReason"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "agents.items.draft.draftId",
+            "entity": "AgentDraft",
+            "rules": [
+              "refusalReasonShownWhenRefused",
+              "agentDraftSuggestedToolsOnWhenReady",
+              "noTechnicalIdsOnScreen"
+            ]
+          },
+          {
+            "kind": "list",
+            "path": "requests",
+            "entity": "AgentDraft",
+            "items": "items",
+            "page": "requests.page",
+            "pageSize": "requests.pageSize",
+            "hasMore": "requests.hasMore",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              },
+              {
+                "field": "requestedAt",
+                "path": "requestedAt"
+              },
+              {
+                "field": "refusalReason",
+                "path": "refusalReason"
+              },
+              {
+                "field": "suggestedTools",
+                "path": "suggestedTools"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "requests.items.draftId",
+            "entity": "AgentDraft",
+            "rules": [
+              "refusalReasonShownWhenRefused",
+              "agentDraftSuggestedToolsOnWhenReady",
+              "noTechnicalIdsOnScreen"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "inbox.draftId",
+            "reason": "Interface DraftInboxItem: field draftId is not a field of any entity."
+          },
+          {
+            "kind": "unresolved",
+            "path": "agents.draft.draftId",
+            "reason": "Interface DraftCard: field draftId is not a field of any entity."
+          },
+          {
+            "kind": "unresolved",
+            "path": "requests.draftId",
+            "reason": "Interface RequestEvent: field draftId is not a field of any entity."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "refusalReasonShownWhenRefused",
+          "agentDraftSuggestedToolsOnWhenReady",
+          "noTechnicalIdsOnScreen"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads in one call everything the agents home shows when it opens: the drafts waiting for the admin, the first page of agents and drafts, and the first page of the request history.\nInput: page: the page wanted for the agents collection and the request history (the first one when the page opens); pageSize: how many entries each of those pages brings.\nProcessing: Reads agents from the cm and drafts kept in this module for the caller’s organization. inbox: drafts with status ’ready’ (waiting for review) or ’preparing’ (requests still being prepared), newest request first, with summary, prompt, requestedAt and the readable name of the requester (read.mdmRecord). agents: agents and drafts side by side; agents carry @name, talksTo, isOn and the responsible person resolved to OrganizationUser.details.identification.name; drafts carry id, name and status among preparing, ready or refused, with refusalReason filled only when refused (refusalReasonShownWhenRefused). requests: drafts in any status, newest first, with the readable names of the suggested tools for ready drafts, which are already turned on for it (agentDraftSuggestedToolsOnWhenReady). For an organizationMember the grants cover only Agent and people names: inbox and requests come back empty and agents holds only agent entries with the allowed fields. noTechnicalIdsOnScreen: the draft id is returned for opening the review, the screen shows readable names only. Each DraftInboxItem carries draftId to open its page; the screen does not show it. Each AgentCard carries agentId to open its page; the screen does not show it. Each DraftCard carries draftId to open its page; the screen does not show it. Each RequestEvent carries draftId to open its page; the screen does not show it.\nOutput: inbox: plain list of waiting drafts; agents: page { items, page, pageSize, hasMore } of agent or draft entries; requests: page { items, page, pageSize, hasMore } of request events.",
+          "purpose": "Loads in one call everything the agents home shows when it opens: the drafts waiting for the admin, the first page of agents and drafts, and the first page of the request history.",
+          "input": "page: the page wanted for the agents collection and the request history (the first one when the page opens); pageSize: how many entries each of those pages brings.",
+          "processing": "Reads agents from the cm and drafts kept in this module for the caller’s organization. inbox: drafts with status ’ready’ (waiting for review) or ’preparing’ (requests still being prepared), newest request first, with summary, prompt, requestedAt and the readable name of the requester (read.mdmRecord). agents: agents and drafts side by side; agents carry @name, talksTo, isOn and the responsible person resolved to OrganizationUser.details.identification.name; drafts carry id, name and status among preparing, ready or refused, with refusalReason filled only when refused (refusalReasonShownWhenRefused). requests: drafts in any status, newest first, with the readable names of the suggested tools for ready drafts, which are already turned on for it (agentDraftSuggestedToolsOnWhenReady). For an organizationMember the grants cover only Agent and people names: inbox and requests come back empty and agents holds only agent entries with the allowed fields. noTechnicalIdsOnScreen: the draft id is returned for opening the review, the screen shows readable names only. Each DraftInboxItem carries draftId to open its page; the screen does not show it. Each AgentCard carries agentId to open its page; the screen does not show it. Each DraftCard carries draftId to open its page; the screen does not show it. Each RequestEvent carries draftId to open its page; the screen does not show it.",
+          "output": "inbox: plain list of waiting drafts; agents: page { items, page, pageSize, hasMore } of agent or draft entries; requests: page { items, page, pageSize, hasMore } of request events."
+        }
+      },
+      {
+        "route": "agents.agents.listAgentsCollection",
+        "kind": "qry",
+        "uses": [
+          "listExecutionSummary",
+          "listAgentDraft"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "agents.items.agent",
+            "entity": "ExecutionSummary",
+            "fields": [
+              {
+                "field": "agentId",
+                "path": "agentId"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "agents.items.agent",
+            "entity": "Agent",
+            "relationship": "executionAgent",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "talksTo",
+                "path": "talksTo"
+              },
+              {
+                "field": "isOn",
+                "path": "isOn"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "agents.items.agent.responsibleName",
+            "reason": "COMPUTED_NOT_DISCLOSED: agents.agents.listAgentsCollection items.agent.responsibleName"
+          },
+          {
+            "kind": "entity",
+            "path": "agents.items.draft",
+            "entity": "AgentDraft",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              },
+              {
+                "field": "refusalReason",
+                "path": "refusalReason"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "agents.items.draft.draftId",
+            "entity": "AgentDraft",
+            "rules": [
+              "refusalReasonShownWhenRefused",
+              "noTechnicalIdsOnScreen"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "agents.draft.draftId",
+            "reason": "Interface DraftCard: field draftId is not a field of any entity."
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "agents.agent",
+            "pages": "agents"
+          },
+          {
+            "name": "pageSize",
+            "target": "agents.agent",
+            "pages": "agents"
+          }
+        ],
+        "rules": [
+          "refusalReasonShownWhenRefused",
+          "noTechnicalIdsOnScreen"
+        ],
+        "doc": {
+          "raw": "Purpose: Brings a further page of the company’s agents and drafts.\nInput: page: the page number wanted; pageSize: entries per page.\nProcessing: Same composition and order as loadAgentsPage.agents: agents with @name, talksTo, isOn and the responsible person’s readable name; drafts with status preparing, ready or refused and refusalReason only when refused (refusalReasonShownWhenRefused). Members receive only agent entries with their allowed fields. Readable names only on screen (noTechnicalIdsOnScreen). Each AgentCard carries agentId to open its page; the screen does not show it. Each DraftCard carries draftId to open its page; the screen does not show it.\nOutput: agents: the requested page { items, page, pageSize, hasMore }.",
+          "purpose": "Brings a further page of the company’s agents and drafts.",
+          "input": "page: the page number wanted; pageSize: entries per page.",
+          "processing": "Same composition and order as loadAgentsPage.agents: agents with @name, talksTo, isOn and the responsible person’s readable name; drafts with status preparing, ready or refused and refusalReason only when refused (refusalReasonShownWhenRefused). Members receive only agent entries with their allowed fields. Readable names only on screen (noTechnicalIdsOnScreen). Each AgentCard carries agentId to open its page; the screen does not show it. Each DraftCard carries draftId to open its page; the screen does not show it.",
+          "output": "agents: the requested page { items, page, pageSize, hasMore }."
+        }
+      },
+      {
+        "route": "agents.agents.listRequestHistory",
+        "kind": "qry",
+        "uses": [
+          "listAgentDraft"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "list",
+            "path": "requests",
+            "entity": "AgentDraft",
+            "items": "items",
+            "page": "requests.page",
+            "pageSize": "requests.pageSize",
+            "hasMore": "requests.hasMore",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              },
+              {
+                "field": "requestedAt",
+                "path": "requestedAt"
+              },
+              {
+                "field": "refusalReason",
+                "path": "refusalReason"
+              },
+              {
+                "field": "suggestedTools",
+                "path": "suggestedTools"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "requests.items.draftId",
+            "entity": "AgentDraft",
+            "rules": [
+              "refusalReasonShownWhenRefused",
+              "agentDraftSuggestedToolsOnWhenReady",
+              "noTechnicalIdsOnScreen"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "requests.draftId",
+            "reason": "Interface RequestEvent: field draftId is not a field of any entity."
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "requests",
+            "pages": "requests"
+          },
+          {
+            "name": "pageSize",
+            "target": "requests",
+            "pages": "requests"
+          }
+        ],
+        "rules": [
+          "refusalReasonShownWhenRefused",
+          "agentDraftSuggestedToolsOnWhenReady",
+          "noTechnicalIdsOnScreen"
+        ],
+        "doc": {
+          "raw": "Purpose: Brings a further page of the history of requests for new agents.\nInput: page: the page number wanted; pageSize: events per page.\nProcessing: Drafts of the organization in any status, newest request first; refusalReason only on refused drafts (refusalReasonShownWhenRefused); suggested tools as readable names for ready drafts, which are already turned on for it (agentDraftSuggestedToolsOnWhenReady). Company admin only by grant; a member receives an empty page. Each RequestEvent carries draftId to open its page; the screen does not show it.\nOutput: requests: the requested page { items, page, pageSize, hasMore }.",
+          "purpose": "Brings a further page of the history of requests for new agents.",
+          "input": "page: the page number wanted; pageSize: events per page.",
+          "processing": "Drafts of the organization in any status, newest request first; refusalReason only on refused drafts (refusalReasonShownWhenRefused); suggested tools as readable names for ready drafts, which are already turned on for it (agentDraftSuggestedToolsOnWhenReady). Company admin only by grant; a member receives an empty page. Each RequestEvent carries draftId to open its page; the screen does not show it.",
+          "output": "requests: the requested page { items, page, pageSize, hasMore }."
+        }
+      },
+      {
+        "route": "agents.agents.sendNewAgentRequest",
+        "kind": "cmd",
+        "uses": [
+          "createAgentDraft",
+          "listExecutionSummary"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "request",
+            "entity": "AgentDraft",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              },
+              {
+                "field": "requestedAt",
+                "path": "requestedAt"
+              },
+              {
+                "field": "refusalReason",
+                "path": "refusalReason"
+              },
+              {
+                "field": "suggestedTools",
+                "path": "suggestedTools"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "request.draftId",
+            "entity": "AgentDraft",
+            "rules": [
+              "agentDraftRecordedBeforeSending"
+            ]
+          },
+          {
+            "kind": "entity",
+            "path": "inboxItem",
+            "entity": "AgentDraft",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              },
+              {
+                "field": "summary",
+                "path": "summary"
+              },
+              {
+                "field": "prompt",
+                "path": "prompt"
+              },
+              {
+                "field": "requestedAt",
+                "path": "requestedAt"
+              },
+              {
+                "field": "requestedBy",
+                "path": "requestedBy"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "inboxItem.draftId",
+            "entity": "AgentDraft",
+            "rules": [
+              "agentDraftRecordedBeforeSending"
+            ]
+          },
+          {
+            "kind": "entity",
+            "path": "collectionEntry.agent",
+            "entity": "ExecutionSummary",
+            "fields": [
+              {
+                "field": "agentId",
+                "path": "agentId"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "collectionEntry.agent",
+            "entity": "Agent",
+            "relationship": "executionAgent",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "talksTo",
+                "path": "talksTo"
+              },
+              {
+                "field": "isOn",
+                "path": "isOn"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "collectionEntry.agent.responsibleName",
+            "reason": "COMPUTED_NOT_DISCLOSED: agents.agents.sendNewAgentRequest agent.responsibleName"
+          },
+          {
+            "kind": "entity",
+            "path": "collectionEntry.draft",
+            "entity": "AgentDraft",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              },
+              {
+                "field": "refusalReason",
+                "path": "refusalReason"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "collectionEntry.draft.draftId",
+            "entity": "AgentDraft",
+            "rules": [
+              "agentDraftRecordedBeforeSending"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "request.draftId",
+            "reason": "Interface RequestEvent: field draftId is not a field of any entity."
+          },
+          {
+            "kind": "unresolved",
+            "path": "inboxItem.draftId",
+            "reason": "Interface DraftInboxItem: field draftId is not a field of any entity."
+          },
+          {
+            "kind": "unresolved",
+            "path": "collectionEntry.draft.draftId",
+            "reason": "Interface DraftCard: field draftId is not a field of any entity."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "agentDraftRecordedBeforeSending"
+        ],
+        "doc": {
+          "raw": "Purpose: Records the admin’s plain-words description of a new virtual employee and sends it to the cm, which prepares a draft or refuses it.\nInput: prompt: what the admin wrote describing the new agent and its functions.\nProcessing: Only the company admin may call it. agentDraftRecordedBeforeSending: first creates the AgentDraft in this module with the prompt, requestedBy = the logged-in admin, requestedAt = now and status ’preparing’, and only then sends the request to the cm. id and version are filled by the engine. The cm later reports it ready or refused through its own arrival, never through this endpoint. Each DraftInboxItem carries draftId to open its page; the screen does not show it. Each AgentCard carries agentId to open its page; the screen does not show it. Each DraftCard carries draftId to open its page; the screen does not show it. Each RequestEvent carries draftId to open its page; the screen does not show it.\nOutput: The new draft in status ’preparing’ in the three shapes it takes: request (history event), inboxItem (waiting draft with prompt, requester and date) and collectionEntry (draft card).",
+          "purpose": "Records the admin’s plain-words description of a new virtual employee and sends it to the cm, which prepares a draft or refuses it.",
+          "input": "prompt: what the admin wrote describing the new agent and its functions.",
+          "processing": "Only the company admin may call it. agentDraftRecordedBeforeSending: first creates the AgentDraft in this module with the prompt, requestedBy = the logged-in admin, requestedAt = now and status ’preparing’, and only then sends the request to the cm. id and version are filled by the engine. The cm later reports it ready or refused through its own arrival, never through this endpoint. Each DraftInboxItem carries draftId to open its page; the screen does not show it. Each AgentCard carries agentId to open its page; the screen does not show it. Each DraftCard carries draftId to open its page; the screen does not show it. Each RequestEvent carries draftId to open its page; the screen does not show it.",
+          "output": "The new draft in status ’preparing’ in the three shapes it takes: request (history event), inboxItem (waiting draft with prompt, requester and date) and collectionEntry (draft card)."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

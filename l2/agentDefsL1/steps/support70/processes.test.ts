@@ -7,6 +7,7 @@ import { installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { seedD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import type { D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { workflowProcessIssues } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { arrivalUpserts, inboundOperation, processesOf } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 
 const PROJECT = 102047;
@@ -123,3 +124,23 @@ void test('d1_232: the consumer of an inbound line is read through the one reade
   assert.deepEqual(inboundOperation({ id: 'e1', writes: ['Item', 'Other'], effect: 'create' }, selected)?.operations, ['createItem', 'createOther']);
   assert.deepEqual(inboundOperation({ id: 'e1', entityEffects: [] }, selected)?.operations, []);
 });
+
+// d1_275: the plan says which arrival each function receives, from the L4 field and not from the prose.
+void test('d1_275 (on 2e3e5a1b): the plan of virtualEmployeeCreation says receiveDraftOutcome receives cm.agentDraftReady', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'agents-2e3e5a1b', PROJECT);
+  const plans = await processesOf(PROJECT, 'agents', []);
+  assert.deepEqual(plans.find(plan => plan.processId === 'virtualEmployeeCreation')?.receives, [{ function: 'receiveDraftOutcome', arrival: 'cm.agentDraftReady' }]);
+  assert.deepEqual(plans.find(plan => plan.processId === 'toolCatalogRefresh')?.receives, []);
+});
+
+void test('d1_275: data.receives names a function of the process and an arrival, once each', () => {
+  const base = { processId: 'p', trigger: { kind: 'manual', actorRef: 'admin' }, functions: ['receive', 'other'], operations: [{ operation: 'AgentDraft.create', steps: ['task:a'] }] };
+  assert.deepEqual(workflowProcessIssues({ ...base, receives: [{ function: 'receive', arrival: 'cm.agentDraftReady' }] }), []);
+  assert.deepEqual(workflowProcessIssues(base), []);
+  assert.ok(workflowProcessIssues({ ...base, receives: [] }).length > 0, 'a present list is not empty');
+  assert.ok(workflowProcessIssues({ ...base, receives: [{ function: 'nope', arrival: 'cm.agentDraftReady' }] }).some(item => item.includes('not in data.functions')));
+  assert.ok(workflowProcessIssues({ ...base, receives: [{ function: 'receive', arrival: 'not an arrival' }] }).some(item => item.includes('<connectionId>.<operationId>')));
+  assert.ok(workflowProcessIssues({ ...base, receives: [{ function: 'receive', arrival: 'cm.a' }, { function: 'other', arrival: 'cm.a' }] }).some(item => item.startsWith('Duplicate')));
+});
+

@@ -400,3 +400,26 @@ void test('d1_272: the field of the message whose values are the states the arri
   assert.equal(stateFieldOf(catalogText, 'CmAgentDraftReadyInput')(['ready']), '');
   assert.equal(stateFieldOf(undefined, 'CmAgentDraftReadyInput')(['ready', 'refused']), '');
 });
+
+// d1_275: a function of a process that `receives` an arrival owns it: the serve of that message takes no usecase from its effect.
+void test('d1_275: the arrival a function receives is a serve the process owns', () => {
+  const workflows = { processes: [
+    { processId: 'manual', trigger: { kind: 'manual', actorRef: 'admin' }, functions: [{ functionId: 'receive', description: 'x', receives: 'cm.agentDraftReady' }, { functionId: 'other', description: 'y' }] },
+    { processId: 'byEvent', trigger: { kind: 'event', event: 'cm.record' }, functions: [] },
+  ] };
+  assert.deepEqual([...processTriggerServes(workflows)].sort(), ['cm.agentDraftReady', 'cm.record']);
+  const owned: D1SelectedUsecase[] = [];
+  const requests = deriveServeRequests({
+    moduleName: MODULE,
+    lines: [{ connectionId: 'cm', operationId: 'agentDraftReady', entityRefs: ['AgentDraft'], effect: 'update' }],
+    catalogTexts: { cm: catalogText },
+    usecases: owned,
+    problems: [],
+    entities: { AgentDraft: DRAFT },
+    plannedIds: new Map(),
+    removedIds: new Set(),
+    processTriggers: processTriggerServes(workflows),
+  });
+  assert.deepEqual(requests.map(item => item.uses), [[]], 'the process owns the write: the route takes no usecase from the effect');
+  assert.deepEqual(owned, [], 'and no usecase is created for it');
+});

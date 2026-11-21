@@ -1,0 +1,66 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/agentTool.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "table",
+  "artifactId": "agentTool",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts"
+  ],
+  "data": {
+    "tableId": "agentTool",
+    "entityId": "AgentTool",
+    "physicalName": "agents_agenttool",
+    "primaryKey": [
+      "id"
+    ],
+    "uniqueKeys": [
+      [
+        "agentId",
+        "toolId"
+      ]
+    ],
+    "indexes": [
+      {
+        "name": "agents_agenttool_agentId_toolId",
+        "columns": [
+          "agentId",
+          "toolId"
+        ],
+        "unique": true
+      },
+      {
+        "name": "agents_agenttool_agentId",
+        "columns": [
+          "agentId"
+        ],
+        "unique": false
+      },
+      {
+        "name": "agents_agenttool_toolId",
+        "columns": [
+          "toolId"
+        ],
+        "unique": false
+      },
+      {
+        "name": "agents_agenttool_enabled",
+        "columns": [
+          "enabled"
+        ],
+        "unique": false
+      },
+      {
+        "name": "agents_agenttool_choiceSource",
+        "columns": [
+          "choiceSource"
+        ],
+        "unique": false
+      }
+    ]
+  }
+} as const;
+
+export default definition;

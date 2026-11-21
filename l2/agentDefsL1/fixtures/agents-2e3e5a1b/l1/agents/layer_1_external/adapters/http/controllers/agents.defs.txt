@@ -1,0 +1,67 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/http/controllers/agents.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "agents",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agents.defs.ts",
+    "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "agents",
+    "handlers": [
+      {
+        "route": "agents.agents.listAgentsCollection",
+        "kind": "query",
+        "grantIds": [
+          "adminReadActivity",
+          "memberReadActivity",
+          "adminManageAgents"
+        ],
+        "serviceFunction": "agents.agents.listAgentsCollection",
+        "contractPath": "l2/agents/web/contracts/agents.defs.ts",
+        "contractInterface": "AgentsContracts"
+      },
+      {
+        "route": "agents.agents.listRequestHistory",
+        "kind": "query",
+        "grantIds": [
+          "adminManageAgents"
+        ],
+        "serviceFunction": "agents.agents.listRequestHistory",
+        "contractPath": "l2/agents/web/contracts/agents.defs.ts",
+        "contractInterface": "AgentsContracts"
+      },
+      {
+        "route": "agents.agents.loadAgentsPage",
+        "kind": "query",
+        "grantIds": [
+          "adminManageAgents",
+          "adminReadActivity",
+          "memberReadActivity"
+        ],
+        "serviceFunction": "agents.agents.loadAgentsPage",
+        "contractPath": "l2/agents/web/contracts/agents.defs.ts",
+        "contractInterface": "AgentsContracts"
+      },
+      {
+        "route": "agents.agents.sendNewAgentRequest",
+        "kind": "command",
+        "grantIds": [
+          "adminManageAgents",
+          "adminReadActivity",
+          "memberReadActivity"
+        ],
+        "serviceFunction": "agents.agents.sendNewAgentRequest",
+        "contractPath": "l2/agents/web/contracts/agents.defs.ts",
+        "contractInterface": "AgentsContracts"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

@@ -1,0 +1,1793 @@
+{
+  "schemaVersion": "2026-10-01-d1-support-v2",
+  "project": 102047,
+  "moduleName": "agents",
+  "llmCalls": 0,
+  "ok": true,
+  "enumerations": [
+    {
+      "entityId": "AgentDraft",
+      "path": "status",
+      "values": [
+        "preparing",
+        "ready",
+        "refused",
+        "activated",
+        "discarded"
+      ],
+      "consumed": true,
+      "source": "domain30.enumerations",
+      "reason": "A covered consumer names this entity and path. A type union is not runtime enforcement. Values stay on the domain draft.",
+      "origin": {
+        "owner": "module",
+        "writer": "module",
+        "derived": false,
+        "restriction": "own",
+        "catalogValues": [],
+        "catalogSource": "",
+        "roleBinding": false
+      },
+      "uses": [
+        {
+          "purpose": "seedScenario",
+          "consumer": "createVirtualEmployee",
+          "entityId": "AgentDraft",
+          "path": "status",
+          "values": [
+            "preparing"
+          ],
+          "editable": true
+        },
+        {
+          "purpose": "seedScenario",
+          "consumer": "reviewAndActivateDraft",
+          "entityId": "AgentDraft",
+          "path": "status",
+          "values": [
+            "activated"
+          ],
+          "editable": true
+        }
+      ],
+      "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+    },
+    {
+      "entityId": "AgentSimulation",
+      "path": "level",
+      "values": [
+        "whatItCan",
+        "whatItUnderstands"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Scope and registry have no values slot. Enum values stay on the domain draft.",
+      "origin": {
+        "owner": "external",
+        "writer": "external",
+        "derived": false,
+        "restriction": "own",
+        "catalogValues": [],
+        "catalogSource": "/_102034_/l2/shared/contracts/connections/cm.ts",
+        "roleBinding": false
+      },
+      "uses": [],
+      "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+    },
+    {
+      "entityId": "AgentSimulation",
+      "path": "subjectKind",
+      "values": [
+        "person",
+        "role"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Scope and registry have no values slot. Enum values stay on the domain draft.",
+      "origin": {
+        "owner": "external",
+        "writer": "external",
+        "derived": false,
+        "restriction": "own",
+        "catalogValues": [],
+        "catalogSource": "/_102034_/l2/shared/contracts/connections/cm.ts",
+        "roleBinding": false
+      },
+      "uses": [],
+      "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+    },
+    {
+      "entityId": "AgentSimulation",
+      "path": "toolVerdicts.reason",
+      "values": [
+        "allowed",
+        "restrictedForPerson",
+        "notPermittedForRole",
+        "removedFromRelease"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Scope and registry have no values slot. Enum values stay on the domain draft.",
+      "origin": {
+        "owner": "external",
+        "writer": "external",
+        "derived": false,
+        "restriction": "own",
+        "catalogValues": [],
+        "catalogSource": "/_102034_/l2/shared/contracts/connections/cm.ts",
+        "roleBinding": false
+      },
+      "uses": [],
+      "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+    },
+    {
+      "entityId": "AgentTool",
+      "path": "choiceSource",
+      "values": [
+        "admin",
+        "automatic"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Scope and registry have no values slot. Enum values stay on the domain draft.",
+      "origin": {
+        "owner": "module",
+        "writer": "module",
+        "derived": false,
+        "restriction": "own",
+        "catalogValues": [],
+        "catalogSource": "",
+        "roleBinding": false
+      },
+      "uses": [],
+      "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+    },
+    {
+      "entityId": "AgentTool",
+      "path": "details.automaticOrigin",
+      "values": [
+        "draftSuggestion",
+        "catalogRefresh"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Scope and registry have no values slot. Enum values stay on the domain draft.",
+      "origin": {
+        "owner": "module",
+        "writer": "module",
+        "derived": false,
+        "restriction": "own",
+        "catalogValues": [],
+        "catalogSource": "",
+        "roleBinding": false
+      },
+      "uses": [],
+      "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+    },
+    {
+      "entityId": "ExecutionSummary",
+      "path": "details.actions.result",
+      "values": [
+        "succeeded",
+        "failed",
+        "refused"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Scope and registry have no values slot. Enum values stay on the domain draft.",
+      "origin": {
+        "owner": "module",
+        "writer": "module",
+        "derived": false,
+        "restriction": "own",
+        "catalogValues": [],
+        "catalogSource": "",
+        "roleBinding": false
+      },
+      "uses": [],
+      "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+    },
+    {
+      "entityId": "OrganizationUser",
+      "path": "details.identification.status",
+      "values": [
+        "Active",
+        "Inactive",
+        "Merged",
+        "Blocked"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Scope and registry have no values slot. Enum values stay on the domain draft.",
+      "origin": {
+        "owner": "platform",
+        "writer": "derived",
+        "derived": true,
+        "restriction": "inherited",
+        "catalogValues": [
+          "Active",
+          "Inactive",
+          "Merged",
+          "Blocked"
+        ],
+        "catalogSource": "/_102034_/l4/ontology/mdm.defs.ts",
+        "roleBinding": false
+      },
+      "uses": [],
+      "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+    },
+    {
+      "entityId": "Tool",
+      "path": "origin",
+      "values": [
+        "appModule",
+        "cm"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Scope and registry have no values slot. Enum values stay on the domain draft.",
+      "origin": {
+        "owner": "module",
+        "writer": "module",
+        "derived": false,
+        "restriction": "own",
+        "catalogValues": [],
+        "catalogSource": "",
+        "roleBinding": false
+      },
+      "uses": [],
+      "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+    },
+    {
+      "entityId": "Tool",
+      "path": "status",
+      "values": [
+        "available",
+        "removed"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Scope and registry have no values slot. Enum values stay on the domain draft.",
+      "origin": {
+        "owner": "module",
+        "writer": "module",
+        "derived": false,
+        "restriction": "own",
+        "catalogValues": [],
+        "catalogSource": "",
+        "roleBinding": false
+      },
+      "uses": [],
+      "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+    }
+  ],
+  "resolutions": [
+    {
+      "grantId": "adminChoosePeople",
+      "actorRef": "companyAdmin",
+      "entityRefs": [
+        "OrganizationUser"
+      ],
+      "disclosure": "fieldsOnly",
+      "allowedFields": [
+        "OrganizationUser.details.identification.name",
+        "OrganizationUser.details.identification.status",
+        "OrganizationUser.details.agents.loginEmail"
+      ],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "OrganizationUser",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "adminManageAgents",
+      "actorRef": "companyAdmin",
+      "entityRefs": [
+        "Agent",
+        "AgentDraft",
+        "AgentBehavior",
+        "AgentSimulation"
+      ],
+      "disclosure": "fullRecord",
+      "allowedFields": [],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "Agent",
+          "steps": [],
+          "pending": ""
+        },
+        {
+          "entityId": "AgentDraft",
+          "steps": [],
+          "pending": ""
+        },
+        {
+          "entityId": "AgentBehavior",
+          "steps": [],
+          "pending": ""
+        },
+        {
+          "entityId": "AgentSimulation",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "adminManageTools",
+      "actorRef": "companyAdmin",
+      "entityRefs": [
+        "Tool",
+        "AgentTool",
+        "PersonToolRestriction"
+      ],
+      "disclosure": "fieldsOnly",
+      "allowedFields": [
+        "Tool.id",
+        "Tool.version",
+        "Tool.origin",
+        "Tool.moduleName",
+        "Tool.subject",
+        "Tool.name",
+        "Tool.status",
+        "Tool.details.moduleTitle",
+        "Tool.details.subjectTitle",
+        "Tool.details.description",
+        "Tool.details.releaseLabel",
+        "Tool.details.addedAt",
+        "Tool.details.removedAt",
+        "Tool.details.usedByAgents",
+        "AgentTool.id",
+        "AgentTool.version",
+        "AgentTool.agentId",
+        "AgentTool.toolId",
+        "AgentTool.enabled",
+        "AgentTool.choiceSource",
+        "AgentTool.details",
+        "PersonToolRestriction.id",
+        "PersonToolRestriction.version",
+        "PersonToolRestriction.personId",
+        "PersonToolRestriction.toolId",
+        "PersonToolRestriction.details"
+      ],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "Tool",
+          "steps": [],
+          "pending": ""
+        },
+        {
+          "entityId": "AgentTool",
+          "steps": [],
+          "pending": ""
+        },
+        {
+          "entityId": "PersonToolRestriction",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "adminOwnConduct",
+      "actorRef": "companyAdmin",
+      "entityRefs": [
+        "ConductChange"
+      ],
+      "disclosure": "fullRecord",
+      "allowedFields": [],
+      "anchorEntity": "OrganizationUser",
+      "scopeMode": "own",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "ConductChange",
+          "steps": [
+            {
+              "relationshipId": "conductChangePerson",
+              "from": "ConductChange",
+              "to": "OrganizationUser",
+              "field": "ConductChange.personId"
+            }
+          ],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": "join:conductChangePerson"
+    },
+    {
+      "grantId": "adminOwnConductCurrent",
+      "actorRef": "companyAdmin",
+      "entityRefs": [
+        "PersonalConduct"
+      ],
+      "disclosure": "fullRecord",
+      "allowedFields": [],
+      "anchorEntity": "",
+      "scopeMode": "custom",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "PersonalConduct",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "adminReadActivity",
+      "actorRef": "companyAdmin",
+      "entityRefs": [
+        "ExecutionSummary"
+      ],
+      "disclosure": "fieldsOnly",
+      "allowedFields": [
+        "ExecutionSummary.id",
+        "ExecutionSummary.version",
+        "ExecutionSummary.agentId",
+        "ExecutionSummary.personId",
+        "ExecutionSummary.startedAt",
+        "ExecutionSummary.details"
+      ],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "ExecutionSummary",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "connection_cm",
+      "actorRef": "connection:cm",
+      "entityRefs": [],
+      "disclosure": "fullRecord",
+      "allowedFields": [],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "connection_platform",
+      "actorRef": "connection:platform",
+      "entityRefs": [],
+      "disclosure": "fullRecord",
+      "allowedFields": [],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "memberOwnConduct",
+      "actorRef": "organizationMember",
+      "entityRefs": [
+        "ConductChange"
+      ],
+      "disclosure": "fullRecord",
+      "allowedFields": [],
+      "anchorEntity": "OrganizationUser",
+      "scopeMode": "own",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "ConductChange",
+          "steps": [
+            {
+              "relationshipId": "conductChangePerson",
+              "from": "ConductChange",
+              "to": "OrganizationUser",
+              "field": "ConductChange.personId"
+            }
+          ],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": "join:conductChangePerson"
+    },
+    {
+      "grantId": "memberOwnConductCurrent",
+      "actorRef": "organizationMember",
+      "entityRefs": [
+        "PersonalConduct"
+      ],
+      "disclosure": "fullRecord",
+      "allowedFields": [],
+      "anchorEntity": "",
+      "scopeMode": "custom",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "PersonalConduct",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "memberReadActivity",
+      "actorRef": "organizationMember",
+      "entityRefs": [
+        "ExecutionSummary"
+      ],
+      "disclosure": "fieldsOnly",
+      "allowedFields": [
+        "ExecutionSummary.id",
+        "ExecutionSummary.version",
+        "ExecutionSummary.agentId",
+        "ExecutionSummary.personId",
+        "ExecutionSummary.startedAt",
+        "ExecutionSummary.details"
+      ],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "ExecutionSummary",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "memberReadToolCatalog",
+      "actorRef": "organizationMember",
+      "entityRefs": [
+        "Tool"
+      ],
+      "disclosure": "fieldsOnly",
+      "allowedFields": [
+        "Tool.moduleName",
+        "Tool.subject",
+        "Tool.name",
+        "Tool.status",
+        "Tool.details.moduleTitle",
+        "Tool.details.subjectTitle",
+        "Tool.details.description"
+      ],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "Tool",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "memberSeeAgents",
+      "actorRef": "organizationMember",
+      "entityRefs": [
+        "Agent"
+      ],
+      "disclosure": "fieldsOnly",
+      "allowedFields": [
+        "Agent.name",
+        "Agent.definition",
+        "Agent.talksTo",
+        "Agent.onBehalfOf",
+        "Agent.isOn",
+        "Agent.responsible"
+      ],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "Agent",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "memberSeePeopleNames",
+      "actorRef": "organizationMember",
+      "entityRefs": [
+        "OrganizationUser"
+      ],
+      "disclosure": "fieldsOnly",
+      "allowedFields": [
+        "OrganizationUser.details.identification.name",
+        "OrganizationUser.details.agents.loginEmail"
+      ],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "OrganizationUser",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "memberSimulateAsMyself",
+      "actorRef": "organizationMember",
+      "entityRefs": [
+        "AgentSimulation"
+      ],
+      "disclosure": "fieldsOnly",
+      "allowedFields": [
+        "AgentSimulation.agent",
+        "AgentSimulation.level",
+        "AgentSimulation.subjectKind",
+        "AgentSimulation.person",
+        "AgentSimulation.sentence",
+        "AgentSimulation.toolVerdicts",
+        "AgentSimulation.understanding"
+      ],
+      "anchorEntity": "",
+      "scopeMode": "custom",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "AgentSimulation",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    }
+  ],
+  "helpers": [
+    {
+      "helperId": "join:conductChangePerson",
+      "session": "verified",
+      "steps": [
+        {
+          "relationshipId": "conductChangePerson",
+          "from": "ConductChange",
+          "to": "OrganizationUser",
+          "field": "ConductChange.personId"
+        }
+      ],
+      "consumers": [
+        "adminOwnConduct",
+        "memberOwnConduct"
+      ]
+    }
+  ],
+  "removedHelpers": [],
+  "registry": [
+    {
+      "portId": "AgentDraftRepository",
+      "adapterArtifactId": "AgentDraftRepository",
+      "factory": "AgentDraftRepository",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentDraftRepositoryAdapter.defs.ts",
+      "dependsOn": [
+        "102047/agents/repositoryAdapter/AgentDraftRepository"
+      ]
+    },
+    {
+      "portId": "AgentToolRepository",
+      "adapterArtifactId": "AgentToolRepository",
+      "factory": "AgentToolRepository",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.defs.ts",
+      "dependsOn": [
+        "102047/agents/repositoryAdapter/AgentToolRepository"
+      ]
+    },
+    {
+      "portId": "CmGateway",
+      "adapterArtifactId": "outbound",
+      "factory": "outbound",
+      "defPath": "l1/agents/layer_1_external/adapters/integration/outbound.defs.ts",
+      "dependsOn": [
+        "102047/agents/integrationOutbound/outbound"
+      ]
+    },
+    {
+      "portId": "ConductChangeRepository",
+      "adapterArtifactId": "ConductChangeRepository",
+      "factory": "ConductChangeRepository",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/conductChangeRepositoryAdapter.defs.ts",
+      "dependsOn": [
+        "102047/agents/repositoryAdapter/ConductChangeRepository"
+      ]
+    },
+    {
+      "portId": "ExecutionSummaryRepository",
+      "adapterArtifactId": "ExecutionSummaryRepository",
+      "factory": "ExecutionSummaryRepository",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.defs.ts",
+      "dependsOn": [
+        "102047/agents/repositoryAdapter/ExecutionSummaryRepository"
+      ]
+    },
+    {
+      "portId": "PersonToolRestrictionRepository",
+      "adapterArtifactId": "PersonToolRestrictionRepository",
+      "factory": "PersonToolRestrictionRepository",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.defs.ts",
+      "dependsOn": [
+        "102047/agents/repositoryAdapter/PersonToolRestrictionRepository"
+      ]
+    },
+    {
+      "portId": "ToolRepository",
+      "adapterArtifactId": "ToolRepository",
+      "factory": "ToolRepository",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.defs.ts",
+      "dependsOn": [
+        "102047/agents/repositoryAdapter/ToolRepository"
+      ]
+    }
+  ],
+  "publication": {
+    "stillToRegister": [
+      {
+        "artifactType": "integrationOutbound",
+        "defPath": "_102047_/l1/agents/layer_1_external/adapters/integration/outbound.defs.ts",
+        "outputPath": "_102047_/l1/agents/layer_1_external/adapters/integration/outbound.ts",
+        "registers": "outbound events"
+      },
+      {
+        "artifactType": "authorityMap",
+        "defPath": "_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+        "outputPath": "_102047_/l1/agents/layer_1_external/auth/authorityMap.ts",
+        "registers": "authority entries"
+      },
+      {
+        "artifactType": "accessScope",
+        "defPath": "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts",
+        "outputPath": "_102047_/l1/agents/layer_2_application/scope/accessScope.ts",
+        "registers": "scope grants"
+      },
+      {
+        "artifactType": "workflowProcess",
+        "defPath": "_102047_/l1/agents/layer_2_application/workflows/executionRecording.defs.ts",
+        "outputPath": "_102047_/l1/agents/layer_2_application/workflows/executionRecording.ts",
+        "registers": "workflow process"
+      },
+      {
+        "artifactType": "workflowProcess",
+        "defPath": "_102047_/l1/agents/layer_2_application/workflows/toolCatalogRefresh.defs.ts",
+        "outputPath": "_102047_/l1/agents/layer_2_application/workflows/toolCatalogRefresh.ts",
+        "registers": "workflow process"
+      },
+      {
+        "artifactType": "workflowProcess",
+        "defPath": "_102047_/l1/agents/layer_2_application/workflows/virtualEmployeeCreation.defs.ts",
+        "outputPath": "_102047_/l1/agents/layer_2_application/workflows/virtualEmployeeCreation.ts",
+        "registers": "workflow process"
+      }
+    ],
+    "later": []
+  },
+  "seedPlan": {
+    "phase": "plan",
+    "materialized": false,
+    "rowCount": 0,
+    "datasets": [
+      {
+        "datasetId": "agentDraft",
+        "tableId": "agentDraft",
+        "owners": [
+          "createVirtualEmployee",
+          "reviewAndActivateDraft"
+        ]
+      },
+      {
+        "datasetId": "agentTool",
+        "tableId": "agentTool",
+        "owners": [
+          "adjustAgentTools",
+          "reviewAndActivateDraft"
+        ]
+      },
+      {
+        "datasetId": "conductChange",
+        "tableId": "conductChange",
+        "owners": [
+          "changeMyConduct"
+        ]
+      },
+      {
+        "datasetId": "executionSummary",
+        "tableId": "executionSummary",
+        "owners": [
+          "followAgentActivity"
+        ]
+      },
+      {
+        "datasetId": "personToolRestriction",
+        "tableId": "personToolRestriction",
+        "owners": [
+          "restrictPersonTools"
+        ]
+      },
+      {
+        "datasetId": "tool",
+        "tableId": "tool",
+        "owners": [
+          "adjustAgentTools"
+        ]
+      }
+    ],
+    "dependencies": [
+      {
+        "entityId": "AgentDraft",
+        "kind": "module",
+        "seeded": false
+      },
+      {
+        "entityId": "AgentTool",
+        "kind": "module",
+        "seeded": false
+      },
+      {
+        "entityId": "ConductChange",
+        "kind": "module",
+        "seeded": false
+      },
+      {
+        "entityId": "ExecutionSummary",
+        "kind": "module",
+        "seeded": false
+      },
+      {
+        "entityId": "OrganizationUser",
+        "kind": "mdm",
+        "seeded": false
+      },
+      {
+        "entityId": "PersonToolRestriction",
+        "kind": "module",
+        "seeded": false
+      },
+      {
+        "entityId": "Tool",
+        "kind": "module",
+        "seeded": false
+      }
+    ]
+  },
+  "effectPlan": {
+    "phase": "plan",
+    "executed": false,
+    "capability": {
+      "symbol": "IQueueRuntime.publish",
+      "path": "mls-102034/l1/server/layer_1_external/data/runtime.ts",
+      "owner": "RequestContext.data.pgQueue",
+      "payload": "{ topic: string; payload: unknown }",
+      "delivery": "Postgres insert into mdm_outbox. Memory keeps an array. No module consumer is registered.",
+      "transaction": "Postgres publish uses the transaction executor. Memory runInTransaction does not roll back.",
+      "requestContextPublish": false,
+      "bound": false
+    }
+  },
+  "problems": [],
+  "normalizations": [
+    {
+      "code": "ENUMERATIONS_CONSUMED",
+      "path": "domain30.enumerations",
+      "detail": "1 enum groups have a covered consumer. No rows were written."
+    },
+    {
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "domain30.enumerations",
+      "detail": "9 enum values stay on the domain draft. support70 does not copy them."
+    }
+  ],
+  "emit": [
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "integrationOutbound",
+        "artifactId": "outbound",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "integrationId": "outbound",
+          "events": [],
+          "connections": [
+            {
+              "connectionId": "cm",
+              "operationId": "activateAgent",
+              "consumer": "activate",
+              "entityRefs": [
+                "Agent"
+              ],
+              "effect": "update"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "createAgent",
+              "consumer": "createAgentDraft",
+              "entityRefs": [
+                "Agent"
+              ],
+              "effect": "create"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "discardAgentDraft",
+              "consumer": "discard",
+              "entityRefs": [
+                "Agent"
+              ],
+              "effect": "remove"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "listAgentHistory",
+              "consumer": "listAgentBehavior",
+              "entityRefs": [
+                "AgentBehavior"
+              ],
+              "effect": "list"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "listAgents",
+              "consumer": "listAgent",
+              "entityRefs": [
+                "Agent"
+              ],
+              "effect": "list"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "listAgents",
+              "consumer": "toolCatalogRefresh",
+              "entityRefs": [
+                "Agent"
+              ],
+              "effect": "list"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "listCmTools",
+              "consumer": "toolCatalogRefresh",
+              "entityRefs": [
+                "Tool"
+              ],
+              "effect": "list"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "readAgent",
+              "consumer": "getAgent",
+              "entityRefs": [
+                "Agent",
+                "AgentBehavior",
+                "PersonalConduct"
+              ],
+              "effect": "read"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "runAiPrompt",
+              "consumer": "toolCatalogRefresh",
+              "entityRefs": [
+                "AgentTool"
+              ],
+              "effect": "create"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "simulateAgent",
+              "consumer": "listAgentSimulation",
+              "entityRefs": [
+                "AgentSimulation"
+              ],
+              "effect": "create"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "undoAgentChange",
+              "consumer": "undoAgentChange",
+              "entityRefs": [
+                "AgentBehavior"
+              ],
+              "effect": "update"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "updateAgent",
+              "consumer": "updateAgent",
+              "entityRefs": [
+                "Agent",
+                "PersonalConduct"
+              ],
+              "effect": "update"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "updateAgent",
+              "consumer": "updateAgentAgentBehavior",
+              "entityRefs": [
+                "Agent",
+                "PersonalConduct"
+              ],
+              "effect": "update"
+            },
+            {
+              "connectionId": "cm",
+              "operationId": "updateAgent",
+              "consumer": "updatePersonalConduct",
+              "entityRefs": [
+                "Agent",
+                "PersonalConduct"
+              ],
+              "effect": "update"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/integrationOutbound/outbound",
+          "type": "integrationOutbound",
+          "defPath": "_102047_/l1/agents/layer_1_external/adapters/integration/outbound.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_1_external/adapters/integration/outbound.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [],
+          "dependsOn": [],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/integrationOutbound.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "authorityMap",
+        "artifactId": "authorityMap",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+        ],
+        "data": {
+          "mapId": "authorityMap",
+          "entries": [
+            {
+              "grantId": "adminChoosePeople",
+              "actorRef": "companyAdmin"
+            },
+            {
+              "grantId": "adminManageAgents",
+              "actorRef": "companyAdmin"
+            },
+            {
+              "grantId": "adminManageTools",
+              "actorRef": "companyAdmin"
+            },
+            {
+              "grantId": "adminOwnConduct",
+              "actorRef": "companyAdmin"
+            },
+            {
+              "grantId": "adminOwnConductCurrent",
+              "actorRef": "companyAdmin"
+            },
+            {
+              "grantId": "adminReadActivity",
+              "actorRef": "companyAdmin"
+            },
+            {
+              "grantId": "connection_cm",
+              "actorRef": "connection:cm"
+            },
+            {
+              "grantId": "connection_platform",
+              "actorRef": "connection:platform"
+            },
+            {
+              "grantId": "memberOwnConduct",
+              "actorRef": "organizationMember"
+            },
+            {
+              "grantId": "memberOwnConductCurrent",
+              "actorRef": "organizationMember"
+            },
+            {
+              "grantId": "memberReadActivity",
+              "actorRef": "organizationMember"
+            },
+            {
+              "grantId": "memberReadToolCatalog",
+              "actorRef": "organizationMember"
+            },
+            {
+              "grantId": "memberSeeAgents",
+              "actorRef": "organizationMember"
+            },
+            {
+              "grantId": "memberSeePeopleNames",
+              "actorRef": "organizationMember"
+            },
+            {
+              "grantId": "memberSimulateAsMyself",
+              "actorRef": "organizationMember"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/authorityMap/authorityMap",
+          "type": "authorityMap",
+          "defPath": "_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_1_external/auth/authorityMap.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/accessScope/accessScope"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/authorityMap.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "accessScope",
+        "artifactId": "accessScope",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "scopeId": "accessScope",
+          "grants": [
+            {
+              "grantId": "adminChoosePeople",
+              "actorRef": "companyAdmin",
+              "entityRefs": [
+                "OrganizationUser"
+              ],
+              "disclosure": "fieldsOnly",
+              "allowedFields": [
+                "OrganizationUser.details.identification.name",
+                "OrganizationUser.details.identification.status",
+                "OrganizationUser.details.agents.loginEmail"
+              ],
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "OrganizationUser",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "adminManageAgents",
+              "actorRef": "companyAdmin",
+              "entityRefs": [
+                "Agent",
+                "AgentDraft",
+                "AgentBehavior",
+                "AgentSimulation"
+              ],
+              "disclosure": "fullRecord",
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "Agent",
+                  "steps": [],
+                  "pending": ""
+                },
+                {
+                  "entityId": "AgentDraft",
+                  "steps": [],
+                  "pending": ""
+                },
+                {
+                  "entityId": "AgentBehavior",
+                  "steps": [],
+                  "pending": ""
+                },
+                {
+                  "entityId": "AgentSimulation",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "adminManageTools",
+              "actorRef": "companyAdmin",
+              "entityRefs": [
+                "Tool",
+                "AgentTool",
+                "PersonToolRestriction"
+              ],
+              "disclosure": "fieldsOnly",
+              "allowedFields": [
+                "Tool.id",
+                "Tool.version",
+                "Tool.origin",
+                "Tool.moduleName",
+                "Tool.subject",
+                "Tool.name",
+                "Tool.status",
+                "Tool.details.moduleTitle",
+                "Tool.details.subjectTitle",
+                "Tool.details.description",
+                "Tool.details.releaseLabel",
+                "Tool.details.addedAt",
+                "Tool.details.removedAt",
+                "Tool.details.usedByAgents",
+                "AgentTool.id",
+                "AgentTool.version",
+                "AgentTool.agentId",
+                "AgentTool.toolId",
+                "AgentTool.enabled",
+                "AgentTool.choiceSource",
+                "AgentTool.details",
+                "PersonToolRestriction.id",
+                "PersonToolRestriction.version",
+                "PersonToolRestriction.personId",
+                "PersonToolRestriction.toolId",
+                "PersonToolRestriction.details"
+              ],
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "Tool",
+                  "steps": [],
+                  "pending": ""
+                },
+                {
+                  "entityId": "AgentTool",
+                  "steps": [],
+                  "pending": ""
+                },
+                {
+                  "entityId": "PersonToolRestriction",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "adminOwnConduct",
+              "actorRef": "companyAdmin",
+              "anchorEntity": "OrganizationUser",
+              "entityRefs": [
+                "ConductChange"
+              ],
+              "disclosure": "fullRecord",
+              "scopeMode": "own",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "ConductChange",
+                  "steps": [
+                    {
+                      "relationshipId": "conductChangePerson",
+                      "from": "ConductChange",
+                      "to": "OrganizationUser",
+                      "field": "ConductChange.personId"
+                    }
+                  ],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "adminOwnConductCurrent",
+              "actorRef": "companyAdmin",
+              "entityRefs": [
+                "PersonalConduct"
+              ],
+              "disclosure": "fullRecord",
+              "scopeMode": "custom",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "PersonalConduct",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "adminReadActivity",
+              "actorRef": "companyAdmin",
+              "entityRefs": [
+                "ExecutionSummary"
+              ],
+              "disclosure": "fieldsOnly",
+              "allowedFields": [
+                "ExecutionSummary.id",
+                "ExecutionSummary.version",
+                "ExecutionSummary.agentId",
+                "ExecutionSummary.personId",
+                "ExecutionSummary.startedAt",
+                "ExecutionSummary.details"
+              ],
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "ExecutionSummary",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "connection_cm",
+              "actorRef": "connection:cm",
+              "entityRefs": [],
+              "disclosure": "fullRecord",
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [],
+              "pending": ""
+            },
+            {
+              "grantId": "connection_platform",
+              "actorRef": "connection:platform",
+              "entityRefs": [],
+              "disclosure": "fullRecord",
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [],
+              "pending": ""
+            },
+            {
+              "grantId": "memberOwnConduct",
+              "actorRef": "organizationMember",
+              "anchorEntity": "OrganizationUser",
+              "entityRefs": [
+                "ConductChange"
+              ],
+              "disclosure": "fullRecord",
+              "scopeMode": "own",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "ConductChange",
+                  "steps": [
+                    {
+                      "relationshipId": "conductChangePerson",
+                      "from": "ConductChange",
+                      "to": "OrganizationUser",
+                      "field": "ConductChange.personId"
+                    }
+                  ],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "memberOwnConductCurrent",
+              "actorRef": "organizationMember",
+              "entityRefs": [
+                "PersonalConduct"
+              ],
+              "disclosure": "fullRecord",
+              "scopeMode": "custom",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "PersonalConduct",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "memberReadActivity",
+              "actorRef": "organizationMember",
+              "entityRefs": [
+                "ExecutionSummary"
+              ],
+              "disclosure": "fieldsOnly",
+              "allowedFields": [
+                "ExecutionSummary.id",
+                "ExecutionSummary.version",
+                "ExecutionSummary.agentId",
+                "ExecutionSummary.personId",
+                "ExecutionSummary.startedAt",
+                "ExecutionSummary.details"
+              ],
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "ExecutionSummary",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "memberReadToolCatalog",
+              "actorRef": "organizationMember",
+              "entityRefs": [
+                "Tool"
+              ],
+              "disclosure": "fieldsOnly",
+              "allowedFields": [
+                "Tool.moduleName",
+                "Tool.subject",
+                "Tool.name",
+                "Tool.status",
+                "Tool.details.moduleTitle",
+                "Tool.details.subjectTitle",
+                "Tool.details.description"
+              ],
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "Tool",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "memberSeeAgents",
+              "actorRef": "organizationMember",
+              "entityRefs": [
+                "Agent"
+              ],
+              "disclosure": "fieldsOnly",
+              "allowedFields": [
+                "Agent.name",
+                "Agent.definition",
+                "Agent.talksTo",
+                "Agent.onBehalfOf",
+                "Agent.isOn",
+                "Agent.responsible"
+              ],
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "Agent",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "memberSeePeopleNames",
+              "actorRef": "organizationMember",
+              "entityRefs": [
+                "OrganizationUser"
+              ],
+              "disclosure": "fieldsOnly",
+              "allowedFields": [
+                "OrganizationUser.details.identification.name",
+                "OrganizationUser.details.agents.loginEmail"
+              ],
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "OrganizationUser",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "memberSimulateAsMyself",
+              "actorRef": "organizationMember",
+              "entityRefs": [
+                "AgentSimulation"
+              ],
+              "disclosure": "fieldsOnly",
+              "allowedFields": [
+                "AgentSimulation.agent",
+                "AgentSimulation.level",
+                "AgentSimulation.subjectKind",
+                "AgentSimulation.person",
+                "AgentSimulation.sentence",
+                "AgentSimulation.toolVerdicts",
+                "AgentSimulation.understanding"
+              ],
+              "scopeMode": "custom",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "AgentSimulation",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/accessScope/accessScope",
+          "type": "accessScope",
+          "defPath": "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/scope/accessScope.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [],
+          "dependsOn": [],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/accessScope.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "workflowProcess",
+        "artifactId": "executionRecording",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts",
+          "_102047_/l4/agents/ontology/ExecutionSummary.defs.ts",
+          "_102047_/l4/agents/workflows.defs.ts"
+        ],
+        "data": {
+          "processId": "executionRecording",
+          "trigger": {
+            "kind": "event",
+            "event": "cm.record"
+          },
+          "functions": [
+            "recordExecutionSummary"
+          ],
+          "operations": [
+            {
+              "operation": "ExecutionSummary.create",
+              "steps": [
+                "task:recordExecution"
+              ]
+            }
+          ],
+          "occurrence": {
+            "entityId": "ExecutionSummary"
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/workflowProcess/executionRecording",
+          "type": "workflowProcess",
+          "defPath": "_102047_/l1/agents/layer_2_application/workflows/executionRecording.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/workflows/executionRecording.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/usecase/createExecutionSummary"
+          ],
+          "skills": []
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "workflowProcess",
+        "artifactId": "toolCatalogRefresh",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/usecases/createTool.defs.ts",
+          "_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts",
+          "_102047_/l1/agents/layer_2_application/usecases/updateTool.defs.ts",
+          "_102047_/l4/agents/ontology/Tool.defs.ts",
+          "_102047_/l4/agents/workflows.defs.ts"
+        ],
+        "data": {
+          "processId": "toolCatalogRefresh",
+          "trigger": {
+            "kind": "event",
+            "event": "platform.releaseCatalogChanged"
+          },
+          "functions": [
+            "applyReleaseCatalog",
+            "chooseToolsForAgents"
+          ],
+          "operations": [
+            {
+              "operation": "AgentTool.update",
+              "steps": [
+                "task:chooseNewToolsPerAgent"
+              ]
+            },
+            {
+              "operation": "Tool.create",
+              "steps": [
+                "task:rebuildCatalog"
+              ]
+            },
+            {
+              "operation": "Tool.update",
+              "steps": [
+                "task:rebuildCatalog"
+              ]
+            }
+          ],
+          "occurrence": {
+            "entityId": "Tool"
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/workflowProcess/toolCatalogRefresh",
+          "type": "workflowProcess",
+          "defPath": "_102047_/l1/agents/layer_2_application/workflows/toolCatalogRefresh.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/workflows/toolCatalogRefresh.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_2_application/usecases/createTool.defs.ts",
+            "_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts",
+            "_102047_/l1/agents/layer_2_application/usecases/updateTool.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/usecase/createTool",
+            "102047/agents/usecase/updateAgentTool",
+            "102047/agents/usecase/updateTool"
+          ],
+          "skills": []
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "workflowProcess",
+        "artifactId": "virtualEmployeeCreation",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/usecases/activate.defs.ts",
+          "_102047_/l1/agents/layer_2_application/usecases/createAgentDraft.defs.ts",
+          "_102047_/l1/agents/layer_2_application/usecases/discard.defs.ts",
+          "_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts",
+          "_102047_/l4/agents/journeys/createVirtualEmployee.defs.ts",
+          "_102047_/l4/agents/journeys/reviewAndActivateDraft.defs.ts",
+          "_102047_/l4/agents/ontology/AgentDraft.defs.ts",
+          "_102047_/l4/agents/workflows.defs.ts"
+        ],
+        "data": {
+          "processId": "virtualEmployeeCreation",
+          "trigger": {
+            "kind": "manual",
+            "actorRef": "companyAdmin"
+          },
+          "functions": [
+            "startVirtualEmployeeRequest",
+            "receiveDraftOutcome",
+            "resolveDraftReviewer",
+            "completeDraftReview"
+          ],
+          "operations": [
+            {
+              "operation": "AgentDraft.activate",
+              "steps": [
+                "journey:reviewAndActivateDraft/activateDraft"
+              ]
+            },
+            {
+              "operation": "AgentDraft.create",
+              "steps": [
+                "journey:createVirtualEmployee/describeAgent"
+              ]
+            },
+            {
+              "operation": "AgentDraft.discard",
+              "steps": [
+                "journey:reviewAndActivateDraft/discardDraft"
+              ]
+            },
+            {
+              "operation": "AgentTool.update",
+              "steps": [
+                "journey:reviewAndActivateDraft/adjustDraftTools",
+                "task:applySuggestedTools"
+              ]
+            }
+          ],
+          "occurrence": {
+            "entityId": "AgentDraft"
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/workflowProcess/virtualEmployeeCreation",
+          "type": "workflowProcess",
+          "defPath": "_102047_/l1/agents/layer_2_application/workflows/virtualEmployeeCreation.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/workflows/virtualEmployeeCreation.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_2_application/usecases/activate.defs.ts",
+            "_102047_/l1/agents/layer_2_application/usecases/createAgentDraft.defs.ts",
+            "_102047_/l1/agents/layer_2_application/usecases/discard.defs.ts",
+            "_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/usecase/activate",
+            "102047/agents/usecase/createAgentDraft",
+            "102047/agents/usecase/discard",
+            "102047/agents/usecase/updateAgentTool"
+          ],
+          "skills": []
+        }
+      ]
+    }
+  ]
+}
