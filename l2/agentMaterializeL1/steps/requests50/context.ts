@@ -374,7 +374,14 @@ export function workflowRoutes(units: readonly M12Unit[], requestDef: Record<str
     const route = String(request.route ?? '');
     for (const usecaseId of Array.isArray(request.uses) ? request.uses.map(String) : []) {
       for (const process of processes) {
-        const operations = Array.isArray(process.definition.data.operations) ? process.definition.data.operations.filter(isRecord).map(row => String(row.operation ?? '')) : [];
+        // d1_264: a process the system starts (an event, a schedule) reaches an operation only by its own `task:` steps; a route of a page does not
+        // start it and does not call its function. Only a step of a journey (`journey:...`), or a trigger a person starts, puts the route in the process.
+        const system = isRecord(process.definition.data.trigger) && process.definition.data.trigger.kind !== 'manual';
+        const operations = Array.isArray(process.definition.data.operations)
+          ? process.definition.data.operations.filter(isRecord)
+            .filter(row => !system || !Array.isArray(row.steps) || row.steps.length === 0 || row.steps.some(step => !String(step).startsWith('task:')))
+            .map(row => String(row.operation ?? ''))
+          : [];
         const operation = (usecaseOperation.get(usecaseId) ?? []).find(op => operations.includes(op));
         if (!operation) continue;
         const processId = String(process.definition.data.processId ?? process.unitId);

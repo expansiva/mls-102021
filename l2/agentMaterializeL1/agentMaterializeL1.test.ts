@@ -1108,6 +1108,13 @@ test('the workflow service: its facts, its l4 process, the usecase of each opera
 
   const routes = workflowRoutes(units, { requests: [{ route: 'tarefas.minhas_tarefas.aceitarEntrega', uses: ['aceitar'] }, { route: 'tarefas.minhas_tarefas.minhasTarefas', uses: ['listTarefa'] }] }, 102047, 'tarefas');
   assert.deepEqual(routes.map(item => `${item.route}:${item.processId}:${item.operation}`), ['tarefas.minhas_tarefas.aceitarEntrega:cicloTarefa:Tarefa.aceitar'], 'a list outside the process does not go through it');
+  // d1_264: a process the system starts reaches an operation by its own `task:` steps only: the route of a page that uses the usecase is not in it.
+  // The process a person starts, or one with a journey step on the operation, stays.
+  const rotina = unit('workflowProcess', 'rotina', { processId: 'rotina', trigger: { kind: 'event', event: 'catalogo' }, functions: ['refazer'], operations: [{ operation: 'Tarefa.aceitar', steps: ['task:escolherNovas'] }] });
+  const mista = unit('workflowProcess', 'mista', { processId: 'mista', trigger: { kind: 'event', event: 'catalogo' }, functions: ['refazer'], operations: [{ operation: 'Tarefa.aceitar', steps: ['task:escolherNovas', 'journey:revisarTarefa/aceitarTarefa'] }] });
+  const request = { requests: [{ route: 'tarefas.minhas_tarefas.aceitarEntrega', uses: ['aceitar'] }] };
+  assert.deepEqual(workflowRoutes([rotina, units[2]], request, 102047, 'tarefas'), [], 'an event process with a task step only is not reached by a route');
+  assert.deepEqual(workflowRoutes([mista, units[2]], request, 102047, 'tarefas').map(item => item.processId), ['mista'], 'a journey step on the operation keeps it');
   assert.equal(workflowRouteProblems("import { aceitar } from '/_102047_/l1/tarefas/layer_2_application/usecases/aceitar.js';", routes).length, 1);
   assert.deepEqual(workflowRouteProblems("import { avancarEtapaTarefa } from '/_102047_/l1/tarefas/layer_2_application/workflows/cicloTarefa.js';", routes), []);
 });

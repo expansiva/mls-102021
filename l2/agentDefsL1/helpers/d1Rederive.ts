@@ -10,6 +10,7 @@ import { D1_FLOW_STEP_IDS, type D1FileInfo, type D1StepId } from '/_102021_/l2/a
 import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, removeOwned, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { parseDefinitionSource, readDefinition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 
 export const D1_REDERIVE_SCHEMA = '2026-11-20-d1-rederive-v1' as const;
@@ -87,17 +88,49 @@ export async function writeRederive(project: number, moduleName: string, marker:
 
 /**
  * The `@@agentMaterializeL1` line of each def that changed or was born since the marker, in path order, and the marker is removed. A def that came
- * out the same is not listed: the materializer would reuse its unit by the hash anyway.
+ * out the same and reads no def that changed is not listed. d1_264: the materializer reuses a unit whose output exists (d1_122), by existence and not by
+ * hash, so a def that came out the same but reads (`dependencies`, transitively) a def that changed is listed too: nothing else regenerates its unit.
  */
 export async function finishRederive(project: number, moduleName: string, currentDefPaths: readonly string[]): Promise<string[] | null> {
   const marker = await readRederive(project, moduleName);
   if (!marker) return null;
   const now = await defHashes(project, currentDefPaths);
-  const changed = Object.keys(now).filter(path => marker.before[path] !== now[path]).sort();
+  const changed = [...new Set([...Object.keys(now).filter(path => marker.before[path] !== now[path]), ...await readersOfChanged(project, currentDefPaths, Object.keys(now).filter(path => marker.before[path] !== now[path]))])].sort();
   // d1_252: a def that was there before and is gone from the disk now: its target removes the output the materializer wrote for it.
   const gone = Object.keys(marker.before).filter(path => !(path in now) && !currentDefPaths.includes(path));
   const removed: string[] = [];
   for (const path of gone.sort()) if (!Object.keys(await defHashes(project, [path])).length) removed.push(path);
   await removeOwned(rederiveFile(project, moduleName));
   return [...changed, ...removed].map(path => `@@agentMaterializeL1 {"target":"${qualifyDefPath(project, path)}"}`);
+}
+
+/**
+ * d1_264: the defs of `candidates` that read, through `dependencies`, a def of `changed` or a def that reads one (the closure). The dependency refs are
+ * qualified (`_<project>_/l1/...`); a ref that is not a def of the candidates (the L4, another module) never joins the closure.
+ */
+async function readersOfChanged(project: number, candidates: readonly string[], changed: readonly string[]): Promise<string[]> {
+  if (!changed.length) return [];
+  const prefix = `_${project}_/`;
+  const reads = new Map<string, string[]>();
+  for (const defPath of candidates) {
+    const info = artifactFile(project, qualifyDefPath(project, defPath));
+    const text = info ? await readText(info) : null;
+    if (text == null) continue;
+    const parsed = parseDefinitionSource(text);
+    const definition = 'definition' in parsed ? readDefinition(parsed.definition) : null;
+    if (!definition || 'issues' in definition) continue;
+    reads.set(defPath, definition.dependencies.filter(ref => ref.startsWith(prefix)).map(ref => ref.slice(prefix.length)));
+  }
+  const inClosure = new Set(changed);
+  const added: string[] = [];
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const [defPath, deps] of reads) {
+      if (inClosure.has(defPath) || !deps.some(dep => inClosure.has(dep))) continue;
+      inClosure.add(defPath);
+      added.push(defPath);
+      grew = true;
+    }
+  }
+  return added;
 }

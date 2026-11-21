@@ -120,8 +120,22 @@ void test('d1_228: /rederive persistence40 redoes the port and only the port: th
   assert.equal(host.files[fileKey(rederiveFile(PROJECT, MODULE))]?.status === 'deleted' || !host.files[fileKey(rederiveFile(PROJECT, MODULE))], true, 'the marker is removed');
   assert.equal(await readRederive(PROJECT, MODULE), null);
   const traces = done.finalTrace.split('\n').filter(line => line.startsWith('@@agentMaterializeL1'));
-  assert.deepEqual(traces, [`@@agentMaterializeL1 {"target":"_${PROJECT}_/${portPath}"}`]);
-  assert.match(done.finalTrace, /rederive: 1 def\(s\) changed\./u);
+  // d1_264: the bytes of the other defs are unchanged (above), but the defs that read the port through `dependencies` (adapters, usecases, requests, controllers)
+  // are listed with it: the materializer reuses a unit whose output exists, so the target is the only way their code follows the port.
+  assert.deepEqual(traces, [
+    'layer_1_external/adapters/http/controllers/atendimento',
+    'layer_1_external/adapters/http/controllers/fechamento',
+    'layer_1_external/adapters/integration/outbound',
+    'layer_1_external/adapters/persistence/comandaRepositoryAdapter',
+    'layer_1_external/adapters/persistence/registerRepositories',
+    'layer_2_application/ports/comandaRepository',
+    'layer_2_application/requests/atendimento',
+    'layer_2_application/requests/fechamento',
+    'layer_2_application/usecases/createComanda',
+    'layer_2_application/usecases/fecharComanda',
+    'layer_2_application/usecases/listComanda',
+  ].map(def => `@@agentMaterializeL1 {"target":"_${PROJECT}_/l1/${MODULE}/${def}.defs.ts"}`));
+  assert.match(done.finalTrace, /rederive: 11 def\(s\) changed\./u);
 });
 
 void test('d1_228: a rederive from a later step does not redo what an earlier step wrote: the earlier step refuses the old def by name', async () => {
@@ -445,7 +459,8 @@ void test('d1_249: a run refused in controllers60 keeps the receipts: the /reder
   const done = await runToFinalize(host, MODULE, resolver, true);
   assert.equal(done.report?.outcome, 'complete');
   assert.equal(stored(host, `l1/${MODULE}/layer_2_application/requests/inicio.defs.ts`).content.includes('MUDOU-O-TEXTO'), true);
-  assert.match(done.finalTrace, /rederive: 1 def\(s\) changed\.\n@@agentMaterializeL1 \{"target":"_102047_\/l1\/comandaRestaurante\/layer_2_application\/requests\/inicio\.defs\.ts"\}/u, done.finalTrace);
+  // d1_264: the controller of the page reads the request def through `dependencies`: it is listed next to the request that changed.
+  assert.match(done.finalTrace, /rederive: 2 def\(s\) changed\.\n@@agentMaterializeL1 \{"target":"_102047_\/l1\/comandaRestaurante\/layer_1_external\/adapters\/http\/controllers\/inicio\.defs\.ts"\}\n@@agentMaterializeL1 \{"target":"_102047_\/l1\/comandaRestaurante\/layer_2_application\/requests\/inicio\.defs\.ts"\}/u, done.finalTrace);
 });
 
 void test('d1_249: progress written before the receipts were kept (nothing vouches for the defs): the /rederive vouches for the kinds it redoes', async () => {
@@ -455,7 +470,8 @@ void test('d1_249: progress written before the receipts were kept (nothing vouch
   assert.equal(done.report?.outcome, 'complete');
   assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
   assert.equal(stored(host, `l1/${MODULE}/layer_2_application/requests/inicio.defs.ts`).content.includes('MUDOU-O-TEXTO'), true);
-  assert.match(done.finalTrace, /rederive: 1 def\(s\) changed\.\n@@agentMaterializeL1 \{"target":"_102047_\/l1\/comandaRestaurante\/layer_2_application\/requests\/inicio\.defs\.ts"\}/u, done.finalTrace);
+  // d1_264: the controller of the page reads the request def through `dependencies`: it is listed next to the request that changed.
+  assert.match(done.finalTrace, /rederive: 2 def\(s\) changed\.\n@@agentMaterializeL1 \{"target":"_102047_\/l1\/comandaRestaurante\/layer_1_external\/adapters\/http\/controllers\/inicio\.defs\.ts"\}\n@@agentMaterializeL1 \{"target":"_102047_\/l1\/comandaRestaurante\/layer_2_application\/requests\/inicio\.defs\.ts"\}/u, done.finalTrace);
 });
 
 void test('d1_249: a def edited by hand after the D1 wrote it is not vouched for: the /rederive refuses it and leaves the edit', async () => {

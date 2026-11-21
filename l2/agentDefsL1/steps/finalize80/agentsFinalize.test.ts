@@ -537,10 +537,23 @@ void test('d1_255 (on 30f16c8e): the result the manager reads at the end of the 
   const result = JSON.parse(text) as { materializeTargets?: string[]; runSummary?: string[]; rederiveChanged?: number };
   assert.ok((result.rederiveChanged ?? 0) > 0);
   assert.equal(result.materializeTargets?.length, result.rederiveChanged);
-  // The fixture and the rules are fixed: the exact targets the manager has to materialize.
+  // The fixture and the rules are fixed: the exact targets the manager has to materialize. d1_264: next to the 28 defs whose bytes changed come the 17 that
+  // read one of them through `dependencies` (the controllers of the requests, the usecases of the entity AgentDraft, and the workflow virtualEmployeeCreation, which
+  // reads draft.situation and was left stale before).
   assert.deepEqual(result.materializeTargets, [
+    'layer_1_external/adapters/http/controllers/agent_activity',
+    'layer_1_external/adapters/http/controllers/agent_behavior',
+    'layer_1_external/adapters/http/controllers/agent_configuration',
+    'layer_1_external/adapters/http/controllers/agent_overview',
+    'layer_1_external/adapters/http/controllers/agent_simulation',
+    'layer_1_external/adapters/http/controllers/agent_tools',
     'layer_1_external/adapters/http/controllers/agents',
+    'layer_1_external/adapters/http/controllers/cm',
+    'layer_1_external/adapters/http/controllers/draft_review',
     'layer_1_external/adapters/http/controllers/my_conduct',
+    'layer_1_external/adapters/http/controllers/person_restrictions',
+    'layer_1_external/adapters/http/controllers/platform',
+    'layer_1_external/adapters/http/controllers/tool_catalog',
     'layer_1_external/adapters/integration/outbound',
     'layer_1_external/adapters/persistence/agentDraft',
     'layer_1_external/adapters/persistence/agentDraftRepositoryAdapter',
@@ -561,9 +574,15 @@ void test('d1_255 (on 30f16c8e): the result the manager reads at the end of the 
     'layer_2_application/requests/person_restrictions',
     'layer_2_application/requests/tool_catalog',
     'layer_2_application/scope/accessScope',
+    'layer_2_application/usecases/activate',
+    'layer_2_application/usecases/createAgentDraft',
+    'layer_2_application/usecases/discard',
     'layer_2_application/usecases/getPersonalConduct',
+    'layer_2_application/usecases/listAgentDraft',
     'layer_2_application/usecases/listConductChange',
     'layer_2_application/usecases/updateAgentDraft',
+    'layer_2_application/usecases/updatePersonalConduct',
+    'layer_2_application/workflows/virtualEmployeeCreation',
     'layer_3_domain/entities/agentDraft',
     'layer_3_domain/entities/conductChange',
     'layer_3_domain/entities/personalConduct',
