@@ -4,7 +4,7 @@
 // the L4 and the L2 did not. The source key of the D1 is the L4 and the L2, so a second `/run` is a no-op; and a def the D1 itself wrote is only
 // overwritten when input20 plans it as `recompose` (its writer receipt matches the bytes). The command leaves a marker with the hashes of the defs
 // as they are; while it stands, input20 plans the defs of the chosen step and of the later ones as `recompose`; finalize80 compares and prints the
-// `@@agentMaterializeL1` target of each def that changed, then removes the marker.
+// `@@agentMaterializeL1` target of each def that changed (and of each def that is gone from the disk: d1_252, the materializer removes its output), then removes the marker.
 
 import { D1_FLOW_STEP_IDS, type D1FileInfo, type D1StepId } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
@@ -94,6 +94,10 @@ export async function finishRederive(project: number, moduleName: string, curren
   if (!marker) return null;
   const now = await defHashes(project, currentDefPaths);
   const changed = Object.keys(now).filter(path => marker.before[path] !== now[path]).sort();
+  // d1_252: a def that was there before and is gone from the disk now: its target removes the output the materializer wrote for it.
+  const gone = Object.keys(marker.before).filter(path => !(path in now) && !currentDefPaths.includes(path));
+  const removed: string[] = [];
+  for (const path of gone.sort()) if (!Object.keys(await defHashes(project, [path])).length) removed.push(path);
   await removeOwned(rederiveFile(project, moduleName));
-  return changed.map(path => `@@agentMaterializeL1 {"target":"${qualifyDefPath(project, path)}"}`);
+  return [...changed, ...removed].map(path => `@@agentMaterializeL1 {"target":"${qualifyDefPath(project, path)}"}`);
 }

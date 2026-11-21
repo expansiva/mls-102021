@@ -12,6 +12,8 @@ Invocation, as `agenteMaterializeL22`; the project is the current one:
   those units and does not register;
 - `@@agentMaterializeL1 {"target":"_102047_/l1/comandaRestaurante/layer_2_application/usecases/createMesa.defs.ts"}`
   — one unit (its `.defs.ts` or its `.ts`), regenerated regardless of reuse;
+- the same `target` for a def that no longer exists (d1_252) removes the `.ts` this agent wrote for it, and its status file, when the bytes are still
+  the recorded ones; a file edited by hand stays and is reported `ORPHAN_EDITED`;
 - `"force": true` next to a scope regenerates reusable units and overwrites outputs this agent did not write.
 
 A unit that is not selected is only read as a dependency. Spec: `flow.json`.

@@ -4,6 +4,7 @@ import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_AGENT_NAME, M12_BUILD, M12_HELP, buildM12PlannedSteps, isM12PhasePlanId, parseM12MessageInvocation, type M12Layer, type M12Request } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { addM12Step, m12Result, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
 import { EMITTER_TARGET_FORMS, emitterTargetLayer, loadModuleUnits, registersModule, requestModules, selectUnits, selectedLayers, storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { orphanOfTarget, type M12Orphan } from '/_102021_/l2/agentMaterializeL1/helpers/m12Orphans.js';
 import { unitNeedsLlm } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import '/_102021_/l2/agentMaterializeL1/steps/domain10/agentM12Domain.js';
 import '/_102021_/l2/agentMaterializeL1/steps/external15/agentM12External.js';
@@ -42,6 +43,8 @@ export interface M12ModulePlan {
   units: M12Unit[];
   /** d1_246: units an emitter writes (no def), named by `target`; they are not in `units`. */
   emitted?: string[];
+  /** d1_252: `target` names a def that no longer exists whose output this agent wrote; finalize80 removes it. */
+  orphan?: M12Orphan;
   problems: Array<{ defRef: string; code: string; detail: string }>;
 }
 
@@ -55,6 +58,7 @@ export function planReport(request: M12Request, modules: readonly M12ModulePlan[
       const llm = units.filter(unitNeedsLlm).map(unit => unit.unitId);
       lines.push(`- ${layer}: ${[...units.map(unit => unit.unitId), ...(layer === 'workflows' ? item.emitted ?? [] : [])].join(', ')}${llm.length ? ` (LLM: ${llm.join(', ')})` : ''}`);
     }
+    if (item.orphan) lines.push(`- orphan: ${item.orphan.layer}/${item.orphan.unitId} — the def is gone; finalize80 removes the output this agent wrote (unedited only)`);
     if (item.register) lines.push('- register: l5/project.json backend of the module');
     for (const problem of item.problems) lines.push(`- not planned: ${problem.defRef} ${problem.code} ${problem.detail}`);
   }
@@ -73,6 +77,11 @@ export async function planModules(project: number, request: M12Request): Promise
     if (!units.length && emitterTargetLayer(project, moduleName, request.target) && loaded.units.some(unit => unit.definition.artifactType === 'workflowProcess')) {
       modules.push({ module: moduleName, layers: ['workflows'], register: false, units, emitted: ['engine'], problems: loaded.problems });
       continue;
+    }
+    // d1_252: the def is gone but its output stays; `target` removes it (finalize80), only when this agent wrote it.
+    if (!units.length && request.target) {
+      const orphan = await orphanOfTarget(project, moduleName, request.target, loaded.units);
+      if (orphan) { modules.push({ module: moduleName, layers: [], register: false, units, orphan, problems: loaded.problems }); continue; }
     }
     if (!units.length) continue;
     modules.push({ module: moduleName, layers: selectedLayers(units), register: registersModule(request, moduleName), units, problems: loaded.problems });

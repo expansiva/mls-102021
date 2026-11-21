@@ -5,6 +5,7 @@ import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_FINALIZE_AGENT_NAME, M12_LAYERS, clip, errorText, parseM12StepInvocation, type M12Layer } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { addM12Step, m12Result, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
 import { readJsonOptional, readUnitStatus, writeJson, type M12UnitState, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { orphanOfTarget, removeOrphan } from '/_102021_/l2/agentMaterializeL1/helpers/m12Orphans.js';
 import { registrationFile, reportFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { registersModule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -86,7 +87,16 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
   if (run.kind === 'refusal') return [updateM12Status(context, parentStep, step, hookSequential, 'failed', run.diagnostic)];
   try {
     const { project, module: moduleName } = run;
-    const { selected, problems } = await loadRun(run);
+    const { ctx, selected, problems } = await loadRun(run);
+    // d1_252: `target` of a def that no longer exists: remove the output this agent wrote for it (unedited only) and the status file.
+    const orphan = !selected.length && run.target ? await orphanOfTarget(project, moduleName, run.target, ctx.units) : null;
+    if (orphan) {
+      const lines = await removeOrphan(orphan);
+      return [
+        addM12Step(context, parentStep.stepId, m12Result('Orphan removal', clip(lines.join('\n'), 3000), 'finalize80-orphan')),
+        updateM12Status(context, parentStep, step, hookSequential, 'completed', `Orphan ${orphan.layer}/${orphan.unitId}: ${lines.length} line(s)`),
+      ];
+    }
     const units: M12UnitStatus[] = [];
     const missing: string[] = [];
     const read = async (layer: M12Layer, unitId: string): Promise<void> => {

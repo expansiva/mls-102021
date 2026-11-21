@@ -1,0 +1,14 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/listPersonalConduct.ts" enhancement="_blank"/>
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { CmReadAgentInput, CmReadAgentOutput } from '/_102034_/l2/shared/contracts/connections/cm.js';
+import type { CmGateway } from '/_102047_/l1/agents/layer_1_external/adapters/integration/outbound.js';
+
+export interface ListPersonalConductInput extends CmReadAgentInput {}
+export interface ListPersonalConductOutput extends CmReadAgentOutput {}
+
+export async function listPersonalConduct(input: ListPersonalConductInput, ctx: RequestContext): Promise<ListPersonalConductOutput> {
+  const gateway = resolveRepository<CmGateway>(ctx, 'CmGateway');
+  const result: CmReadAgentOutput = await gateway.readAgent(input, ctx);
+  return result;
+}

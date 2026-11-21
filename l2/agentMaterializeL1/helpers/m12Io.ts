@@ -235,6 +235,27 @@ export async function removeStorFile(info: M12FileInfo): Promise<void> {
   delete index[key];
 }
 
+/**
+ * d1_252: removes a file by the Studio path (libStor): a file of this session leaves the stor; any other keeps its trash content and is marked
+ * `deleted`. The caller decides that the file is ours to drop (`removeOrphan`); this only does it.
+ */
+export async function deleteStorFile(info: M12FileInfo): Promise<void> {
+  const key = keyOf(info);
+  const index = mls.stor.files as Record<string, mls.stor.IFileInfo>;
+  const stored = index[key];
+  memory.delete(key);
+  if (!stored || stored.status === 'deleted') return;
+  if (created.has(key) || stored.status === 'new') {
+    created.delete(key);
+    await mls.stor.localStor.setContent(stored, { contentType: 'string', content: null });
+    delete index[key];
+    return;
+  }
+  const content = await stored.getContent() as string;
+  await mls.stor.localStor.setContent(stored, { content, contentType: 'string', originalShortName: stored.shortName, originalProject: stored.project });
+  stored.status = 'deleted';
+}
+
 export async function writeJson(info: M12FileInfo, value: unknown): Promise<void> {
   await writeText(info, `${JSON.stringify(value, null, 2)}\n`);
 }

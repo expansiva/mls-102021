@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "2026-10-05-m12-unit-v1",
+  "layer": "usecases",
+  "unitId": "listPersonalConduct",
+  "defRef": "_102047_/l1/agents/layer_2_application/usecases/listPersonalConduct.defs.ts",
+  "attempt": 0,
+  "status": "reused",
+  "code": "",
+  "diagnostic": "",
+  "inputHash": "sha256:f1ed2e2a02b5fcd04c23c49b6b0cca391f7aac28ecd9c93c20bd289d759519d0",
+  "outputs": {
+    "_102047_/l1/agents/layer_2_application/usecases/listPersonalConduct.ts": "sha256:8f583d920f61c2a8891c585a549c63998256a20924f3efc739da363da2080c25"
+  },
+  "updatedAt": "2026-11-20T22:56:25.471Z"
+}
