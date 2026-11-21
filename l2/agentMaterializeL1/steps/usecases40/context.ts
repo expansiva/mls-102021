@@ -478,6 +478,13 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
       ? `Enforce each rule listed under "Rules this usecase must apply". Each one throws \`new AppError(<code>, <message>, <status>, { ruleId: "<ruleId>" })\` when it is broken, with the rule id written as that exact string literal. A rule in that list that does not concern this operation (its text is about another entity or operation) goes to \`notApplicable\` with the reason, instead of a check that makes no sense. A rule under "Rules of this entity that no transition binds" is not listed in \`notApplicable\`.`
       : 'The def has no rule to enforce beyond its operation. Return notApplicable: [].',
   ].join('\n')));
+  const arrival = arrivalOf(ctx, unit);
+  if (arrival) {
+    parts.push(section('Arrival (process transitions, from the def)', [
+      `This update is the arrival of a message from outside. It moves the record only through the transitions the def lists (\`arrivalTransitions\`: ${arrival.transitions.map(item => `${item.transitionId}: ${item.from.join(', ')} → ${item.to}`).join('; ')}), which no person makes.`,
+      `When the arrival moves the state, take the transition whose from holds the current state of the record and whose to is the state the arrival names; set \`${arrival.stateField || 'the state field'}\` to that literal state (${arrival.transitions.map(item => `'${item.to}'`).join(' or ')}) and refuse the arrival when no listed transition fits. Never read the state from the input and never set a state no transition leads to; apply the rules of the transition you took.`,
+    ].join('\n')));
+  }
   const entityRef = ontologyRef(unit.definition, unit.outputRef);
   const ontology = await ctx.read(entityRef);
   if (ontology) parts.push(section(`l4 ontology of the entity ${entityRef} (source)`, fence('ts', ontology.slice(0, 30000))));
@@ -613,6 +620,27 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
     ].join('\n')));
   }
   return { unit, functionName, header, scaffold, rules, human: parts.join('\n') };
+}
+
+/**
+ * d1_259 s1c: the process transitions a `serve` arrival applies through this `update` (the def lists them with from, to and rules) and the field that
+ * holds the state: the enum field `status` of the entity's domain def, or its only enum field. Undefined when the def lists none.
+ */
+export function arrivalOf(ctx: M12Context, unit: M12Unit): { transitions: Array<{ transitionId: string; to: string; from: string[] }>; stateField: string } | undefined {
+  const listed = unit.definition.data.arrivalTransitions;
+  if (String(unit.definition.data.operation ?? '') !== 'update' || !Array.isArray(listed) || listed.length === 0) return undefined;
+  const transitions = listed.flatMap(item => {
+    const row = item && typeof item === 'object' ? item as { transitionId?: unknown; to?: unknown; from?: unknown } : {};
+    return typeof row.transitionId === 'string' && typeof row.to === 'string'
+      ? [{ transitionId: row.transitionId, to: row.to, from: Array.isArray(row.from) ? row.from.filter((state): state is string => typeof state === 'string') : [] }]
+      : [];
+  });
+  if (transitions.length === 0) return undefined;
+  const entityId = String(unit.definition.data.entityId ?? '');
+  const domain = ctx.units.find(item => item.definition.artifactType === 'domainEntity' && String(item.definition.data.entityId ?? item.definition.artifactId) === entityId);
+  const fields = Array.isArray(domain?.definition.data.fields) ? domain.definition.data.fields as Array<{ name?: unknown; type?: unknown }> : [];
+  const enums = fields.filter(field => field.type === 'enum' && typeof field.name === 'string').map(field => String(field.name));
+  return { transitions, stateField: enums.includes('status') ? 'status' : enums.length === 1 ? enums[0] : '' };
 }
 
 /** For a transition usecase, its id and target state from the l4 lifecycle (`transitions[].to`); null otherwise. */
@@ -1085,9 +1113,10 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const derived = [...new Set(entities.flatMap(entity => entity.derived))];
   const parentRules = await parentRulesOf(ctx, unit, entities);
   const transition = await transitionOf(ctx, unit);
+  const arrival = arrivalOf(ctx, unit);
   return [
     ...waived.problems,
-    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId), childRecords: childRecordsOf(ctx, unit), usecaseInputs: await usecaseInputsOf(ctx), mdmCalls: mdmBoundCalls(unit.definition.data) }),
+    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ...(arrival ? { arrival } : {}), ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId), childRecords: childRecordsOf(ctx, unit), usecaseInputs: await usecaseInputsOf(ctx), mdmCalls: mdmBoundCalls(unit.definition.data) }),
   ];
 }
 

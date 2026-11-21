@@ -60,6 +60,8 @@ export interface RulePlanInput {
   operation: string;
   /** L4 transitionId. Compared with `transitionId`, never with `usecaseId`. */
   transitionRef?: string;
+  /** d1_259 s1c: the process transitions an arrival applies through this `update`; their rules are applied by it, as a transition usecase applies its own. */
+  arrivalTransitions?: readonly string[];
   rules: readonly RulePlanRule[];
   transitions: readonly RulePlanTransition[];
   uniqueKeys: readonly (readonly string[])[];
@@ -130,6 +132,15 @@ export function planRuleApplicability(input: RulePlanInput): D1RulePlanRow[] {
     }
   }
 
+  if (input.operation === 'update') {
+    for (const arrival of (input.arrivalTransitions ?? []).flatMap(id => transitions.find(item => item.transitionId === id) ?? [])) {
+      const origin = `l4/${input.moduleName}/ontology/${input.entityId}.defs.ts#transitions.${arrival.transitionId}.ruleRefs`;
+      for (const ruleId of arrival.ruleRefs) {
+        push(rows, { ruleId, origin, consumer: `usecase:${input.usecaseId}`, enforcement: 'local', gap: '' });
+      }
+    }
+  }
+
   const constraint = constraintOrigin(input);
   if (constraint && writesConstraint(input.operation, transition, input.uniqueKeys)) {
     push(rows, {
@@ -195,6 +206,7 @@ export function rulePlanForUsecase(input: {
   usecaseId: string;
   operation: string;
   transitionRef?: string;
+  arrivalTransitions?: readonly string[];
   files?: readonly RulePlanFile[];
   entity: RulePlanEntity;
   routes: readonly RulePlanRoute[];
@@ -234,6 +246,7 @@ export function rulePlanForUsecase(input: {
     usecaseId: input.usecaseId,
     operation: input.operation,
     transitionRef: input.transitionRef,
+    ...(input.arrivalTransitions?.length ? { arrivalTransitions: input.arrivalTransitions } : {}),
     rules,
     transitions,
     uniqueKeys,

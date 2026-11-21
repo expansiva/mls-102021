@@ -5,7 +5,7 @@
 
 import { isCatalogImport } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { maskCode } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
-import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
+import { codeOnly, withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
 import { MDM_LIST_USERS_PAGE_SIZE_MAX } from '/_102021_/l2/agentMaterializeL1/helpers/mdmPlatformLimits.js';
 import type { M12InputField } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
 
@@ -25,6 +25,11 @@ export interface M12CodeGateInput {
   parentRules?: readonly M12ParentRule[];
   /** For a transition usecase: its id and the state it leads to, from the l4 lifecycle. */
   transition?: { transitionId: string; to: string };
+  /**
+   * An `update` a `serve` arrival calls on an entity with a lifecycle (d1_259 s1c): the process transitions the def lists, and the field that holds the
+   * state. The file moves the record only through them: it writes each state they lead to, and never takes the state from the input.
+   */
+  arrival?: { transitions: ReadonlyArray<{ transitionId: string; to: string; from?: readonly string[] }>; stateField: string };
   /** The repository ports of the module (`DespesaRepository`); a name outside them is refused. */
   ports?: readonly string[];
   /** Connection gateways of the module (`<Connection>Gateway`), from `integrationOutbound` `connections`. */
@@ -354,6 +359,43 @@ export function transitionTargetProblems(code: string, transition?: { transition
   if (!transition || !transition.to) return [];
   if (code.includes(`'${transition.to}'`) || code.includes(`"${transition.to}"`)) return [];
   return [`Transition ${transition.transitionId} leads to '${transition.to}', and the file never writes that state: set it on the record (\`status: '${transition.to}'\`, with the payload fields) before \`repository.transition(record, '${transition.transitionId}')\`, which stores the record as given.`];
+}
+
+/**
+ * d1_259 s1c: the arrival of a message from outside moves a record only through the process transitions the def lists. What the file assigns to the
+ * state field must be one of the states they lead to, as a literal chosen by the state the arrival names: not a value read from the input, not a state the
+ * transitions start from, not an expression with no such literal. A state no transition leads to is not written. An arrival that does not move the state
+ * assigns nothing to the field, and passes.
+ */
+export function arrivalTransitionProblems(
+  code: string,
+  arrival?: { transitions: ReadonlyArray<{ transitionId: string; to: string; from?: readonly string[] }>; stateField: string },
+): string[] {
+  if (!arrival || arrival.transitions.length === 0) return [];
+  const problems: string[] = [];
+  const targets = [...new Set(arrival.transitions.map(item => item.to))];
+  const starts = new Set(arrival.transitions.flatMap(item => item.from ?? []).filter(state => !targets.includes(state)));
+  const field = arrival.stateField;
+  if (!field || !/^[A-Za-z_$][\w$]*$/u.test(field)) return problems;
+  const structure = codeOnly(code);
+  for (const match of structure.matchAll(new RegExp(`(?<![\\w$.])${field}\\s*:`, 'gu'))) {
+    const from = (match.index ?? 0) + match[0].length;
+    let depth = 0;
+    let end = from;
+    for (; end < structure.length; end += 1) {
+      const char = structure[end];
+      if (char === '{' || char === '(' || char === '[') depth += 1;
+      else if (char === '}' || char === ')' || char === ']') { if (depth === 0) break; depth -= 1; }
+      else if (char === ',' && depth === 0) break;
+    }
+    const expression = code.slice(from, end);
+    const names = [...expression.matchAll(/(['"])([^'"]*)\1/gu)].map(item => item[2]);
+    const readsInput = new RegExp(`\\binput\\s*(?:\\.|\\[\\s*['"])\\s*${field}\\b`, 'u').test(expression);
+    if (readsInput || !names.some(name => targets.includes(name)) || names.some(name => starts.has(name))) {
+      problems.push(`ARRIVAL_STATE_SET_DIRECTLY: \`${field}:${expression.trim() ? ` ${expression.trim().slice(0, 80)}` : ''}\` does not set the state through a transition: the arrival moves the record only through ${arrival.transitions.map(item => item.transitionId).join(', ')}, so ${field} is set to one of '${targets.join("', '")}' as a literal, never read from the input and never to a state the transitions start from.`);
+    }
+  }
+  return problems;
 }
 
 /** A rule whose text names a parent of the usecase entity (`itensSomenteEmComandaAberta` → the Comanda of an item). */
@@ -848,6 +890,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   if (input.operation === 'list') problems.push(...listFilterProblems(code));
   problems.push(...parentRuleProblems(code, input.parentRules ?? []));
   problems.push(...transitionTargetProblems(code, input.transition));
+  problems.push(...arrivalTransitionProblems(code, input.arrival));
   problems.push(...undeclaredInputProblems(code));
   problems.push(...eventPublishProblems(code, input.publishers ?? []));
   problems.push(...consumerCallProblems(code, input.consumerCalls ?? []));

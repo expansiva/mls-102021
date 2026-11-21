@@ -103,7 +103,10 @@ function planUsecase(
     ? [...(entity.transitions.find(item => item.transitionId === transitionRefOf(usecase))?.payload || [])]
     : [];
   const signed = domainSignature(entity, usecase.operation, sourcePayload);
-  const input = signed.input;
+  // d1_259 s1c: an arrival that updates an entity with a lifecycle writes the state only through one of its process transitions. The usecase
+  // def lists them (from, to, rules) and its input does not offer the state field: no arrival sets the state directly.
+  const arrival = arrivalTransitionsOf(entity, usecase, path, problems);
+  const input = arrival.transitions.length ? signed.input.filter(field => field.name !== arrival.stateField) : signed.input;
   noteRequiredNotes(entity, usecase, input, path, problems);
   const decided = decideRules(request, entity, usecase);
   const rulesApplied = appliedRuleIds(decided.plan);
@@ -124,6 +127,7 @@ function planUsecase(
     rulesApplied,
     effects: effects.map(eventId => ({ eventId, path: integrationPath, symbol: eventId })),
     ...(transitionRef ? { transitionRef } : {}),
+    ...(arrival.transitions.length ? { arrivalTransitions: arrival.transitions } : {}),
     ...(mdm ? { mdm: storedMdm(mdm) } : {}),
     ...(derivedRead ? { derivedRead } : {}),
   };
@@ -134,6 +138,36 @@ function planUsecase(
     return { ...blank, mdm };
   }
   return { ...blank, mdm, definition };
+}
+
+/**
+ * d1_259 s1c: what an `update` a `serve` arrival calls carries of the lifecycle: for each listed transition its id, where it starts, where it leads
+ * and its rules, and the field that holds the state (the enum field whose values are the states of the transitions). A transition the entity does
+ * not have, or one that a person makes (`by` not empty), is an error: the arrival applies process moves only.
+ */
+export function arrivalTransitionsOf(
+  entity: D1UsecaseEntity,
+  usecase: D1UsecaseSelection,
+  path: string,
+  problems: D1UsecaseProblem[],
+): { transitions: Array<{ transitionId: string; from: string[]; to: string; ruleRefs: string[] }>; stateField: string } {
+  const listed = usecase.operation === 'update' ? usecase.arrivalTransitions ?? [] : [];
+  const out: Array<{ transitionId: string; from: string[]; to: string; ruleRefs: string[] }> = [];
+  for (const transitionId of listed) {
+    const transition = entity.transitions.find(item => item.transitionId === transitionId);
+    if (!transition) {
+      error(problems, 'ARRIVAL_TRANSITION_UNKNOWN', path, `Usecase ${path} lists transition ${transitionId}, which is not in the ${entity.entityId} lifecycle.`);
+      continue;
+    }
+    if (transition.by.length > 0) {
+      error(problems, 'ARRIVAL_TRANSITION_BY_PERSON', path, `Transition ${transitionId} of ${entity.entityId} is made by ${transition.by.join(', ')}: an arrival applies only the moves no person makes (by: []).`);
+      continue;
+    }
+    out.push({ transitionId, from: [...transition.from], to: transition.to, ruleRefs: [...transition.ruleRefs] });
+  }
+  const states = new Set(entity.transitions.flatMap(item => [...item.from, item.to]));
+  const stateEnum = entity.enumerations.find(item => states.size > 0 && [...states].every(state => item.values.includes(state)));
+  return { transitions: out, stateField: stateEnum?.path ?? '' };
 }
 
 function noteUnparsedContracts(request: D1UsecaseRequest, problems: D1UsecaseProblem[]): void {
@@ -180,6 +214,7 @@ function decideRules(
     usecaseId: usecase.usecaseId,
     operation: usecase.operation,
     transitionRef: transitionRefOf(usecase),
+    ...(usecase.operation === 'update' && usecase.arrivalTransitions?.length ? { arrivalTransitions: usecase.arrivalTransitions } : {}),
     files: request.files,
     entity: {
       rules: entity.rules,

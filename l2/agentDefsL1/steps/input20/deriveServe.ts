@@ -223,6 +223,7 @@ function oneServe(input: DeriveServeInput, line: D1ServeLine): D1SelectedRequest
         refusalOf: usecaseId => usecaseRefusal(entry.entityId, operationName, usecaseId, input.entities, input.plannedIds, input.removedIds),
       });
     }
+    if (!owned && entry.effects.includes('update')) linkArrivalTransitions(input.usecases, kept, entry.entityId, input.entities[entry.entityId]);
     if (upsert) {
       const key = upsertKeyOf(input.entities[entry.entityId]);
       if (key) upserts.push({ entityId: entry.entityId, ...key });
@@ -240,6 +241,28 @@ function oneServe(input: DeriveServeInput, line: D1ServeLine): D1SelectedRequest
     serves,
     ...(upserts.length ? { upserts } : {}),
   };
+}
+
+/**
+ * d1_259 s1c: the transitions of the entity that no person makes (`by: []`), by id. Empty when the entity has no lifecycle. These are the moves
+ * an arrival from outside applies: the state is written by one of them, never set directly.
+ */
+export function processTransitionsOf(entity: unknown): string[] {
+  if (!isRecord(entity) || !Array.isArray(entity.lifecycleStates) || entity.lifecycleStates.length === 0 || !Array.isArray(entity.transitions)) return [];
+  return entity.transitions
+    .filter((item): item is Record<string, unknown> => isRecord(item) && typeof item.transitionId === 'string' && Array.isArray(item.by) && item.by.length === 0)
+    .map(item => String(item.transitionId))
+    .sort();
+}
+
+/** The `update` usecase a serve calls on an entity with a lifecycle carries that entity's process transitions. */
+function linkArrivalTransitions(usecases: D1SelectedUsecase[], uses: readonly string[], entityId: string, entity: unknown): void {
+  const transitions = processTransitionsOf(entity);
+  if (transitions.length === 0) return;
+  for (const usecase of usecases) {
+    if (usecase.entity !== entityId || usecase.operation !== 'update' || !uses.includes(usecase.usecaseId)) continue;
+    usecase.arrivalTransitions = [...new Set([...(usecase.arrivalTransitions ?? []), ...transitions])].sort();
+  }
 }
 
 export function usecaseRefusal(

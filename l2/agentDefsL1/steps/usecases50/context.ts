@@ -225,6 +225,14 @@ export function formatUsecaseContext(context: D1UsecaseContext): string {
   } else {
     lines.push('This operation is not a lifecycle transition.');
   }
+  if (context.arrivalTransitions.length) {
+    lines.push('This update is the arrival of a message from outside. It moves the record only through one of these transitions, which no person makes:');
+    for (const transition of context.arrivalTransitions) {
+      lines.push(`- ${transition.transitionId}: from ${transition.from.join(', ')} to ${transition.to}; rules ${transition.ruleRefs.join(', ') || '(none)'}; payload ${transition.payload.join(', ') || '(none)'}`);
+      if (transition.description) lines.push(`  ${transition.description}`);
+    }
+    lines.push('The state is the one the arrival names: take the transition whose from holds the current state and whose to is that state. No state is set that no transition leads to, and the state field is never an input.');
+  }
   for (const capability of context.capabilities) {
     lines.push(`Capability ${capability.name}`);
     lines.push(capability.text);
@@ -509,6 +517,7 @@ function oneContext(
     usecaseId: usecase.usecaseId,
     lifecycle,
     transition: lifecycle ? transition : null,
+    arrivalTransitions: arrivalTransitionsFor(usecase, entity, body),
     capabilities,
     effectiveFields,
     routes: [],
@@ -522,6 +531,24 @@ function oneContext(
     findings,
     sources,
   };
+}
+
+/** The process transitions an arrival applies through this `update`, as the ontology states them (d1_259 s1c). */
+function arrivalTransitionsFor(usecase: D1UsecaseSelection, entity: D1UsecaseEntity | null, body: unknown): D1UsecaseContext['arrivalTransitions'] {
+  if (usecase.operation !== 'update' || !usecase.arrivalTransitions?.length) return [];
+  const fromBody = ontologyTransitions(body);
+  return usecase.arrivalTransitions.flatMap(transitionId => {
+    const found = fromBody.find(item => item.transitionId === transitionId) ?? entity?.transitions.find(item => item.transitionId === transitionId);
+    if (!found) return [];
+    return [{
+      transitionId,
+      from: [...found.from],
+      to: found.to,
+      ruleRefs: [...found.ruleRefs],
+      payload: [...(found.payload || [])],
+      description: found.description || '',
+    }];
+  });
 }
 
 function rulesFor(
@@ -546,6 +573,7 @@ function rulesFor(
     entityId: usecase.entity,
     usecaseId: usecase.usecaseId,
     operation: usecase.operation,
+    ...(usecase.operation === 'update' && usecase.arrivalTransitions?.length ? { arrivalTransitions: usecase.arrivalTransitions } : {}),
     rules: cited,
     transitions,
     uniqueKeys: uniqueKeysOf(body).length ? uniqueKeysOf(body) : entity?.uniqueKeys || [],

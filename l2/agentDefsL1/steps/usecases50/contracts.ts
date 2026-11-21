@@ -126,6 +126,8 @@ export interface D1UsecaseSelection {
   operation: string;
   /** L4 `transitionId`. Set when `operation` is `transition`. */
   transitionRef?: string;
+  /** L4 `transitionId`s (`by: []`) a `serve` arrival applies through this `update` (d1_259 s1c). Absent otherwise. */
+  arrivalTransitions?: string[];
   routes: string[];
   defPath: string;
 }
@@ -305,6 +307,8 @@ export interface D1UsecaseContext {
     payload: string[];
     description: string;
   } | null;
+  /** d1_259 s1c: the process transitions an arrival applies through this `update`. Empty on every other operation. */
+  arrivalTransitions: Array<{ transitionId: string; from: string[]; to: string; ruleRefs: string[]; payload: string[]; description: string }>;
   capabilities: D1CapabilityText[];
   effectiveFields: string[];
   routes: D1RouteContext[];

@@ -334,3 +334,55 @@ void test('d1_232: a serve that starts a process keeps d1_206 for one effect, an
   assert.deepEqual(usecases.map(item => `${item.entity}.${item.operation}`), ['Item.create', 'Item.update']);
   assert.deepEqual(upsert[0]?.upserts, [{ entityId: 'Item', key: ['itemKey'], keyKind: 'unique' }]);
 });
+
+/** d1_259 s1c: an entity with a lifecycle whose process transitions (`by: []`) the arrival may apply. */
+const DRAFT = {
+  entityId: 'AgentDraft',
+  lifecycleStates: [{ state: 'preparing', reachedBy: 'command' }, { state: 'ready', reachedBy: 'command' }, { state: 'refused', reachedBy: 'command' }, { state: 'activated', reachedBy: 'actor' }],
+  transitions: [
+    { transitionId: 'markReady', from: ['preparing'], to: 'ready', by: [], ruleRefs: ['r1'] },
+    { transitionId: 'markRefused', from: ['preparing'], to: 'refused', by: [], ruleRefs: ['r2'] },
+    { transitionId: 'activate', from: ['ready'], to: 'activated', by: ['companyAdmin'], ruleRefs: [] },
+  ],
+};
+
+function runOn(entities: Record<string, unknown>, lines: D1ServeLine[], usecases: D1SelectedUsecase[] = []): D1SelectedUsecase[] {
+  deriveServeRequests({
+    moduleName: MODULE,
+    lines,
+    catalogTexts: { cm: catalogText },
+    usecases,
+    problems: [],
+    entities,
+    plannedIds: new Map(usecases.map(item => [item.usecaseId, `${item.entity}.${item.operation}`])),
+    removedIds: new Set(),
+  });
+  return usecases;
+}
+
+void test('d1_259 s1c: a serve that updates an entity with a lifecycle gives its update usecase the process transitions', () => {
+  const usecases = runOn({ AgentDraft: DRAFT }, [{ connectionId: 'cm', operationId: 'agentDraftReady', entityRefs: ['AgentDraft'], effect: 'update' }]);
+  const update = usecases.find(item => item.operation === 'update');
+  assert.equal(update?.entity, 'AgentDraft');
+  // Only the moves no person makes: `activate` is the admin's.
+  assert.deepEqual(update?.arrivalTransitions, ['markReady', 'markRefused']);
+  // An entityEffects line says the same.
+  const viaEffects = runOn({ AgentDraft: DRAFT }, [{ connectionId: 'cm', operationId: 'agentDraftReady', entityEffects: [{ entityId: 'AgentDraft', effects: ['update'] }] }]);
+  assert.deepEqual(viaEffects.find(item => item.operation === 'update')?.arrivalTransitions, ['markReady', 'markRefused']);
+});
+
+void test('d1_259 s1c: no transitions are given when the serve does not update, or the entity has no lifecycle or no process transition', () => {
+  const create = runOn({ AgentDraft: DRAFT }, [{ connectionId: 'cm', operationId: 'record', entityRefs: ['AgentDraft'], effect: 'create' }]);
+  assert.equal(create.some(item => item.arrivalTransitions !== undefined), false);
+  const plain = runOn({ AgentDraft: { entityId: 'AgentDraft' } }, [{ connectionId: 'cm', operationId: 'agentDraftReady', entityRefs: ['AgentDraft'], effect: 'update' }]);
+  assert.equal(plain.some(item => item.arrivalTransitions !== undefined), false);
+  const byPerson = runOn({ AgentDraft: { ...DRAFT, transitions: DRAFT.transitions.filter(item => item.by.length > 0) } }, [{ connectionId: 'cm', operationId: 'agentDraftReady', entityRefs: ['AgentDraft'], effect: 'update' }]);
+  assert.equal(byPerson.some(item => item.arrivalTransitions !== undefined), false);
+});
+
+void test('d1_259 s1c: a planned update usecase keeps its id and gets the transitions', () => {
+  const planned: D1SelectedUsecase = { usecaseId: 'updateAgentDraft', entity: 'AgentDraft', operation: 'update', status: 'toCreate', existing: '', identity: 'updateAgentDraft', routes: [] };
+  const usecases = runOn({ AgentDraft: DRAFT }, [{ connectionId: 'cm', operationId: 'agentDraftReady', entityRefs: ['AgentDraft'], effect: 'update' }], [planned]);
+  assert.equal(usecases.length, 1);
+  assert.deepEqual(usecases[0].arrivalTransitions, ['markReady', 'markRefused']);
+});

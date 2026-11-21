@@ -213,6 +213,11 @@ export interface D1SelectedUsecase {
   routes: string[];
   /** `<connectionId>.<operationId>`: the one call of an external usecase (d1_195). Absent on every other usecase. */
   call?: string;
+  /**
+   * L4 `transitionId`s with `by: []` of the entity (d1_259 s1c): the moves that belong to a process and to no person. A `serve` that updates an
+   * entity with a lifecycle gives its `update` usecase these; the arrival writes the state only through one of them. Absent on every other usecase.
+   */
+  arrivalTransitions?: string[];
 }
 
 export interface D1SelectedPort {

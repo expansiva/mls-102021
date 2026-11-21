@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { readContractAst, symbolFields } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import { decideRepairs, fanoutExecution, fanoutStep, firstWorkerArg, parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { coreUsecaseRequest, fixturePlan, frozenRouteCount } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
-import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
+import { domainSignature, formatUsecaseContext } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { arrivalTransitionsOf, buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { setFacadePlatformKeysForTest } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 
 setFacadePlatformKeysForTest(readFileSync(
@@ -1021,4 +1022,110 @@ void test('an outbound event on an entity create is an effect of the create usec
   assert.deepEqual(effectsOf('createConsulta'), ['consultaCriada']);
   assert.deepEqual(effectsOf('createPaciente'), []);
   assert.deepEqual(effectsOf('registrarAtendimento'), ['atendimentoRegistrado']);
+});
+
+/** d1_259 s1c: an `update` that a `serve` arrival calls on `Consulta`, whose process moves (by: []) it applies. */
+function arrivalRequest(arrival: string[], by: string[] = []): D1UsecaseRequest {
+  const request = coreUsecaseRequest();
+  const entity = request.entities.find(item => item.entityId === 'Consulta')!;
+  entity.transitions = entity.transitions.map(item => (item.transitionId === 'confirmarConsulta' || item.transitionId === 'registrarFalta' ? { ...item, by } : item));
+  const update: D1UsecaseSelection = { usecaseId: 'updateConsulta', entity: 'Consulta', operation: 'update', arrivalTransitions: arrival, routes: [], defPath: 'l1/agendaClinica/layer_2_application/usecases/updateConsulta.defs.ts' };
+  request.files = [];
+  request.usecases = [update];
+  request.plans = request.usecases.map(item => fixturePlan(request, item));
+  return request;
+}
+
+void test('d1_259 s1c: the usecase def of an arrival lists the transitions with where they start, lead and their rules', () => {
+  const build = buildD1Usecases(arrivalRequest(['confirmarConsulta', 'registrarFalta']));
+  assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));
+  const data = build.emit[0]?.definition.data as { operation: string; transitionRef?: string; arrivalTransitions?: unknown };
+  assert.equal(data.operation, 'update');
+  assert.equal(data.transitionRef, undefined);
+  assert.deepEqual(data.arrivalTransitions, [
+    { transitionId: 'confirmarConsulta', from: ['scheduled'], to: 'confirmed', ruleRefs: ['consultationTransitionFlow'] },
+    { transitionId: 'registrarFalta', from: ['scheduled', 'confirmed'], to: 'noShow', ruleRefs: ['consultationTransitionFlow'] },
+  ]);
+  // The rules of those transitions are applied by the usecase.
+  assert.equal((build.emit[0]?.definition.data as { rulesApplied: string[] }).rulesApplied.includes('consultationTransitionFlow'), true);
+});
+
+void test('d1_259 s1c: a transition the entity does not have, or one a person makes, is refused; an update without them has no list', () => {
+  const unknown = buildD1Usecases(arrivalRequest(['naoExiste']));
+  assert.equal(unknown.problems.some(item => item.code === 'ARRIVAL_TRANSITION_UNKNOWN'), true);
+  assert.equal(unknown.ok, false);
+  const person = buildD1Usecases(arrivalRequest(['confirmarConsulta'], ['recepcionista']));
+  assert.equal(person.problems.some(item => item.code === 'ARRIVAL_TRANSITION_BY_PERSON'), true);
+  assert.equal(person.ok, false);
+  const plain = buildD1Usecases(arrivalRequest([]));
+  assert.equal(plain.ok, true, plain.problems.map(item => item.message).join('; '));
+  assert.equal((plain.emit[0]?.definition.data as { arrivalTransitions?: unknown }).arrivalTransitions, undefined);
+});
+
+void test('d1_259 s1c: the state field is not an input of the arrival, and the model reads the transitions in its context', () => {
+  const request = arrivalRequest(['confirmarConsulta', 'registrarFalta']);
+  const entity = request.entities.find(item => item.entityId === 'Consulta')!;
+  const update = request.usecases[0];
+  const found = arrivalTransitionsOf(entity, update, 'updateConsulta', []);
+  assert.equal(found.stateField, 'status');
+  assert.deepEqual(found.transitions.map(item => item.transitionId), ['confirmarConsulta', 'registrarFalta']);
+  // domainSignature offers `status` to an update; with the arrival the def's input drops it.
+  const signed = domainSignature(entity, 'update', []);
+  assert.equal(signed.input.some(field => field.name === 'status'), true);
+  assert.equal(signed.input.filter(field => field.name !== found.stateField).some(field => field.name === 'status'), false);
+  const context: D1UsecaseContext = {
+    usecaseId: 'updateConsulta', lifecycle: false, transition: null, capabilities: [], effectiveFields: [], routes: [], rules: [], rulePlan: [], pendingRules: [],
+    portId: '', portMethods: [], effects: [], journeys: [], findings: [], sources: [],
+    arrivalTransitions: found.transitions.map(item => ({ ...item, payload: [], description: '' })),
+  };
+  const text = formatUsecaseContext(context);
+  assert.match(text, /arrival of a message from outside/u);
+  assert.match(text, /- confirmarConsulta: from scheduled to confirmed; rules consultationTransitionFlow/u);
+  assert.match(text, /the state field is never an input/u);
+  assert.doesNotMatch(formatUsecaseContext({ ...context, arrivalTransitions: [] }), /arrival of a message/u);
+});
+
+void test('d1_259 s1c: the AgentDraft of agents@30f16c8e: the def of the arrival lists markReady and markRefused with their rules; the state is not an input', () => {
+  // Byte-copied from `102047@30f16c8e` l4/agents/ontology/AgentDraft.defs.ts: states, transitions, the record fields and the module rules.
+  const transitions = [
+    { transitionId: 'activate', from: ['ready'], to: 'activated', by: ['companyAdmin'], ruleRefs: ['draftDecisionOnlyWhenReady'], payload: [] as string[] },
+    { transitionId: 'discard', from: ['ready'], to: 'discarded', by: ['companyAdmin'], ruleRefs: ['draftDecisionOnlyWhenReady'], payload: [] as string[] },
+    { transitionId: 'markReady', from: ['preparing'], to: 'ready', by: [] as string[], ruleRefs: ['agentDraftSuggestedToolsOnWhenReady'], payload: ['summary', 'audience', 'onBehalfOf', 'proposedBehavior', 'suggestedTools'] },
+    { transitionId: 'markRefused', from: ['preparing'], to: 'refused', by: [] as string[], ruleRefs: ['refusedDraftKeepsReason'], payload: ['refusalReason'] },
+  ];
+  const request = coreUsecaseRequest();
+  request.entities = request.entities.filter(item => item.entityId !== 'Consulta');
+  request.entities.push({
+    entityId: 'AgentDraft',
+    storageTarget: 'moduleDatabase',
+    defPath: 'l1/agents/layer_3_domain/entities/agentDraft.defs.ts',
+    namespace: '',
+    fields: [
+      { name: 'id', type: 'uuid', derived: true },
+      { name: 'prompt', type: 'text', derived: false },
+      { name: 'refusalReason', type: 'text', derived: false },
+      { name: 'summary', type: 'text', derived: false },
+      { name: 'status', type: 'enum', derived: false },
+    ],
+    transitions,
+    rules: ['agentDraftSuggestedToolsOnWhenReady', 'draftDecisionOnlyWhenReady', 'refusedDraftKeepsReason'].map(ruleId => ({ ruleId, owner: 'module' as const, source: 'l4/agents/rules.defs.ts' })),
+    enumerations: [{ path: 'status', values: ['preparing', 'ready', 'refused', 'activated', 'discarded'] }],
+  });
+  const update: D1UsecaseSelection = { usecaseId: 'updateAgentDraft', entity: 'AgentDraft', operation: 'update', arrivalTransitions: ['markReady', 'markRefused'], routes: [], defPath: 'l1/agents/layer_2_application/usecases/updateAgentDraft.defs.ts' };
+  request.files = [];
+  request.usecases = [update];
+  request.plans = [fixturePlan(request, update)];
+  const build = buildD1Usecases(request);
+  assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));
+  const data = build.emit[0]?.definition.data as { arrivalTransitions: unknown; rulesApplied: string[] };
+  assert.deepEqual(data.arrivalTransitions, [
+    { transitionId: 'markReady', from: ['preparing'], to: 'ready', ruleRefs: ['agentDraftSuggestedToolsOnWhenReady'] },
+    { transitionId: 'markRefused', from: ['preparing'], to: 'refused', ruleRefs: ['refusedDraftKeepsReason'] },
+  ]);
+  // The two rules of the transitions are applied by the update; the rule of the admin's transitions is not (it is theirs).
+  assert.equal(data.rulesApplied.includes('agentDraftSuggestedToolsOnWhenReady'), true);
+  assert.equal(data.rulesApplied.includes('refusedDraftKeepsReason'), true);
+  assert.equal(data.rulesApplied.includes('draftDecisionOnlyWhenReady'), false);
+  const stateField = arrivalTransitionsOf(request.entities.find(item => item.entityId === 'AgentDraft')!, update, 'updateAgentDraft', []).stateField;
+  assert.equal(stateField, 'status');
 });

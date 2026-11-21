@@ -607,6 +607,12 @@ export const D1_FIELD_READERS = {
   'usecase.effects.eventId': 'effectCoverageIssues',
   'usecase.effects.path': 'readUsecaseFidelity',
   'usecase.effects.symbol': 'readUsecaseFidelity',
+  // d1_259 s1c: read by usecaseIssues (the shape) and by the usecase unit of the materializer (arrivalOf: the transitions an arrival applies).
+  'usecase.arrivalTransitions': 'usecaseIssues',
+  'usecase.arrivalTransitions.transitionId': 'usecaseIssues',
+  'usecase.arrivalTransitions.from': 'usecaseIssues',
+  'usecase.arrivalTransitions.to': 'usecaseIssues',
+  'usecase.arrivalTransitions.ruleRefs': 'usecaseIssues',
   'usecase.derivedRead': 'usecaseIssues',
   'usecase.derivedRead.mode': 'usecaseIssues',
   'usecase.derivedRead.sources': 'usecaseIssues',

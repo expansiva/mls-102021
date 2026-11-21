@@ -79,7 +79,7 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
   repositoryAdapter: { required: ['entityId', 'portId', 'tableId', 'columns'], optional: [], nonempty: ['columns'] },
   usecase: {
     required: ['usecaseId', 'entityId', 'operation', 'rulesApplied', 'effects'],
-    optional: ['transitionRef', 'mdm', 'derivedRead'],
+    optional: ['transitionRef', 'mdm', 'derivedRead', 'arrivalTransitions'],
     nonempty: [],
   },
   httpController: { required: ['pageId', 'handlers'], optional: [], nonempty: ['handlers'] },
@@ -521,6 +521,34 @@ function dependencyListIssues(value: unknown): string[] {
   return issues;
 }
 
+/**
+ * d1_259 s1c: the process transitions (`by: []`) a `serve` arrival applies to the entity its `update` usecase writes, with what the L1 needs of each:
+ * where it starts, where it leads and the rules it carries. Only an `update` has them.
+ */
+export function arrivalTransitionsIssues(data: Record<string, unknown>, issues: string[]): void {
+  const value = data.arrivalTransitions;
+  if (value === undefined) return;
+  if (data.operation !== 'update') issues.push('data.arrivalTransitions is only valid on an update.');
+  if (!Array.isArray(value) || value.length === 0) {
+    issues.push('data.arrivalTransitions must be a non-empty list.');
+    return;
+  }
+  const strings = (item: unknown): item is string[] => Array.isArray(item) && item.every(entry => typeof entry === 'string' && entry.length > 0);
+  value.forEach((item, index) => {
+    const path = `data.arrivalTransitions.${index}`;
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) {
+      issues.push(`${path} must be an object.`);
+      return;
+    }
+    const row = item as Record<string, unknown>;
+    for (const key of Object.keys(row)) if (!['transitionId', 'from', 'to', 'ruleRefs'].includes(key)) issues.push(`Unknown field ${path}.${key}.`);
+    if (typeof row.transitionId !== 'string' || !row.transitionId) issues.push(`Missing field ${path}.transitionId.`);
+    if (!strings(row.from) || row.from.length === 0) issues.push(`Missing field ${path}.from.`);
+    if (typeof row.to !== 'string' || !row.to) issues.push(`Missing field ${path}.to.`);
+    if (!strings(row.ruleRefs)) issues.push(`Missing field ${path}.ruleRefs.`);
+  });
+}
+
 /** Alpha read of a `ddm`: calculated on read, from the named sources, window and groups. */
 export function derivedReadIssues(value: unknown, issues: string[]): void {
   const path = 'data.derivedRead';
@@ -568,6 +596,7 @@ function dataIssues(type: M1ArtifactType, data: Record<string, unknown>): string
     issues.push('data.routeProjections is the removed v1 shape (DEF_V1_UNSUPPORTED); regenerate the usecase as v2.');
   }
   if (type === 'usecase' && data.derivedRead !== undefined) derivedReadIssues(data.derivedRead, issues);
+  if (type === 'usecase') arrivalTransitionsIssues(data, issues);
   for (const key of spec.required) {
     if (data[key] === undefined) issues.push(`Missing field data.${key}.`);
   }
