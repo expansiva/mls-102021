@@ -881,10 +881,9 @@ export function previousFileOfRemoved(previous: D1InputSnapshot | null, item: Pi
 }
 
 /**
- * d1_250: a usecase def the D1 wrote (the writer receipt is the hash on disk) that no plan carries, and the L4 did not list as removed. It is inventoried (in
- * `removed`, marked `unplanned`) so the finalize does not call it an extra file, and it is KEPT: the L4 plan may be behind the contract (a live route the
- * plan does not know can read through it: agents, my_conduct), so nothing deletes it. A def with no receipt, or edited by hand, is not touched: it stays an
- * extra file.
+ * d1_250: a usecase def the D1 wrote (the writer receipt is the hash on disk) that no plan carries any more, and the L4 did not list as removed: the route
+ * that used it left the contract, and the L4 only names what it removes. It is inventoried as removed, like the ones the L4 names, so the finalize does
+ * not call it an extra file. A def with no receipt, or edited by hand, is not touched: it stays an extra file.
  */
 function implicitRemovals(removed: D1RemovedItem[], files: readonly D1PlannedFile[], present: Map<string, string>, receipts: WriterIndex): void {
   const planned = new Set(files.map(file => file.defPath));
@@ -893,7 +892,7 @@ function implicitRemovals(removed: D1RemovedItem[], files: readonly D1PlannedFil
     const match = /^l1\/[^/]+\/layer_2_application\/usecases\/([A-Za-z][A-Za-z0-9]*)\.defs\.ts$/u.exec(defPath);
     if (!match || planned.has(defPath) || listed.has(defPath) || removed.some(item => item.kind === 'usecase' && item.id === match[1])) continue;
     if (present.get(defPath) !== hash) continue;
-    removed.push({ kind: 'usecase', id: match[1], defPath, inventoried: true, contentHash: hash, unplanned: true });
+    removed.push({ kind: 'usecase', id: match[1], defPath, inventoried: true, contentHash: hash });
   }
 }
 

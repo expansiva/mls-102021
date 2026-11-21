@@ -1,0 +1,96 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/my_conduct.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { My_conductContracts } from '/_102047_/l2/agents/web/contracts/my_conduct.defs.js';
+import { listPersonalConduct } from '/_102047_/l1/agents/layer_2_application/usecases/listPersonalConduct.js';
+import { listAgentBehavior } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentBehavior.js';
+import type { ListAgentSimulationInput, ListAgentSimulationOutput } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.js';
+import { getOrganizationUser } from '/_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.js';
+import { updatePersonalConduct } from '/_102047_/l1/agents/layer_2_application/usecases/updatePersonalConduct.js';
+
+export const simulationLevelToCatalog: Record<'whatItCan' | 'whatItUnderstands', ListAgentSimulationInput['level']> = {
+  whatItCan: 'canDo',
+  whatItUnderstands: 'understands',
+};
+export const simulationLevelToModule: Record<ListAgentSimulationOutput['level'], 'whatItCan' | 'whatItUnderstands'> = {
+  canDo: 'whatItCan',
+  understands: 'whatItUnderstands',
+};
+
+function callerId(ctx: RequestContext): string {
+  const id = ctx.sessionContext.actorId;
+  if (id == null || id === '') {
+    throw new AppError('UNAUTHORIZED', 'A signed-in person is required.', 401, { ruleId: 'ownConductOnly' });
+  }
+  return id;
+}
+function versionNumber(value: string): number {
+  const version = Number(value);
+  if (value.trim() === '' || !Number.isSafeInteger(version) || version < 0) {
+    throw new AppError('INVALID_DATA', 'The conduct version returned by the cm is invalid.', 502);
+  }
+  return version;
+}
+async function readConduct(agentId: string, ctx: RequestContext) {
+  callerId(ctx);
+  // The cm personal projection is for the person in the context, not a person supplied by the client.
+  const record = await listPersonalConduct({ agentId }, ctx);
+  if (record.personal == null) {
+    throw new AppError('FORBIDDEN', `Personal conduct is not available for ${record.name}.`, 403, {
+      ruleId: 'conductOnlyForAgentActingOnBehalf',
+      agentId,
+    });
+  }
+  return {
+    agent: { name: record.name },
+    summary: [record.personal.role, record.personal.state].filter((part) => part !== '').join('\n'),
+    version: versionNumber(record.version),
+  };
+}
+export const requests: { [K in keyof My_conductContracts]: (input: My_conductContracts[K]['input'], ctx: RequestContext) => Promise<My_conductContracts[K]['output']> } = {
+  'agents.my_conduct.getMyConduct': async function (input, ctx) {
+    return { conduct: await readConduct(input.agentId, ctx) };
+  },
+  'agents.my_conduct.listMyConductHistory': async function (input, ctx) {
+    const actorId = callerId(ctx);
+    await readConduct(input.agentId, ctx);
+    const result = await listAgentBehavior({ agentId: input.agentId }, ctx);
+    // ownConductOnly: discard changes made by anyone other than the signed-in person.
+    // The history usecase exposes no scope discriminator, so it cannot distinguish
+    // a personal change from a company change by the same author.
+    const changes = result.changes.filter((change) => change.authorUserId === actorId)
+      .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+    const page = Number.isFinite(input.page) ? Math.max(1, Math.floor(input.page)) : 1;
+    const pageSize = Number.isFinite(input.pageSize) ? Math.min(200, Math.max(1, Math.floor(input.pageSize))) : 20;
+    const offset = (page - 1) * pageSize;
+    const selected = changes.slice(offset, offset + pageSize);
+    const items = await Promise.all(selected.map(async (change) => {
+      if (change.summary == null) {
+        throw new AppError('INVALID_DATA', 'The cm returned a conduct change without a summary.', 502, { changeId: change.changeId });
+      }
+      const author = await getOrganizationUser({ id: change.authorUserId }, ctx);
+      return { changedAt: change.at, changedBy: author.details.identification.name, summary: change.summary };
+    }));
+    return { history: { items, page, pageSize, hasMore: offset + pageSize < changes.length } };
+  },
+  'agents.my_conduct.sendConductChange': async function (input, ctx) {
+    return ctx.data.moduleData.runInTransaction(async (tx) => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      callerId(bound);
+      if (input.changeRequest.trim() === '') {
+        throw new AppError('INVALID_INPUT', 'The conduct change request cannot be empty.', 400);
+      }
+      const current = await readConduct(input.agentId, bound);
+      if (current.version !== input.expectVersion) {
+        throw new AppError('CONFLICT', `The conduct for ${current.agent.name} has changed.`, 409, { agentId: input.agentId });
+      }
+      await updatePersonalConduct({
+        agentId: input.agentId,
+        scope: 'personal',
+        prompt: input.changeRequest,
+        expectVersion: input.expectVersion,
+      }, bound);
+      return { conduct: await readConduct(input.agentId, bound) };
+    });
+  },
+};

@@ -245,8 +245,6 @@ export interface D1RemovedItem {
   defPath: string | null;
   inventoried: boolean;
   contentHash?: string;
-  /** d1_250: a def the D1 wrote that no plan carries and the L4 did not list: it is inventoried and KEPT (nothing deletes it). A route the plan does not know may use it. */
-  unplanned?: boolean;
 }
 
 export interface D1InputSnapshot {

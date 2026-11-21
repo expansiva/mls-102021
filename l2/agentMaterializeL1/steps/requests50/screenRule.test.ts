@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { staticPlainErrorProblems } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { staticPlainErrorProblems, unknownUsecaseImportProblems } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { SCREEN_RULE_NOTE, loadRequestContext, requestGate } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
@@ -70,4 +70,18 @@ test('d1_248: the request context lists the rules of the route and the screen-ru
   } finally {
     (globalThis as { mls: unknown }).mls = previous;
   }
+});
+
+test('d1_251: the recorded my_conduct request of f45e1e26 imports listPersonalConduct, which has no def once the plan dropped it: refused; the bench has no false', () => {
+  const code = readFileSync(path.join(FIXTURES, 'myConductRequestsF45e1e26.recorded.txt'), 'utf8');
+  const own = '/_102047_/l1/agents/';
+  const usecases = ['getOrganizationUser', 'listAgentBehavior', 'listAgentSimulation', 'updatePersonalConduct'];
+  const problems = unknownUsecaseImportProblems(code, usecases, own);
+  assert.equal(problems.length, 1, problems.join('\n'));
+  assert.match(problems[0], /USECASE_NOT_IN_MODULE: `listPersonalConduct`/u);
+  assert.deepEqual(unknownUsecaseImportProblems(code, [...usecases, 'listPersonalConduct'], own), [], 'with the def it passes');
+  assert.deepEqual(unknownUsecaseImportProblems(code, [], own), [], 'no list, no check');
+  // A usecase of another module (wfteste imports tarefas/listParticipante) is not this module's to judge.
+  assert.deepEqual(unknownUsecaseImportProblems("import { listParticipante } from '/_102047_/l1/tarefas/layer_2_application/usecases/listParticipante.js';", ['x'], '/_102047_/l1/wfteste/'), []);
+  assert.equal(requestGate(code, { header: '', routes: [], project: 102047, moduleName: 'agents', pageId: 'my_conduct', waived: new Set(), usecases }).some(item => item.startsWith('USECASE_NOT_IN_MODULE')), true);
 });

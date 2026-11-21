@@ -207,12 +207,13 @@ export async function commitD1Usecases(project: number, build: D1UsecaseBuild): 
 }
 
 /**
- * d1_251: a usecase def the L4 lists as removed leaves with the plan. One the D1 only found unplanned (d1_250, `unplanned`) stays: the plan may be
- * behind the contract. Only a def whose hash is the one the inventory holds goes: an edited one is refused by the commit like any other.
+ * d1_251: a usecase def the inventory carries as removed (the L4 lists it, or d1_250 found it: the D1 wrote it and no plan carries it) leaves with the
+ * plan. Left behind, the request service of the module is offered it as a usecase of the module and imports it (my_conduct → listPersonalConduct).
+ * Only a def whose hash is the one the inventory holds goes: an edited one is refused by the commit like any other.
  */
 export function removalParts(snapshot: D1InputSnapshot | null): D1UnitPart[] {
   return (snapshot?.removed ?? [])
-    .filter(item => item.kind === 'usecase' && item.inventoried && !item.unplanned && !!item.defPath && !!item.contentHash)
+    .filter(item => item.kind === 'usecase' && item.inventoried && !!item.defPath && !!item.contentHash)
     .map(item => ({ defPath: item.defPath as string, source: '', action: 'remove' as const, receiptHash: item.contentHash, outputTs: [] }));
 }
 

@@ -13,7 +13,7 @@ import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/conn
 import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { recordFieldFromGrant, recordFieldsFromGrant, scopeJoins } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
-import { arrivalUpsertProblems, emptyCastProblems, emptyRequiredProblems, gatewayBypassProblems, recordCastProblems, requestRepositoryProblems, importSpecifiers, staticPlainErrorProblems, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { arrivalUpsertProblems, emptyCastProblems, emptyRequiredProblems, gatewayBypassProblems, recordCastProblems, requestRepositoryProblems, importSpecifiers, staticPlainErrorProblems, unknownUsecaseImportProblems, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, infoOfRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -1088,6 +1088,7 @@ export function requestGate(code: string, input: {
   problems.push(...recordCastProblems(code));
   problems.push(...staticPlainErrorProblems(code));
   problems.push(...requestRepositoryProblems(code, input.ports ?? [], input.usecases ?? []));
+  problems.push(...unknownUsecaseImportProblems(code, input.usecases ?? [], `/_${input.project}_/l1/${input.moduleName}/`));
   problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
   problems.push(...consumeMessageProblems(code, input.consumeMessages ?? [], (input.serveUses ?? []).length > 0));
   problems.push(...untypedInputProblems(code));
