@@ -46,14 +46,16 @@ void test('d1_264: nothing changed, nothing is listed', async () => {
   assert.deepEqual(targets, []);
 });
 
-// d1_272: a request calls the function of a process without citing the workflow def in `dependencies`. The route reaches it by the usecase it uses
-// (`AgentTool.update` is an operation of the process, by a step of a journey): the request is listed when the workflow def changed, and so is the
-// controller that reads the request. A request whose routes use no operation of the process is not.
-void test('d1_272: a request whose route reaches a process is listed when the workflow def changed; one that does not reach it is not', async () => {
+// d1_272/d1_273: a request calls the function of a process without citing the workflow def in `dependencies`. The route reaches the process by the usecase it
+// uses (an operation of the process) on a page of a journey the process cites: the request is listed when the workflow def changed, and so is the controller
+// that reads the request. `agent_tools` also does `AgentTool.update` (the process lists it for a task), but it is the journey adjustAgentTools: not listed.
+void test('d1_273: a request whose route is a step of a journey the process cites is listed when the workflow def changed; one of another journey is not', async () => {
   const { targets } = await stateWith([WORKFLOW]);
   assert.ok(targets);
   assert.ok(targets.includes(targetOf(WORKFLOW)), 'the changed workflow');
-  assert.ok(targets.includes(targetOf('l1/agents/layer_2_application/requests/agent_tools.defs.ts')), 'agent_tools: toggleToolChoice uses updateAgentTool, an operation of the process');
-  assert.ok(targets.includes(targetOf('l1/agents/layer_1_external/adapters/http/controllers/agent_tools.defs.ts')), 'the controller reads the request');
+  assert.ok(targets.includes(targetOf('l1/agents/layer_2_application/requests/draft_review.defs.ts')), 'draft_review: saveDraftTools (AgentTool.update) is a step of reviewAndActivateDraft');
+  assert.ok(targets.includes(targetOf('l1/agents/layer_2_application/requests/agents.defs.ts')), 'agents: sendNewAgentRequest (AgentDraft.create) is a step of createVirtualEmployee');
+  assert.ok(targets.includes(targetOf('l1/agents/layer_1_external/adapters/http/controllers/draft_review.defs.ts')), 'the controller reads the request');
+  assert.equal(targets.includes(targetOf('l1/agents/layer_2_application/requests/agent_tools.defs.ts')), false, 'agent_tools is adjustAgentTools, not cited by the process');
   assert.equal(targets.includes(targetOf('l1/agents/layer_2_application/requests/agent_overview.defs.ts')), false, 'agent_overview reaches no process');
 });

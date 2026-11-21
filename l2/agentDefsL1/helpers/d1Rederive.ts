@@ -10,7 +10,7 @@ import { D1_FLOW_STEP_IDS, type D1FileInfo, type D1StepId } from '/_102021_/l2/a
 import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, removeOwned, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { processStartEvent, routeReachableOperations, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
+import { pageJourneyIds, processStartEvent, routeReachableOperations, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
 import { parseDefinitionSource, readDefinition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 
@@ -109,6 +109,11 @@ export async function finishRederive(project: number, moduleName: string, curren
  * d1_264: the defs of `candidates` that read, through `dependencies`, a def of `changed` or a def that reads one (the closure). The dependency refs are
  * qualified (`_<project>_/l1/...`); a ref that is not a def of the candidates (the L4, another module) never joins the closure.
  */
+/** `agents` of `l1/agents/layer_2_application/requests/x.defs.ts`. */
+function moduleOf(defPath: string): string {
+  return defPath.split('/')[1] ?? '';
+}
+
 async function readersOfChanged(project: number, candidates: readonly string[], changed: readonly string[]): Promise<string[]> {
   if (!changed.length) return [];
   const prefix = `_${project}_/`;
@@ -139,8 +144,10 @@ async function readersOfChanged(project: number, candidates: readonly string[], 
       }
     }
     const serves = new Set(rows.map(row => String(row.serves ?? '')).filter(Boolean));
+    const shared = artifactFile(project, `_${project}_/l2/${moduleOf(defPath)}/web/shared/${String(def.data.pageId ?? def.artifactId)}.defs.ts`);
+    const journeys = pageJourneyIds(shared ? await readText(shared) : null);
     for (const [processPath, process] of processes) {
-      const reached = routeReachableOperations(process.data).some(name => operations.has(name)) || serves.has(processStartEvent(process.data));
+      const reached = routeReachableOperations(process.data, journeys).some(name => operations.has(name)) || serves.has(processStartEvent(process.data));
       if (reached && !reads.get(defPath)?.includes(processPath)) reads.get(defPath)?.push(processPath);
     }
   }

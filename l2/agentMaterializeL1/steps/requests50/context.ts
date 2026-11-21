@@ -18,7 +18,7 @@ import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, infoOfRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { l4Process } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
-import { routeReachableOperations, processStartEvent, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
+import { pageJourneyIds, routeReachableOperations, processStartEvent, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
 import { moduleSpecifier, workflowFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { routeChildWrites } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import { childRecordsOf } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
@@ -361,7 +361,7 @@ export interface M12WorkflowRoute {
  * such a route calls the function of the process, which reuses the usecase. The operation of a usecase is
  * `Entidade.<operation>`, or `Entidade.<transitionRef>` for a transition, as the process def lists it.
  */
-export function workflowRoutes(units: readonly M12Unit[], requestDef: Record<string, unknown>, project: number, moduleName: string): M12WorkflowRoute[] {
+export function workflowRoutes(units: readonly M12Unit[], requestDef: Record<string, unknown>, project: number, moduleName: string, pageJourneys: ReadonlySet<string> | null = null): M12WorkflowRoute[] {
   const processes = units.filter(unit => unit.definition.artifactType === 'workflowProcess');
   if (!processes.length) return [];
   const usecaseOperation = new Map<string, string[]>();
@@ -374,7 +374,7 @@ export function workflowRoutes(units: readonly M12Unit[], requestDef: Record<str
     const route = String(request.route ?? '');
     for (const usecaseId of Array.isArray(request.uses) ? request.uses.map(String) : []) {
       for (const process of processes) {
-        const operations = routeReachableOperations(process.definition.data);
+        const operations = routeReachableOperations(process.definition.data, pageJourneys);
         const operation = (usecaseOperation.get(usecaseId) ?? []).find(op => operations.includes(op));
         if (!operation) continue;
         const processId = String(process.definition.data.processId ?? process.unitId);
@@ -923,7 +923,7 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
   const scopeGrants = ctx.units.filter(item => item.definition.artifactType === 'accessScope')
     .flatMap(item => Array.isArray(item.definition.data.grants) ? item.definition.data.grants.filter(isRecord) : []);
   // The workflow service of the processes the page reaches (§11): the function of the process, not the usecase.
-  const flows = workflowRoutes(ctx.units, unit.definition.data, project, moduleName);
+  const flows = workflowRoutes(ctx.units, unit.definition.data, project, moduleName, pageJourneyIds(await ctx.read(`_${project}_/l2/${moduleName}/web/shared/${pageId}.defs.ts`)));
   for (const specifier of [...new Set(flows.map(item => item.specifier))]) {
     const items = flows.filter(item => item.specifier === specifier);
     const info = infoOfRef(specifier, project);

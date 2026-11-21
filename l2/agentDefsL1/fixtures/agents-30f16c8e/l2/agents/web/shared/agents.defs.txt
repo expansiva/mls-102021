@@ -1,0 +1,273 @@
+/// <mls fileReference="_102047_/l2/agents/web/shared/agents.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "entry": {
+    "params": {}
+  },
+  "requests": {
+    "loadAgentsPage": {
+      "kind": "qry",
+      "trigger": "onLoad",
+      "returns": [
+        "inbox",
+        "agents",
+        "requests"
+      ]
+    },
+    "listAgentsCollection": {
+      "kind": "qry",
+      "trigger": "listAgentsCollection",
+      "returns": [
+        "agents"
+      ]
+    },
+    "listRequestHistory": {
+      "kind": "qry",
+      "trigger": "listRequestHistory",
+      "returns": [
+        "requests"
+      ]
+    },
+    "sendNewAgentRequest": {
+      "kind": "cmd",
+      "trigger": "sendNewAgentRequest",
+      "returns": [
+        "request",
+        "inboxItem",
+        "collectionEntry"
+      ],
+      "writes": "AgentDraft.create"
+    }
+  },
+  "states": {
+    "inbox": {
+      "source": "loadAgentsPage.inbox",
+      "description": "the list of An agent draft that is waiting for the admin: either ready for review or still being prepared by the cm from the admin's description.",
+      "organisms": [
+        "draftsInbox"
+      ]
+    },
+    "agents": {
+      "source": "loadAgentsPage.agents",
+      "description": "the list of One entry of the company's virtual employees: either an agent or a draft, exactly one of the two filled.",
+      "organisms": [
+        "agentsList"
+      ]
+    },
+    "requests": {
+      "source": "loadAgentsPage.requests",
+      "description": "the list of A request for a new agent and what happened to it: sent, ready with the suggested tools turned on, refused with the reason, activated or discarded.",
+      "organisms": [
+        "requestTimeline"
+      ]
+    }
+  },
+  "journeys": [
+    {
+      "step": "createVirtualEmployee/openAgentList",
+      "organisms": [
+        "agentsList",
+        "newAgentForm"
+      ]
+    },
+    {
+      "step": "createVirtualEmployee/describeAgent",
+      "organisms": [
+        "newAgentForm"
+      ]
+    },
+    {
+      "step": "createVirtualEmployee/followDraftSituation",
+      "organisms": [
+        "agentsList",
+        "requestTimeline",
+        "draftsInbox"
+      ]
+    },
+    {
+      "step": "followAgentActivity/browseAgents",
+      "organisms": [
+        "agentsList"
+      ]
+    },
+    {
+      "step": "followAgentActivity/readOverview",
+      "organisms": [],
+      "continuesIn": "agent_overview"
+    },
+    {
+      "step": "followAgentActivity/readActivity",
+      "organisms": [],
+      "continuesIn": "agent_activity"
+    },
+    {
+      "step": "reviewAndActivateDraft/openReadyDraft",
+      "organisms": [
+        "draftsInbox",
+        "agentsList",
+        "requestTimeline"
+      ],
+      "continuesIn": "draft_review"
+    },
+    {
+      "step": "reviewAndActivateDraft/reviewDraft",
+      "organisms": [],
+      "continuesIn": "draft_review"
+    },
+    {
+      "step": "reviewAndActivateDraft/adjustDraftTools",
+      "organisms": [],
+      "continuesIn": "draft_review"
+    },
+    {
+      "step": "reviewAndActivateDraft/simulateDraft",
+      "organisms": [],
+      "continuesIn": "draft_review"
+    },
+    {
+      "step": "reviewAndActivateDraft/activateDraft",
+      "organisms": [],
+      "continuesIn": "draft_review"
+    },
+    {
+      "step": "reviewAndActivateDraft/discardDraft",
+      "organisms": [],
+      "continuesIn": "draft_review"
+    },
+    {
+      "step": "adjustAgentTools/findAgentForTools",
+      "organisms": [
+        "agentsList"
+      ],
+      "continuesIn": "agent_tools"
+    },
+    {
+      "step": "adjustAgentTools/browseToolTree",
+      "organisms": [],
+      "continuesIn": "agent_tools"
+    },
+    {
+      "step": "adjustAgentTools/enableUnchosenTool",
+      "organisms": [],
+      "continuesIn": "agent_tools"
+    },
+    {
+      "step": "adjustAgentTools/toggleTools",
+      "organisms": [],
+      "continuesIn": "agent_tools"
+    },
+    {
+      "step": "changeAgentBehavior/findAgentForBehavior",
+      "organisms": [
+        "agentsList"
+      ],
+      "continuesIn": "agent_behavior"
+    },
+    {
+      "step": "changeAgentBehavior/readBehavior",
+      "organisms": [],
+      "continuesIn": "agent_behavior"
+    },
+    {
+      "step": "changeAgentBehavior/requestBehaviorChange",
+      "organisms": [],
+      "continuesIn": "agent_behavior"
+    },
+    {
+      "step": "changeAgentBehavior/undoBehaviorChange",
+      "organisms": [],
+      "continuesIn": "agent_behavior"
+    },
+    {
+      "step": "changeMyConduct/findMyAgent",
+      "organisms": [
+        "agentsList"
+      ],
+      "continuesIn": "my_conduct"
+    },
+    {
+      "step": "changeMyConduct/readMyConduct",
+      "organisms": [],
+      "continuesIn": "my_conduct"
+    },
+    {
+      "step": "changeMyConduct/changeConduct",
+      "organisms": [],
+      "continuesIn": "my_conduct"
+    },
+    {
+      "step": "changeMyConduct/readMyConductHistory",
+      "organisms": [],
+      "continuesIn": "my_conduct"
+    },
+    {
+      "step": "configureAgent/findAgentForConfig",
+      "organisms": [
+        "agentsList"
+      ],
+      "continuesIn": "agent_configuration"
+    },
+    {
+      "step": "configureAgent/readConfiguration",
+      "organisms": [],
+      "continuesIn": "agent_configuration"
+    },
+    {
+      "step": "configureAgent/saveConfiguration",
+      "organisms": [],
+      "continuesIn": "agent_configuration"
+    },
+    {
+      "step": "simulateAgentByRole/findAgentToSimulate",
+      "organisms": [
+        "agentsList"
+      ],
+      "continuesIn": "agent_simulation"
+    },
+    {
+      "step": "simulateAgentByRole/simulateWhatItCan",
+      "organisms": [],
+      "continuesIn": "agent_simulation"
+    },
+    {
+      "step": "simulateAgentByRole/simulateWhatItUnderstands",
+      "organisms": [],
+      "continuesIn": "agent_simulation"
+    },
+    {
+      "step": "simulateAsMyself/findAgentForMe",
+      "organisms": [
+        "agentsList"
+      ],
+      "continuesIn": "agent_simulation"
+    },
+    {
+      "step": "simulateAsMyself/seeWhatItCanForMe",
+      "organisms": [],
+      "continuesIn": "agent_simulation"
+    },
+    {
+      "step": "simulateAsMyself/seeWhatItUnderstandsForMe",
+      "organisms": [],
+      "continuesIn": "agent_simulation"
+    }
+  ],
+  "rules": [
+    "agentDraftRecordedBeforeSending",
+    "agentDraftSuggestedToolsOnWhenReady",
+    "noTechnicalIdsOnScreen",
+    "refusalReasonShownWhenRefused"
+  ],
+  "access": {
+    "actors": [
+      "companyAdmin",
+      "organizationMember"
+    ],
+    "grants": [
+      "adminManageAgents",
+      "adminChoosePeople",
+      "memberSeeAgents",
+      "memberSeePeopleNames"
+    ]
+  }
+} as const;

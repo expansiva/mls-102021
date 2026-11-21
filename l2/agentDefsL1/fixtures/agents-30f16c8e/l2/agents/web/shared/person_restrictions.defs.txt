@@ -1,0 +1,130 @@
+/// <mls fileReference="_102047_/l2/agents/web/shared/person_restrictions.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "entry": {
+    "params": {
+      "search": {
+        "type": "string",
+        "sources": [
+          "url",
+          "localStorage"
+        ],
+        "effect": "filter:personPicker",
+        "persist": true,
+        "required": false
+      },
+      "organizationUserId": {
+        "type": "string",
+        "sources": [
+          "url"
+        ],
+        "effect": "select:blockedToolsChecklist",
+        "persist": false,
+        "required": false
+      },
+      "toolId": {
+        "type": "string",
+        "sources": [
+          "url",
+          "localStorage"
+        ],
+        "effect": "prefill:blockedToolsChecklist",
+        "persist": false,
+        "required": false
+      }
+    }
+  },
+  "requests": {
+    "listPeople": {
+      "kind": "qry",
+      "trigger": "onLoad",
+      "returns": [
+        "people"
+      ]
+    },
+    "getPersonRestrictions": {
+      "kind": "qry",
+      "trigger": "getPersonRestrictions",
+      "returns": [
+        "person",
+        "tools"
+      ]
+    },
+    "saveRestrictions": {
+      "kind": "cmd",
+      "trigger": "saveRestrictions",
+      "returns": [
+        "person",
+        "tools"
+      ],
+      "writes": "PersonToolRestriction.update"
+    }
+  },
+  "states": {
+    "people": {
+      "source": "listPeople.people",
+      "description": "the list of An active person of the organization who can be restricted, identified by name and login e-mail.",
+      "organisms": [
+        "personPicker"
+      ]
+    },
+    "person": {
+      "source": "getPersonRestrictions.person",
+      "description": "An active person of the organization who can be restricted, identified by name and login e-mail.",
+      "organisms": [
+        "blockedToolsChecklist"
+      ]
+    },
+    "tools": {
+      "source": "getPersonRestrictions.tools",
+      "description": "the list of One action of the tool catalog with its place in the module / subject tree and, when it is blocked for the person, the restriction that blocks it.",
+      "organisms": [
+        "blockedToolsChecklist"
+      ]
+    },
+    "selectedOrganizationUser": {
+      "source": "entry.params.organizationUserId",
+      "description": "the id of the OrganizationUser selected in personPicker",
+      "organisms": [
+        "blockedToolsChecklist",
+        "personPicker"
+      ]
+    }
+  },
+  "journeys": [
+    {
+      "step": "restrictPersonTools/choosePerson",
+      "organisms": [
+        "personPicker"
+      ]
+    },
+    {
+      "step": "restrictPersonTools/reviewRestrictions",
+      "organisms": [
+        "blockedToolsChecklist"
+      ]
+    },
+    {
+      "step": "restrictPersonTools/markRestrictions",
+      "organisms": [
+        "blockedToolsChecklist"
+      ]
+    }
+  ],
+  "rules": [
+    "onlyActiveUsersRestricted",
+    "onlyCompanyAdminRestrictsTools",
+    "removedToolRestrictionKept",
+    "restrictionAppliesThroughAnyAgent",
+    "restrictionUniquePerPersonTool"
+  ],
+  "access": {
+    "actors": [
+      "companyAdmin"
+    ],
+    "grants": [
+      "adminManageTools",
+      "adminChoosePeople"
+    ]
+  }
+} as const;

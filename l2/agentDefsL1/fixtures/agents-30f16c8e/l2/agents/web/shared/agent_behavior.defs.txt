@@ -1,0 +1,117 @@
+/// <mls fileReference="_102047_/l2/agents/web/shared/agent_behavior.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "entry": {
+    "params": {
+      "agentId": {
+        "type": "string",
+        "sources": [
+          "url"
+        ],
+        "effect": "select:currentBehavior",
+        "persist": false,
+        "required": true
+      },
+      "agentBehaviorId": {
+        "type": "string",
+        "sources": [
+          "url"
+        ],
+        "effect": "select:behaviorChangeRequest",
+        "persist": false,
+        "required": false
+      }
+    }
+  },
+  "requests": {
+    "getAgentBehavior": {
+      "kind": "qry",
+      "trigger": "onLoad",
+      "returns": [
+        "behavior"
+      ]
+    },
+    "listBehaviorChanges": {
+      "kind": "qry",
+      "trigger": "onLoad",
+      "returns": [
+        "changes"
+      ]
+    },
+    "requestBehaviorChange": {
+      "kind": "cmd",
+      "trigger": "requestBehaviorChange",
+      "returns": [
+        "behavior"
+      ],
+      "writes": "AgentBehavior.update"
+    }
+  },
+  "states": {
+    "behavior": {
+      "source": "getAgentBehavior.behavior",
+      "description": "An agent's current behavior in plain language as the cm keeps it, with its one-line summary.",
+      "organisms": [
+        "behaviorChangeRequest",
+        "currentBehavior"
+      ]
+    },
+    "changes": {
+      "source": "listBehaviorChanges.changes",
+      "description": "the list of One change in an agent's behavior history: the cm reference, who made it, when, a one-line summary and whether it was undone.",
+      "organisms": [
+        "behaviorChangeRequest",
+        "behaviorHistory"
+      ]
+    },
+    "selectedAgentBehavior": {
+      "source": "entry.params.agentBehaviorId",
+      "description": "the id of the AgentBehavior selected in behaviorHistory",
+      "organisms": [
+        "behaviorChangeRequest",
+        "behaviorHistory"
+      ]
+    }
+  },
+  "journeys": [
+    {
+      "step": "changeAgentBehavior/findAgentForBehavior",
+      "organisms": [],
+      "continuesIn": "agents"
+    },
+    {
+      "step": "changeAgentBehavior/readBehavior",
+      "organisms": [
+        "currentBehavior",
+        "behaviorHistory"
+      ]
+    },
+    {
+      "step": "changeAgentBehavior/requestBehaviorChange",
+      "organisms": [
+        "behaviorChangeRequest",
+        "currentBehavior"
+      ]
+    },
+    {
+      "step": "changeAgentBehavior/undoBehaviorChange",
+      "organisms": [
+        "behaviorHistory",
+        "behaviorChangeRequest"
+      ]
+    }
+  ],
+  "rules": [
+    "agentBehaviorChangedOnlyThroughCm",
+    "behaviorChangeByAdminOnly",
+    "undoRestoresPreviousBehavior"
+  ],
+  "access": {
+    "actors": [
+      "companyAdmin"
+    ],
+    "grants": [
+      "adminManageAgents"
+    ]
+  }
+} as const;

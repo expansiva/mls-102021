@@ -356,7 +356,7 @@ void test('d1_272: the page workflow section lists the l4 description of each fu
   const process = unit('workflowProcess', 'virtualEmployeeCreation', {
     processId: 'virtualEmployeeCreation',
     trigger: { kind: 'manual', actorRef: 'companyAdmin' },
-    operations: [{ operation: 'AgentTool.update', steps: ['journey:reviewAndActivateDraft/adjustDraftTools'] }],
+    operations: [{ operation: 'AgentTool.update', steps: ['journey:reviewAndActivateDraft/adjustDraftTools', 'task:applySuggestedTools'] }],
   }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/virtualEmployeeCreation.ts`);
   process.definition.dependencies = [`_${PROJECT}_/l4/${MODULE}/workflows.defs.ts`];
   const request = unit('requestService', PAGE, {
@@ -385,7 +385,43 @@ void test('d1_272: the page workflow section lists the l4 description of each fu
     assert.match(section, /What the l4 says each function does/u);
     assert.match(section, /- resolveDraftReviewer: Called when the review stage opens; writes nothing\./u);
     assert.match(section, /- completeDraftReview: Activates or discards the ready draft\./u);
+    // d1_273: the same route on a page of another journey (its shared def) reaches no process, so the section is not there and the gate asks for no call.
+    const sharedOf = (step: string) => `export const definition = ${JSON.stringify({ journeys: [{ step }] })} as const;\n`;
+    const readTools = async (ref: string) => (ref === `_${PROJECT}_/l2/${MODULE}/web/shared/${PAGE}.defs.ts` ? sharedOf('adjustAgentTools/toggleTools') : read(ref));
+    const other = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [request, usecase, process], read: readTools } as never, request);
+    assert.equal(other.human.includes('## Workflow service of process'), false);
+    assert.deepEqual(other.workflowRoutes, []);
+    const readReview = async (ref: string) => (ref === `_${PROJECT}_/l2/${MODULE}/web/shared/${PAGE}.defs.ts` ? sharedOf('reviewAndActivateDraft/adjustDraftTools') : read(ref));
+    const same = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [request, usecase, process], read: readReview } as never, request);
+    assert.deepEqual(same.workflowRoutes.map(item => item.processId), ['virtualEmployeeCreation']);
   } finally {
     (globalThis as { mls: unknown }).mls = previous;
   }
 });
+
+// d1_273: the process of the agents lists `AgentTool.update` for a step of reviewAndActivateDraft and for a task. A route of the same operation on a page of
+// another journey (adjustAgentTools) is not the process's: no function to call. The journeys of a page are the ones of its shared def.
+void test('d1_273: a route reaches the process only on a page of a journey the process cites', async () => {
+  const { workflowRoutes } = await import('/_102021_/l2/agentMaterializeL1/steps/requests50/context.js');
+  const { pageJourneyIds } = await import('/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js');
+  const usecase = unit('usecase', 'updateAgentTool', { entityId: 'AgentTool', operation: 'update' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/updateAgentTool.ts`);
+  const process = unit('workflowProcess', 'virtualEmployeeCreation', {
+    processId: 'virtualEmployeeCreation',
+    trigger: { kind: 'manual', actorRef: 'companyAdmin' },
+    operations: [{ operation: 'AgentTool.update', steps: ['journey:reviewAndActivateDraft/adjustDraftTools', 'task:applySuggestedTools'] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/virtualEmployeeCreation.ts`);
+  const request = { requests: [{ route: 'agents.agent_tools.toggleToolChoice', uses: ['updateAgentTool'] }] };
+  const shared = (steps: string[]) => `export const definition = ${JSON.stringify({ journeys: steps.map(step => ({ step, organisms: [] })) })} as const;\n`;
+  const tools = pageJourneyIds(shared(['adjustAgentTools/browseToolTree', 'adjustAgentTools/toggleTools']));
+  const review = pageJourneyIds(shared(['reviewAndActivateDraft/openReadyDraft', 'reviewAndActivateDraft/adjustDraftTools']));
+  assert.deepEqual([...tools ?? []], ['adjustAgentTools']);
+  assert.deepEqual(workflowRoutes([usecase, process], request, PROJECT, MODULE, tools), [], 'adjustAgentTools is not a journey of the process');
+  assert.deepEqual(workflowRoutes([usecase, process], request, PROJECT, MODULE, review).map(item => item.processId), ['virtualEmployeeCreation']);
+  // A page whose shared def is unknown keeps the old reach: nothing is taken out for a page nobody read.
+  assert.equal(pageJourneyIds(null), null);
+  assert.deepEqual(workflowRoutes([usecase, process], request, PROJECT, MODULE, null).map(item => item.processId), ['virtualEmployeeCreation']);
+  // A row that lists no step is kept.
+  const open = unit('workflowProcess', 'open', { processId: 'open', trigger: { kind: 'manual' }, operations: [{ operation: 'AgentTool.update' }] }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/open.ts`);
+  assert.deepEqual(workflowRoutes([usecase, open], request, PROJECT, MODULE, tools).map(item => item.processId), ['open']);
+});
+

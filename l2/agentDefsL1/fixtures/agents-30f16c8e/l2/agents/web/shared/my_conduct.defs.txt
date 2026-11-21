@@ -1,0 +1,104 @@
+/// <mls fileReference="_102047_/l2/agents/web/shared/my_conduct.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "entry": {
+    "params": {
+      "agentId": {
+        "type": "string",
+        "sources": [
+          "url"
+        ],
+        "effect": "select:conductSummary",
+        "persist": false,
+        "required": true
+      }
+    }
+  },
+  "requests": {
+    "getMyConduct": {
+      "kind": "qry",
+      "trigger": "onLoad",
+      "returns": [
+        "conduct"
+      ]
+    },
+    "listMyConductChanges": {
+      "kind": "qry",
+      "trigger": "onLoad",
+      "returns": [
+        "changes"
+      ]
+    },
+    "sendConductChange": {
+      "kind": "cmd",
+      "trigger": "sendConductChange",
+      "returns": [
+        "conduct",
+        "change"
+      ],
+      "writes": "PersonalConduct.update"
+    }
+  },
+  "states": {
+    "conduct": {
+      "source": "getMyConduct.conduct",
+      "description": "How one agent that acts on the signed-in member's behalf currently behaves for that member, with the agent it belongs to.",
+      "organisms": [
+        "conductChange",
+        "conductSummary"
+      ]
+    },
+    "changes": {
+      "source": "listMyConductChanges.changes",
+      "description": "the list of One change the signed-in member made to their conduct with an agent: when it happened and a one-line summary.",
+      "organisms": [
+        "conductHistory"
+      ]
+    }
+  },
+  "journeys": [
+    {
+      "step": "changeMyConduct/findMyAgent",
+      "organisms": [],
+      "continuesIn": "agents"
+    },
+    {
+      "step": "changeMyConduct/readMyConduct",
+      "organisms": [
+        "conductSummary"
+      ]
+    },
+    {
+      "step": "changeMyConduct/changeConduct",
+      "organisms": [
+        "conductChange"
+      ]
+    },
+    {
+      "step": "changeMyConduct/readMyConductHistory",
+      "organisms": [
+        "conductHistory"
+      ]
+    }
+  ],
+  "rules": [
+    "conductChangeRecorded",
+    "conductOnlyForAgentActingOnBehalf",
+    "ownConductHistoryOnly",
+    "ownConductOnly"
+  ],
+  "access": {
+    "actors": [
+      "companyAdmin",
+      "organizationMember"
+    ],
+    "grants": [
+      "adminManageAgents",
+      "adminOwnConduct",
+      "adminOwnConductCurrent",
+      "memberSeeAgents",
+      "memberOwnConduct",
+      "memberOwnConductCurrent"
+    ]
+  }
+} as const;
