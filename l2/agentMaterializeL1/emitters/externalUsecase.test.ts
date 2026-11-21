@@ -170,8 +170,11 @@ void test('d1_276: expectVersionType reads the version of the answer from the ca
   assert.equal(catalogMemberType(CM_SOURCE, 'CmUpdateAgentOutput', 'version'), 'string');
   assert.equal(expectVersionType(CM_SOURCE, 'CmUpdateAgentOutput'), 'string');
   assert.equal(expectVersionType('export interface XOut {\n  version: number;\n}\n', 'XOut'), 'number');
-  // No version in the answer, or no such type: the number of a stored record stays.
-  assert.equal(expectVersionType(CM_SOURCE, 'CmActivateAgentOutput'), 'number');
-  assert.equal(expectVersionType(CM_SOURCE, 'NoSuchType'), 'number');
+  // d1_277: no version in the answer (activateAgent): the version of the connection is one, the catalog's.
+  assert.equal(expectVersionType(CM_SOURCE, 'CmActivateAgentOutput'), 'string');
+  assert.equal(expectVersionType(CM_SOURCE, 'NoSuchType'), 'string');
+  // A catalog that types its versions in two ways, or none: the number of a stored record stays.
+  assert.equal(expectVersionType('export interface A {\n  version: number;\n}\nexport interface B {\n  version: string;\n}\nexport interface C {\n  id: string;\n}\n', 'C'), 'number');
+  assert.equal(expectVersionType('export interface C {\n  id: string;\n}\n', 'C'), 'number');
 });
 

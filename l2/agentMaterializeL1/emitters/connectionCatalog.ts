@@ -202,9 +202,28 @@ export function catalogMemberType(source: string, typeName: string, field: strin
   return new RegExp(`(?:^|\\n)\\s*"?${field}"?\\??\\s*:\\s*([^;\\n]+);`, 'u').exec(body)?.[1].trim() ?? '';
 }
 
-/** The type of `expectVersion` of a usecase that calls `operation` (d1_276): `string` when the catalog types the `version` of its answer as `string`, else `number`. */
+/**
+ * The types the catalog gives a member called `version`, in any interface of the file (`version: string;`). d1_277: the version of a connection is one, so an
+ * operation whose answer carries none (`activateAgent`) takes the one the rest of the catalog states.
+ */
+function catalogVersionTypes(source: string): Set<string> {
+  const types = new Set<string>();
+  for (const match of source.matchAll(/export\s+interface\s+([A-Za-z_$][\w$]*)\b/gu)) {
+    const type = catalogMemberType(source, match[1], 'version');
+    if (type === 'string' || type === 'number') types.add(type);
+  }
+  return types;
+}
+
+/**
+ * The type of `expectVersion` of a usecase that calls `operation` (d1_276, d1_277): the type of the `version` of its answer; else, when the whole catalog
+ * types its versions the same way, that type (the version of a connection is one); else `number`.
+ */
 export function expectVersionType(source: string, outputType: string): 'string' | 'number' {
-  return catalogMemberType(source, outputType, 'version') === 'string' ? 'string' : 'number';
+  const own = catalogMemberType(source, outputType, 'version');
+  if (own === 'string' || own === 'number') return own;
+  const all = catalogVersionTypes(source);
+  return all.size === 1 ? [...all][0] as 'string' | 'number' : 'number';
 }
 
 export interface CatalogField {

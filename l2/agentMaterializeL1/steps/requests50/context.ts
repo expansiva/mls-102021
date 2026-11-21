@@ -22,7 +22,7 @@ import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTok
 import { pageJourneyIds, processReceives, routeReachableOperations, processStartEvent, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
 import { moduleSpecifier, workflowFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { routeChildWrites } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
-import { childRecordsOf, externalVersionOf } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { childRecordsOf, usecaseStringVersion } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { recipeDraft, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -1229,10 +1229,13 @@ export async function delegatedRuleProblems(
 }
 
 /** d1_276: the request calls a usecase whose outside call takes `expectVersion` typed `string` by the catalog. */
-function usedStringVersion(units: readonly M12Unit[], request: M12Unit): boolean {
+async function usedStringVersion(ctx: M12Context, request: M12Unit): Promise<boolean> {
   const rows = Array.isArray(request.definition.data.requests) ? request.definition.data.requests.filter(isRecord) : [];
   const used = new Set(rows.flatMap(row => (Array.isArray(row.uses) ? row.uses.map(String) : [])));
-  return units.some(item => item.definition.artifactType === 'usecase' && used.has(item.unitId) && externalVersionOf(item) === 'string');
+  for (const item of ctx.units) {
+    if (item.definition.artifactType === 'usecase' && used.has(item.unitId) && await usecaseStringVersion(ctx, item)) return true;
+  }
+  return false;
 }
 
 export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code: string, notApplicable: readonly M12RuleNotApplicable[]): Promise<string[]> {
@@ -1254,7 +1257,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
     // d1_276: a route that passes the version to a usecase whose call takes it as a string never converts it.
-    ...(usedStringVersion(ctx.units, unit) ? externalVersionConversionProblems(code) : []),
+    ...(await usedStringVersion(ctx, unit) ? externalVersionConversionProblems(code) : []),
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared
     // `create`/`delete` for ItemChecklist, whose port has neither: "repo.create is not a function", tarefas 16/10).
     ...repositoryProblems(code, [...repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), ...moduleGatewayNames(ctx.units)], moduleGatewayNames(ctx.units)),

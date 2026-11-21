@@ -784,9 +784,13 @@ export function repositoryProblems(code: string, knownPorts?: readonly string[],
  */
 export function externalVersionConversionProblems(code: string): string[] {
   const clean = withoutComments(code);
-  const converted = /\b(?:Number|parseInt|parseFloat)\s*\(\s*[^()]*\b(?:expectVersion|version)\b[^()]*\)/u.test(clean);
+  // `Number(…)`, `parseInt(…)` and `parseFloat(…)` over either name; the `Number.isInteger(…)` family and a `typeof … 'number'` check over `expectVersion` only
+  // (the `version` next to it can be the number of a record the module stores, d1_277).
+  const converted = /\b(?:Number|parseInt|parseFloat)\s*\(\s*[^()]*\b(?:expectVersion|version)\b[^()]*\)/u.test(clean)
+    || /\bNumber\s*\.\s*\w+\s*\(\s*[^()]*\bexpectVersion\b[^()]*\)/u.test(clean)
+    || /\btypeof\s+[^;\n]*\bexpectVersion\b[^;\n]*(?:===|!==|==|!=)\s*['"]number['"]/u.test(clean);
   return converted
-    ? ['VERSION_CONVERTED: the version of an entity kept outside is a string, as the catalog types it: pass `expectVersion` and `version` as they come, without `Number(...)`, `parseInt` or `parseFloat`. The system refuses a number.']
+    ? ['VERSION_CONVERTED: the version of an entity kept outside is a string, as the catalog types it: pass `expectVersion` and `version` as they come, without `Number(...)`, `Number.isInteger(...)`, `parseInt`, `parseFloat` or a `typeof … "number"` check; validate it as a non-empty string. The system refuses a number.']
     : [];
 }
 

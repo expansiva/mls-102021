@@ -270,6 +270,22 @@ export function externalVersionOf(unit: M12Unit): string {
   return call && typeof call === 'object' && typeof (call as { versionType?: unknown }).versionType === 'string' ? String((call as { versionType: string }).versionType) : '';
 }
 
+/**
+ * d1_277: the usecase passes an `expectVersion` the catalog types as `string`: its own outside call does (an entity kept outside), or a call it consumes
+ * does (`activate`, a usecase of the module's draft that also calls `activateAgent`). The version of a connection is one (`expectVersionType`).
+ */
+export async function usecaseStringVersion(ctx: M12Context, unit: M12Unit): Promise<boolean> {
+  if (externalVersionOf(unit) === 'string') return true;
+  const functions = Array.isArray(unit.definition.data.functions) ? unit.definition.data.functions : [];
+  const functionName = String((functions[0] as { functionName?: unknown } | undefined)?.functionName ?? unit.definition.data.usecaseId ?? unit.definition.artifactId);
+  for (const call of consumerCallsOf(ctx, functionName, unit.definition.artifactId)) {
+    const source = (await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, call.connectionId)).source;
+    const operation = source ? catalogOperations(source)?.find(item => item.operationId === call.operationId) : undefined;
+    if (source && operation?.expectsVersion && expectVersionType(source, operation.outputType) === 'string') return true;
+  }
+  return false;
+}
+
 /** `data.calls` of the usecase def, as the gate and the context read it (d1_269). Nothing when the def has none. */
 export function callInputsOfDef(unit: M12Unit): M12CallInputs[] {
   const value = unit.definition.data.calls;
@@ -1166,7 +1182,7 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const arrival = arrivalOf(ctx, unit);
   return [
     ...waived.problems,
-    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), stringVersion: externalVersionOf(unit) === 'string', derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ...(arrival ? { arrival } : {}), ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), callInputs: callInputsOfDef(unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId), childRecords: childRecordsOf(ctx, unit), usecaseInputs: await usecaseInputsOf(ctx), mdmCalls: mdmBoundCalls(unit.definition.data) }),
+    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), stringVersion: await usecaseStringVersion(ctx, unit), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ...(arrival ? { arrival } : {}), ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), callInputs: callInputsOfDef(unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId), childRecords: childRecordsOf(ctx, unit), usecaseInputs: await usecaseInputsOf(ctx), mdmCalls: mdmBoundCalls(unit.definition.data) }),
   ];
 }
 
