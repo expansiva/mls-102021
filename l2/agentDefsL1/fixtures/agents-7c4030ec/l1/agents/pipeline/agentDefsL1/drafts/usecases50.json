@@ -1,0 +1,2657 @@
+{
+  "schemaVersion": "2026-10-01-d1-usecases-v2",
+  "project": 102047,
+  "moduleName": "agents",
+  "llmCalls": 0,
+  "ok": true,
+  "enumerations": [
+    {
+      "entityId": "AgentDraft",
+      "path": "status",
+      "values": [
+        "preparing",
+        "ready",
+        "refused",
+        "activated",
+        "discarded"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "AgentSimulation",
+      "path": "level",
+      "values": [
+        "whatItCan",
+        "whatItUnderstands"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "AgentSimulation",
+      "path": "subjectKind",
+      "values": [
+        "person",
+        "role"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "AgentSimulation",
+      "path": "toolVerdicts.reason",
+      "values": [
+        "allowed",
+        "restrictedForPerson",
+        "notPermittedForRole",
+        "removedFromRelease"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "AgentTool",
+      "path": "choiceSource",
+      "values": [
+        "admin",
+        "automatic"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "AgentTool",
+      "path": "details.automaticOrigin",
+      "values": [
+        "draftSuggestion",
+        "catalogRefresh"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "ExecutionSummary",
+      "path": "details.actions.result",
+      "values": [
+        "succeeded",
+        "failed",
+        "refused"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "OrganizationUser",
+      "path": "details.identification.status",
+      "values": [
+        "Active",
+        "Inactive",
+        "Merged",
+        "Blocked"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "Tool",
+      "path": "origin",
+      "values": [
+        "appModule",
+        "cm"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "Tool",
+      "path": "status",
+      "values": [
+        "available",
+        "removed"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "activate",
+      "entityId": "AgentDraft",
+      "operation": "transition",
+      "defPath": "l1/agents/layer_2_application/usecases/activate.defs.ts",
+      "routes": [
+        "agents.draft_review.activateDraft"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "activate",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+          "_102047_/l4/agents/ontology/AgentDraft.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "activate",
+          "entityId": "AgentDraft",
+          "operation": "transition",
+          "rulesApplied": [
+            "draftDecisionOnlyWhenReady"
+          ],
+          "effects": [],
+          "transitionRef": "activate"
+        }
+      }
+    },
+    {
+      "usecaseId": "createAgentDraft",
+      "entityId": "AgentDraft",
+      "operation": "create",
+      "defPath": "l1/agents/layer_2_application/usecases/createAgentDraft.defs.ts",
+      "routes": [
+        "agents.agents.sendNewAgentRequest"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createAgentDraft",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createAgentDraft",
+          "entityId": "AgentDraft",
+          "operation": "create",
+          "rulesApplied": [
+            "adminChoiceNotOverriddenByAutomatic",
+            "agentDraftNoticeIdempotent",
+            "agentDraftRecordedBeforeSending",
+            "agentNameUniqueAmongActive",
+            "refusalReasonShownWhenRefused"
+          ],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "createAgentTool",
+      "entityId": "AgentTool",
+      "operation": "create",
+      "defPath": "l1/agents/layer_2_application/usecases/createAgentTool.defs.ts",
+      "routes": [
+        "agents.agent_tools.enableUnchosenTool",
+        "agents.cm.agentDraftReady"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createAgentTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createAgentTool",
+          "entityId": "AgentTool",
+          "operation": "create",
+          "rulesApplied": [
+            "adminChoiceNeverOverridden",
+            "describeAgentForPersonWritesNothing",
+            "draftSuggestedToolsTurnedOn",
+            "markingWithoutChoiceCreatesAdminChoice",
+            "newToolsChosenFromDescription",
+            "oneChoicePerAgentAndTool",
+            "onlyEnabledToolsSent",
+            "personRestrictionsExcludeTools",
+            "removedToolNeverSent",
+            "repeatedNoticeChangesNothing"
+          ],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "createExecutionSummary",
+      "entityId": "ExecutionSummary",
+      "operation": "create",
+      "defPath": "l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts",
+      "routes": [
+        "agents.cm.record"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createExecutionSummary",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/executionSummary.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createExecutionSummary",
+          "entityId": "ExecutionSummary",
+          "operation": "create",
+          "rulesApplied": [
+            "activityNewestFirst",
+            "executionNeverEdited",
+            "executionRecordedOnce",
+            "onlyInboundWritesExecution"
+          ],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "createTool",
+      "entityId": "Tool",
+      "operation": "create",
+      "defPath": "l1/agents/layer_2_application/usecases/createTool.defs.ts",
+      "routes": [
+        "agents.platform.releaseCatalogChanged"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createTool",
+          "entityId": "Tool",
+          "operation": "create",
+          "rulesApplied": [
+            "agentToolsShowWholeCatalog",
+            "catalogRebuiltOnRelease",
+            "noTechnicalIdsOnScreen",
+            "removedToolNotSent",
+            "toolKeepsWholeCatalogItem",
+            "toolKeyUnique",
+            "toolNeverDeleted"
+          ],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "discard",
+      "entityId": "AgentDraft",
+      "operation": "transition",
+      "defPath": "l1/agents/layer_2_application/usecases/discard.defs.ts",
+      "routes": [
+        "agents.draft_review.discardDraft"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "discard",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+          "_102047_/l4/agents/ontology/AgentDraft.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "discard",
+          "entityId": "AgentDraft",
+          "operation": "transition",
+          "rulesApplied": [
+            "draftDecisionOnlyWhenReady"
+          ],
+          "effects": [],
+          "transitionRef": "discard"
+        }
+      }
+    },
+    {
+      "usecaseId": "getAgent",
+      "entityId": "Agent",
+      "operation": "get",
+      "defPath": "l1/agents/layer_2_application/usecases/getAgent.defs.ts",
+      "routes": [
+        "agents.agent_activity.getAgentActivity",
+        "agents.agent_overview.getAgentOverview",
+        "agents.agent_simulation.getSimulationPage",
+        "agents.my_conduct.getMyConduct",
+        "agents.my_conduct.sendConductChange"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "getAgent",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "getAgent",
+          "entityId": "Agent",
+          "operation": "get",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "getAgentBehavior",
+      "entityId": "AgentBehavior",
+      "operation": "get",
+      "defPath": "l1/agents/layer_2_application/usecases/getAgentBehavior.defs.ts",
+      "routes": [
+        "agents.agent_behavior.getAgentBehavior"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "getAgentBehavior",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "getAgentBehavior",
+          "entityId": "AgentBehavior",
+          "operation": "get",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "getOrganizationUser",
+      "entityId": "OrganizationUser",
+      "operation": "get",
+      "defPath": "l1/agents/layer_2_application/usecases/getOrganizationUser.defs.ts",
+      "routes": [
+        "agents.agent_configuration.getAgentConfiguration",
+        "agents.agent_configuration.saveAgentConfiguration",
+        "agents.agent_simulation.getSimulationPage",
+        "agents.agent_simulation.simulateWhatItCan",
+        "agents.person_restrictions.getPersonRestrictions",
+        "agents.person_restrictions.saveRestrictions"
+      ],
+      "trustedContext": "ctx",
+      "mdm": {
+        "namespace": "agents",
+        "role": "agents.OrganizationUser",
+        "atomic": true,
+        "calls": [
+          {
+            "id": "get",
+            "method": "get",
+            "target": "entity",
+            "shape": "point",
+            "capabilities": [
+              "read.byId"
+            ],
+            "alternative": false,
+            "when": [],
+            "arguments": [
+              {
+                "name": "mdmId",
+                "role": "selector",
+                "path": "id",
+                "origin": {
+                  "kind": "contract",
+                  "path": "id"
+                }
+              }
+            ],
+            "result": [
+              "mdmId",
+              "version",
+              "details"
+            ]
+          }
+        ],
+        "gaps": [],
+        "skipped": [
+          {
+            "capability": "listLinks",
+            "code": "RESULT_UNUSED",
+            "evidence": "listLinks result (mdmId, relationshipId, type, direction) has no output field and no later prior."
+          }
+        ]
+      },
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "getOrganizationUser",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "getOrganizationUser",
+          "entityId": "OrganizationUser",
+          "operation": "get",
+          "rulesApplied": [],
+          "effects": [],
+          "mdm": {
+            "namespace": "agents",
+            "role": "agents.OrganizationUser",
+            "atomic": true,
+            "calls": [
+              {
+                "id": "get",
+                "method": "get",
+                "target": "entity",
+                "shape": "point",
+                "capabilities": [
+                  "read.byId"
+                ],
+                "alternative": false,
+                "when": [],
+                "arguments": [
+                  {
+                    "name": "mdmId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "id"
+                    },
+                    "path": "id"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "details"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "usecaseId": "getPersonalConduct",
+      "entityId": "PersonalConduct",
+      "operation": "get",
+      "defPath": "l1/agents/layer_2_application/usecases/getPersonalConduct.defs.ts",
+      "routes": [
+        "agents.my_conduct.getMyConduct"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "getPersonalConduct",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/personalConduct.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "getPersonalConduct",
+          "entityId": "PersonalConduct",
+          "operation": "get",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "listAgent",
+      "entityId": "Agent",
+      "operation": "list",
+      "defPath": "l1/agents/layer_2_application/usecases/listAgent.defs.ts",
+      "routes": [
+        "agents.agent_configuration.getAgentConfiguration"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listAgent",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listAgent",
+          "entityId": "Agent",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "listAgentBehavior",
+      "entityId": "AgentBehavior",
+      "operation": "list",
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentBehavior.defs.ts",
+      "routes": [
+        "agents.agent_behavior.listBehaviorChanges"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listAgentBehavior",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listAgentBehavior",
+          "entityId": "AgentBehavior",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "listAgentDraft",
+      "entityId": "AgentDraft",
+      "operation": "list",
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentDraft.defs.ts",
+      "routes": [
+        "agents.agents.listAgentsCollection",
+        "agents.agents.listRequestHistory",
+        "agents.agents.loadAgentsPage",
+        "agents.draft_review.getDraftReview"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listAgentDraft",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listAgentDraft",
+          "entityId": "AgentDraft",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "listAgentSimulation",
+      "entityId": "AgentSimulation",
+      "operation": "list",
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentSimulation.defs.ts",
+      "routes": [
+        "agents.agent_simulation.getSimulationPage",
+        "agents.agent_simulation.simulateWhatItCan",
+        "agents.agent_simulation.simulateWhatItUnderstands",
+        "agents.draft_review.simulateDraft"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listAgentSimulation",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agentSimulation.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listAgentSimulation",
+          "entityId": "AgentSimulation",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "listAgentTool",
+      "entityId": "AgentTool",
+      "operation": "list",
+      "defPath": "l1/agents/layer_2_application/usecases/listAgentTool.defs.ts",
+      "routes": [
+        "agents.agent_tools.getAgentToolTree",
+        "agents.agent_tools.listAutomaticToolChoices",
+        "agents.draft_review.getDraftReview",
+        "agents.cm.describe"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listAgentTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listAgentTool",
+          "entityId": "AgentTool",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "listConductChange",
+      "entityId": "ConductChange",
+      "operation": "list",
+      "defPath": "l1/agents/layer_2_application/usecases/listConductChange.defs.ts",
+      "routes": [
+        "agents.my_conduct.listMyConductChanges",
+        "agents.my_conduct.sendConductChange"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listConductChange",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/conductChangeRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/conductChange.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listConductChange",
+          "entityId": "ConductChange",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "listExecutionSummary",
+      "entityId": "ExecutionSummary",
+      "operation": "list",
+      "defPath": "l1/agents/layer_2_application/usecases/listExecutionSummary.defs.ts",
+      "routes": [
+        "agents.agent_activity.getAgentActivity",
+        "agents.agent_activity.listAgentExecutions",
+        "agents.agent_configuration.getAgentConfiguration",
+        "agents.agent_configuration.saveAgentConfiguration",
+        "agents.agents.listAgentsCollection",
+        "agents.agents.loadAgentsPage",
+        "agents.agents.sendNewAgentRequest"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listExecutionSummary",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/executionSummary.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listExecutionSummary",
+          "entityId": "ExecutionSummary",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "listOrganizationUser",
+      "entityId": "OrganizationUser",
+      "operation": "list",
+      "defPath": "l1/agents/layer_2_application/usecases/listOrganizationUser.defs.ts",
+      "routes": [
+        "agents.agent_configuration.searchResponsibleCandidates",
+        "agents.agent_simulation.findPeopleToSimulate",
+        "agents.person_restrictions.listPeople"
+      ],
+      "trustedContext": "ctx",
+      "mdm": {
+        "namespace": "agents",
+        "role": "agents.OrganizationUser",
+        "atomic": true,
+        "calls": [
+          {
+            "id": "listUsers",
+            "method": "listUsers",
+            "target": "identity",
+            "shape": "collection",
+            "capabilities": [
+              "locate.users"
+            ],
+            "alternative": false,
+            "when": [
+              {
+                "kind": "contract",
+                "path": "details.identification.name",
+                "present": true
+              }
+            ],
+            "arguments": [
+              {
+                "name": "name",
+                "role": "selector",
+                "path": "details.identification.name",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.name"
+                }
+              },
+              {
+                "name": "pageSize",
+                "role": "parameter",
+                "path": "pageSize",
+                "origin": {
+                  "kind": "contract",
+                  "path": "pageSize"
+                }
+              },
+              {
+                "name": "cursor",
+                "role": "parameter",
+                "path": "cursor",
+                "origin": {
+                  "kind": "contract",
+                  "path": "cursor"
+                }
+              }
+            ],
+            "result": [
+              "items",
+              "nextCursor"
+            ]
+          }
+        ],
+        "gaps": [],
+        "skipped": []
+      },
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listOrganizationUser",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listOrganizationUser",
+          "entityId": "OrganizationUser",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": [],
+          "mdm": {
+            "namespace": "agents",
+            "role": "agents.OrganizationUser",
+            "atomic": true,
+            "calls": [
+              {
+                "id": "listUsers",
+                "method": "listUsers",
+                "target": "identity",
+                "shape": "collection",
+                "capabilities": [
+                  "locate.users"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.name",
+                    "present": true
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "name",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.name"
+                    },
+                    "path": "details.identification.name"
+                  },
+                  {
+                    "name": "pageSize",
+                    "role": "parameter",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "pageSize"
+                    },
+                    "path": "pageSize"
+                  },
+                  {
+                    "name": "cursor",
+                    "role": "parameter",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "cursor"
+                    },
+                    "path": "cursor"
+                  }
+                ],
+                "result": [
+                  "items",
+                  "nextCursor"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "usecaseId": "listPersonToolRestriction",
+      "entityId": "PersonToolRestriction",
+      "operation": "list",
+      "defPath": "l1/agents/layer_2_application/usecases/listPersonToolRestriction.defs.ts",
+      "routes": [
+        "agents.person_restrictions.getPersonRestrictions",
+        "agents.cm.describe"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listPersonToolRestriction",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listPersonToolRestriction",
+          "entityId": "PersonToolRestriction",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "listTool",
+      "entityId": "Tool",
+      "operation": "list",
+      "defPath": "l1/agents/layer_2_application/usecases/listTool.defs.ts",
+      "routes": [
+        "agents.agent_tools.enableUnchosenTool",
+        "agents.agent_tools.getAgentToolTree",
+        "agents.agent_tools.listAutomaticToolChoices",
+        "agents.agent_tools.toggleToolChoice",
+        "agents.draft_review.getDraftReview",
+        "agents.draft_review.saveDraftTools",
+        "agents.person_restrictions.getPersonRestrictions",
+        "agents.person_restrictions.saveRestrictions",
+        "agents.tool_catalog.getToolCatalog",
+        "agents.tool_catalog.listCatalogUpdates",
+        "agents.cm.describe"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listTool",
+          "entityId": "Tool",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "undoAgentChange",
+      "entityId": "AgentBehavior",
+      "operation": "update",
+      "defPath": "l1/agents/layer_2_application/usecases/undoAgentChange.defs.ts",
+      "routes": [
+        "agents.agent_behavior.requestBehaviorChange"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "undoAgentChange",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "undoAgentChange",
+          "entityId": "AgentBehavior",
+          "operation": "update",
+          "rulesApplied": [
+            "agentBehaviorChangedOnlyThroughCm",
+            "behaviorChangeByAdminOnly",
+            "undoRestoresPreviousBehavior"
+          ],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "updateAgent",
+      "entityId": "Agent",
+      "operation": "update",
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgent.defs.ts",
+      "routes": [
+        "agents.agent_configuration.saveAgentConfiguration"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updateAgent",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updateAgent",
+          "entityId": "Agent",
+          "operation": "update",
+          "rulesApplied": [
+            "agentNameUniqueAmongActive"
+          ],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "updateAgentAgentBehavior",
+      "entityId": "AgentBehavior",
+      "operation": "update",
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.defs.ts",
+      "routes": [
+        "agents.agent_behavior.requestBehaviorChange"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updateAgentAgentBehavior",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updateAgentAgentBehavior",
+          "entityId": "AgentBehavior",
+          "operation": "update",
+          "rulesApplied": [
+            "agentBehaviorChangedOnlyThroughCm",
+            "behaviorChangeByAdminOnly",
+            "undoRestoresPreviousBehavior"
+          ],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "updateAgentDraft",
+      "entityId": "AgentDraft",
+      "operation": "update",
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentDraft.defs.ts",
+      "routes": [
+        "agents.cm.agentDraftReady"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updateAgentDraft",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updateAgentDraft",
+          "entityId": "AgentDraft",
+          "operation": "update",
+          "rulesApplied": [
+            "agentDraftSuggestedToolsOnWhenReady",
+            "refusedDraftKeepsReason",
+            "adminChoiceNotOverriddenByAutomatic",
+            "agentDraftNoticeIdempotent",
+            "agentDraftRecordedBeforeSending",
+            "agentNameUniqueAmongActive",
+            "refusalReasonShownWhenRefused"
+          ],
+          "effects": [],
+          "arrivalTransitions": [
+            {
+              "transitionId": "markReady",
+              "from": [
+                "preparing"
+              ],
+              "to": "ready",
+              "ruleRefs": [
+                "agentDraftSuggestedToolsOnWhenReady"
+              ]
+            },
+            {
+              "transitionId": "markRefused",
+              "from": [
+                "preparing"
+              ],
+              "to": "refused",
+              "ruleRefs": [
+                "refusedDraftKeepsReason"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "usecaseId": "updateAgentTool",
+      "entityId": "AgentTool",
+      "operation": "update",
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts",
+      "routes": [
+        "agents.agent_tools.toggleToolChoice",
+        "agents.draft_review.saveDraftTools",
+        "agents.platform.releaseCatalogChanged"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updateAgentTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updateAgentTool",
+          "entityId": "AgentTool",
+          "operation": "update",
+          "rulesApplied": [
+            "adminChoiceNeverOverridden",
+            "describeAgentForPersonWritesNothing",
+            "draftSuggestedToolsTurnedOn",
+            "markingWithoutChoiceCreatesAdminChoice",
+            "newToolsChosenFromDescription",
+            "oneChoicePerAgentAndTool",
+            "onlyEnabledToolsSent",
+            "personRestrictionsExcludeTools",
+            "removedToolNeverSent",
+            "repeatedNoticeChangesNothing"
+          ],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "updatePersonalConduct",
+      "entityId": "PersonalConduct",
+      "operation": "update",
+      "defPath": "l1/agents/layer_2_application/usecases/updatePersonalConduct.defs.ts",
+      "routes": [
+        "agents.my_conduct.sendConductChange"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updatePersonalConduct",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/personalConduct.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updatePersonalConduct",
+          "entityId": "PersonalConduct",
+          "operation": "update",
+          "rulesApplied": [
+            "conductOnlyForAgentActingOnBehalf",
+            "ownConductOnly"
+          ],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "updatePersonToolRestriction",
+      "entityId": "PersonToolRestriction",
+      "operation": "update",
+      "defPath": "l1/agents/layer_2_application/usecases/updatePersonToolRestriction.defs.ts",
+      "routes": [
+        "agents.person_restrictions.saveRestrictions"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updatePersonToolRestriction",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updatePersonToolRestriction",
+          "entityId": "PersonToolRestriction",
+          "operation": "update",
+          "rulesApplied": [
+            "noTechnicalIdsOnScreen",
+            "onlyCompanyAdminRestrictsTools",
+            "removedToolRestrictionKept",
+            "restrictionAppliesThroughAnyAgent",
+            "restrictionUniquePerPersonTool"
+          ],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "updateTool",
+      "entityId": "Tool",
+      "operation": "update",
+      "defPath": "l1/agents/layer_2_application/usecases/updateTool.defs.ts",
+      "routes": [
+        "agents.platform.releaseCatalogChanged"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updateTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updateTool",
+          "entityId": "Tool",
+          "operation": "update",
+          "rulesApplied": [
+            "agentToolsShowWholeCatalog",
+            "catalogRebuiltOnRelease",
+            "noTechnicalIdsOnScreen",
+            "removedToolNotSent",
+            "toolKeepsWholeCatalogItem",
+            "toolKeyUnique",
+            "toolNeverDeleted"
+          ],
+          "effects": []
+        }
+      }
+    }
+  ],
+  "problems": [],
+  "normalizations": [
+    {
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "domain30.enumerations",
+      "detail": "10 enum values stay on the domain draft. usecases50 does not copy them."
+    }
+  ],
+  "emit": [
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "activate",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+          "_102047_/l4/agents/ontology/AgentDraft.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "activate",
+          "entityId": "AgentDraft",
+          "operation": "transition",
+          "rulesApplied": [
+            "draftDecisionOnlyWhenReady"
+          ],
+          "effects": [],
+          "transitionRef": "activate"
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/activate",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/activate.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/activate.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+            "l4/agents/ontology/AgentDraft.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentDraft",
+            "102047/agents/repositoryPort/AgentDraftRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createAgentDraft",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createAgentDraft",
+          "entityId": "AgentDraft",
+          "operation": "create",
+          "rulesApplied": [
+            "adminChoiceNotOverriddenByAutomatic",
+            "agentDraftNoticeIdempotent",
+            "agentDraftRecordedBeforeSending",
+            "agentNameUniqueAmongActive",
+            "refusalReasonShownWhenRefused"
+          ],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/createAgentDraft",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/createAgentDraft.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/createAgentDraft.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentDraft",
+            "102047/agents/repositoryPort/AgentDraftRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createAgentTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createAgentTool",
+          "entityId": "AgentTool",
+          "operation": "create",
+          "rulesApplied": [
+            "adminChoiceNeverOverridden",
+            "describeAgentForPersonWritesNothing",
+            "draftSuggestedToolsTurnedOn",
+            "markingWithoutChoiceCreatesAdminChoice",
+            "newToolsChosenFromDescription",
+            "oneChoicePerAgentAndTool",
+            "onlyEnabledToolsSent",
+            "personRestrictionsExcludeTools",
+            "removedToolNeverSent",
+            "repeatedNoticeChangesNothing"
+          ],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/createAgentTool",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/createAgentTool.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/createAgentTool.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentTool",
+            "102047/agents/repositoryPort/AgentToolRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createExecutionSummary",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/executionSummary.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createExecutionSummary",
+          "entityId": "ExecutionSummary",
+          "operation": "create",
+          "rulesApplied": [
+            "activityNewestFirst",
+            "executionNeverEdited",
+            "executionRecordedOnce",
+            "onlyInboundWritesExecution"
+          ],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/createExecutionSummary",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/executionSummary.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/ExecutionSummary",
+            "102047/agents/repositoryPort/ExecutionSummaryRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createTool",
+          "entityId": "Tool",
+          "operation": "create",
+          "rulesApplied": [
+            "agentToolsShowWholeCatalog",
+            "catalogRebuiltOnRelease",
+            "noTechnicalIdsOnScreen",
+            "removedToolNotSent",
+            "toolKeepsWholeCatalogItem",
+            "toolKeyUnique",
+            "toolNeverDeleted"
+          ],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/createTool",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/createTool.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/createTool.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/Tool",
+            "102047/agents/repositoryPort/ToolRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "discard",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+          "_102047_/l4/agents/ontology/AgentDraft.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "discard",
+          "entityId": "AgentDraft",
+          "operation": "transition",
+          "rulesApplied": [
+            "draftDecisionOnlyWhenReady"
+          ],
+          "effects": [],
+          "transitionRef": "discard"
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/discard",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/discard.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/discard.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+            "l4/agents/ontology/AgentDraft.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentDraft",
+            "102047/agents/repositoryPort/AgentDraftRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "getAgent",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "getAgent",
+          "entityId": "Agent",
+          "operation": "get",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/getAgent",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/getAgent.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/getAgent.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/Agent"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "getAgentBehavior",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "getAgentBehavior",
+          "entityId": "AgentBehavior",
+          "operation": "get",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/getAgentBehavior",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/getAgentBehavior.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/getAgentBehavior.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentBehavior"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "getOrganizationUser",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "getOrganizationUser",
+          "entityId": "OrganizationUser",
+          "operation": "get",
+          "rulesApplied": [],
+          "effects": [],
+          "mdm": {
+            "namespace": "agents",
+            "role": "agents.OrganizationUser",
+            "atomic": true,
+            "calls": [
+              {
+                "id": "get",
+                "method": "get",
+                "target": "entity",
+                "shape": "point",
+                "capabilities": [
+                  "read.byId"
+                ],
+                "alternative": false,
+                "when": [],
+                "arguments": [
+                  {
+                    "name": "mdmId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "id"
+                    },
+                    "path": "id"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "details"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/getOrganizationUser",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/OrganizationUser"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "getPersonalConduct",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/personalConduct.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "getPersonalConduct",
+          "entityId": "PersonalConduct",
+          "operation": "get",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/getPersonalConduct",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/getPersonalConduct.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/getPersonalConduct.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/personalConduct.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/PersonalConduct"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listAgent",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listAgent",
+          "entityId": "Agent",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/listAgent",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/listAgent.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listAgent.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/Agent"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listAgentBehavior",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listAgentBehavior",
+          "entityId": "AgentBehavior",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/listAgentBehavior",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/listAgentBehavior.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listAgentBehavior.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentBehavior"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listAgentDraft",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listAgentDraft",
+          "entityId": "AgentDraft",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/listAgentDraft",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/listAgentDraft.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listAgentDraft.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentDraft",
+            "102047/agents/repositoryPort/AgentDraftRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listAgentSimulation",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agentSimulation.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listAgentSimulation",
+          "entityId": "AgentSimulation",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/listAgentSimulation",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentSimulation.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentSimulation"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listAgentTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listAgentTool",
+          "entityId": "AgentTool",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/listAgentTool",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/listAgentTool.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listAgentTool.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentTool",
+            "102047/agents/repositoryPort/AgentToolRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listConductChange",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/conductChangeRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/conductChange.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listConductChange",
+          "entityId": "ConductChange",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/listConductChange",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/listConductChange.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listConductChange.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/conductChange.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/conductChangeRepository.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/ConductChange",
+            "102047/agents/repositoryPort/ConductChangeRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listExecutionSummary",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/executionSummary.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listExecutionSummary",
+          "entityId": "ExecutionSummary",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/listExecutionSummary",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/listExecutionSummary.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listExecutionSummary.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/executionSummary.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/ExecutionSummary",
+            "102047/agents/repositoryPort/ExecutionSummaryRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listOrganizationUser",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listOrganizationUser",
+          "entityId": "OrganizationUser",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": [],
+          "mdm": {
+            "namespace": "agents",
+            "role": "agents.OrganizationUser",
+            "atomic": true,
+            "calls": [
+              {
+                "id": "listUsers",
+                "method": "listUsers",
+                "target": "identity",
+                "shape": "collection",
+                "capabilities": [
+                  "locate.users"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.name",
+                    "present": true
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "name",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.name"
+                    },
+                    "path": "details.identification.name"
+                  },
+                  {
+                    "name": "pageSize",
+                    "role": "parameter",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "pageSize"
+                    },
+                    "path": "pageSize"
+                  },
+                  {
+                    "name": "cursor",
+                    "role": "parameter",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "cursor"
+                    },
+                    "path": "cursor"
+                  }
+                ],
+                "result": [
+                  "items",
+                  "nextCursor"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/listOrganizationUser",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/listOrganizationUser.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listOrganizationUser.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/OrganizationUser"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listPersonToolRestriction",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listPersonToolRestriction",
+          "entityId": "PersonToolRestriction",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/listPersonToolRestriction",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/listPersonToolRestriction.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listPersonToolRestriction.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/PersonToolRestriction",
+            "102047/agents/repositoryPort/PersonToolRestrictionRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listTool",
+          "entityId": "Tool",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/listTool",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/listTool.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/listTool.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/toolRepository.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/Tool",
+            "102047/agents/repositoryPort/ToolRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "undoAgentChange",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "undoAgentChange",
+          "entityId": "AgentBehavior",
+          "operation": "update",
+          "rulesApplied": [
+            "agentBehaviorChangedOnlyThroughCm",
+            "behaviorChangeByAdminOnly",
+            "undoRestoresPreviousBehavior"
+          ],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/undoAgentChange",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/undoAgentChange.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/undoAgentChange.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentBehavior"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updateAgent",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updateAgent",
+          "entityId": "Agent",
+          "operation": "update",
+          "rulesApplied": [
+            "agentNameUniqueAmongActive"
+          ],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/updateAgent",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/updateAgent.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updateAgent.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/Agent"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updateAgentAgentBehavior",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updateAgentAgentBehavior",
+          "entityId": "AgentBehavior",
+          "operation": "update",
+          "rulesApplied": [
+            "agentBehaviorChangedOnlyThroughCm",
+            "behaviorChangeByAdminOnly",
+            "undoRestoresPreviousBehavior"
+          ],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/updateAgentAgentBehavior",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentBehavior.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentBehavior"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updateAgentDraft",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updateAgentDraft",
+          "entityId": "AgentDraft",
+          "operation": "update",
+          "rulesApplied": [
+            "agentDraftSuggestedToolsOnWhenReady",
+            "refusedDraftKeepsReason",
+            "adminChoiceNotOverriddenByAutomatic",
+            "agentDraftNoticeIdempotent",
+            "agentDraftRecordedBeforeSending",
+            "agentNameUniqueAmongActive",
+            "refusalReasonShownWhenRefused"
+          ],
+          "effects": [],
+          "arrivalTransitions": [
+            {
+              "transitionId": "markReady",
+              "from": [
+                "preparing"
+              ],
+              "to": "ready",
+              "ruleRefs": [
+                "agentDraftSuggestedToolsOnWhenReady"
+              ]
+            },
+            {
+              "transitionId": "markRefused",
+              "from": [
+                "preparing"
+              ],
+              "to": "refused",
+              "ruleRefs": [
+                "refusedDraftKeepsReason"
+              ]
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/updateAgentDraft",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/updateAgentDraft.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updateAgentDraft.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentDraft",
+            "102047/agents/repositoryPort/AgentDraftRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updateAgentTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updateAgentTool",
+          "entityId": "AgentTool",
+          "operation": "update",
+          "rulesApplied": [
+            "adminChoiceNeverOverridden",
+            "describeAgentForPersonWritesNothing",
+            "draftSuggestedToolsTurnedOn",
+            "markingWithoutChoiceCreatesAdminChoice",
+            "newToolsChosenFromDescription",
+            "oneChoicePerAgentAndTool",
+            "onlyEnabledToolsSent",
+            "personRestrictionsExcludeTools",
+            "removedToolNeverSent",
+            "repeatedNoticeChangesNothing"
+          ],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/updateAgentTool",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/AgentTool",
+            "102047/agents/repositoryPort/AgentToolRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updatePersonalConduct",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_3_domain/entities/personalConduct.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updatePersonalConduct",
+          "entityId": "PersonalConduct",
+          "operation": "update",
+          "rulesApplied": [
+            "conductOnlyForAgentActingOnBehalf",
+            "ownConductOnly"
+          ],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/updatePersonalConduct",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/updatePersonalConduct.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updatePersonalConduct.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/personalConduct.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/PersonalConduct"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updatePersonToolRestriction",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updatePersonToolRestriction",
+          "entityId": "PersonToolRestriction",
+          "operation": "update",
+          "rulesApplied": [
+            "noTechnicalIdsOnScreen",
+            "onlyCompanyAdminRestrictsTools",
+            "removedToolRestrictionKept",
+            "restrictionAppliesThroughAnyAgent",
+            "restrictionUniquePerPersonTool"
+          ],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/updatePersonToolRestriction",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/updatePersonToolRestriction.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updatePersonToolRestriction.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/PersonToolRestriction",
+            "102047/agents/repositoryPort/PersonToolRestrictionRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updateTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+          "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts",
+          "_102047_/l4/agents/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updateTool",
+          "entityId": "Tool",
+          "operation": "update",
+          "rulesApplied": [
+            "agentToolsShowWholeCatalog",
+            "catalogRebuiltOnRelease",
+            "noTechnicalIdsOnScreen",
+            "removedToolNotSent",
+            "toolKeepsWholeCatalogItem",
+            "toolKeyUnique",
+            "toolNeverDeleted"
+          ],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agents/usecase/updateTool",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agents/layer_2_application/usecases/updateTool.defs.ts",
+          "outputPath": "_102047_/l1/agents/layer_2_application/usecases/updateTool.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agents/layer_3_domain/entities/tool.defs.ts",
+            "_102047_/l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+            "l4/agents/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agents/domainEntity/Tool",
+            "102047/agents/repositoryPort/ToolRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    }
+  ]
+}

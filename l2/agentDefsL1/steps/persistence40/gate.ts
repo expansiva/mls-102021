@@ -190,7 +190,7 @@ function planEntity(
 
   const portId = portSel[0].portId;
   const tableId = tableSel[0].tableId;
-  const portFile = oneFile(request, 'repositoryPort', portId, problems, blocked, entityId);
+  let portFile = oneFile(request, 'repositoryPort', portId, problems, blocked, entityId);
   const tableFile = oneFile(request, 'table', tableId, problems, blocked, entityId);
   const adapterFile = oneFile(request, 'repositoryAdapter', portId, problems, blocked, entityId);
   if (!portFile || !tableFile || !adapterFile || blocked.has(entityId)) return;
@@ -208,13 +208,21 @@ function planEntity(
 
   const primaryKey = primaryKeyOf(entityId, body, leaves, problems, normalizations, blocked);
   if (!primaryKey || blocked.has(entityId)) return;
-  const methods = methodsFor(entityId, request, problems, normalizations, blocked, keys);
+  let methods = methodsFor(entityId, request, problems, normalizations, blocked, keys);
   const bindings = bindingsFor(entityId, leaves, primaryKey, keys, problems, normalizations, blocked);
   if (!methods || !bindings || blocked.has(entityId)) return;
   const indexes = indexesFor(physical, keys, leaves, primaryKey, problems, normalizations);
   if (blocked.has(entityId)) return;
 
-  const incompatible = preservedPortIssues(request, portFile, portId, methods, problems, normalizations);
+  // d1_267: the port the D1 wrote and kept lacks an operation a usecase asks of it now (the ConductChange port had `list` only, and the usecase of the step
+  // that affects it records the row): the port is written again with the union of its methods and the planned ones, as a usecase def whose dependencies changed.
+  const grown = grownPreservedPort(request, portFile, methods);
+  if (grown) {
+    normalizations.push({ code: 'PORT_METHODS_ADDED', path: portFile.defPath, detail: grown.added.join(', ') });
+    portFile = { ...portFile, action: 'update' };
+    methods = grown.methods;
+  }
+  const incompatible = grown ? false : preservedPortIssues(request, portFile, portId, methods, problems, normalizations);
   if (incompatible) blocked.add(entityId);
 
   const detailsColumn = bindings.some(binding => binding.placement === 'json') ? D1_DETAILS_COLUMN : null;
@@ -716,6 +724,29 @@ function indexesFor(
     add([leaf.path], false);
   }
   return indexes;
+}
+
+/**
+ * The union of the methods of a preserved port and the planned ones, when the port only lacks planned methods: every planned method it has matches its
+ * signature, and it keeps the ones the plan does not name. A port with a method of another signature, or whose bytes are not readable, is not grown: it stays refused.
+ */
+function grownPreservedPort(
+  request: D1PersistenceRequest,
+  file: D1PersistenceFile,
+  methods: readonly D1PortMethod[],
+): { methods: D1PortMethod[]; added: string[] } | null {
+  if (file.action !== 'preserve') return null;
+  const found = readPortMethods(request.preservedPorts[file.defPath]);
+  if (!found) return null;
+  const missing = methods.filter(method => !found.some(prior => prior.name === method.name));
+  if (missing.length === 0) return null;
+  const clash = methods.some(method => {
+    const prior = found.find(item => item.name === method.name);
+    return !!prior && (JSON.stringify(prior.params) !== JSON.stringify(method.params) || prior.returns !== method.returns);
+  });
+  if (clash) return null;
+  const union = [...methods, ...found.filter(prior => !methods.some(method => method.name === prior.name))];
+  return { methods: union, added: missing.map(method => method.name) };
 }
 
 function preservedPortIssues(

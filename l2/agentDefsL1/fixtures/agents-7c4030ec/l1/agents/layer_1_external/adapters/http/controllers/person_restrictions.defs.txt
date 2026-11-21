@@ -1,0 +1,53 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/http/controllers/person_restrictions.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "person_restrictions",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/agents/layer_2_application/requests/person_restrictions.defs.ts",
+    "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "person_restrictions",
+    "handlers": [
+      {
+        "route": "agents.person_restrictions.getPersonRestrictions",
+        "kind": "query",
+        "grantIds": [
+          "adminChoosePeople",
+          "adminManageTools"
+        ],
+        "serviceFunction": "agents.person_restrictions.getPersonRestrictions",
+        "contractPath": "l2/agents/web/contracts/person_restrictions.defs.ts",
+        "contractInterface": "Person_restrictionsContracts"
+      },
+      {
+        "route": "agents.person_restrictions.listPeople",
+        "kind": "query",
+        "grantIds": [
+          "adminChoosePeople"
+        ],
+        "serviceFunction": "agents.person_restrictions.listPeople",
+        "contractPath": "l2/agents/web/contracts/person_restrictions.defs.ts",
+        "contractInterface": "Person_restrictionsContracts"
+      },
+      {
+        "route": "agents.person_restrictions.saveRestrictions",
+        "kind": "command",
+        "grantIds": [
+          "adminManageTools",
+          "adminChoosePeople"
+        ],
+        "serviceFunction": "agents.person_restrictions.saveRestrictions",
+        "contractPath": "l2/agents/web/contracts/person_restrictions.defs.ts",
+        "contractInterface": "Person_restrictionsContracts"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

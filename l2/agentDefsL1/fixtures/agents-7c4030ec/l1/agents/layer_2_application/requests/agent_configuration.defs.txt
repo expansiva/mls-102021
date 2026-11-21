@@ -1,0 +1,297 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/agent_configuration.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "agent_configuration",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listAgent.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listExecutionSummary.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listOrganizationUser.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateAgent.defs.ts"
+  ],
+  "data": {
+    "pageId": "agent_configuration",
+    "requests": [
+      {
+        "route": "agents.agent_configuration.getAgentConfiguration",
+        "kind": "qry",
+        "uses": [
+          "listExecutionSummary",
+          "getOrganizationUser",
+          "listAgent"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "configuration",
+            "entity": "ExecutionSummary",
+            "fields": [
+              {
+                "field": "version",
+                "path": "version"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "configuration",
+            "entity": "Agent",
+            "relationship": "executionAgent",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "isOn",
+                "path": "isOn"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "configuration.responsible",
+            "entity": "OrganizationUser",
+            "relationship": "executionRequester",
+            "fields": [
+              {
+                "field": "details.identification.name",
+                "path": "details.identification.name"
+              },
+              {
+                "field": "details.identification.status",
+                "path": "details.identification.status"
+              },
+              {
+                "field": "details.agents.loginEmail",
+                "path": "details.agents.loginEmail"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "configuration.responsible.agent.responsible",
+            "reason": "COMPUTED_NOT_DISCLOSED: agents.agent_configuration.getAgentConfiguration responsible.agent.responsible"
+          },
+          {
+            "kind": "list",
+            "path": "limits",
+            "entity": "Agent",
+            "items": "",
+            "fields": [
+              {
+                "field": "label",
+                "path": "limits.label"
+              },
+              {
+                "field": "value",
+                "path": "limits.value"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "configuration.responsible.agent.responsible",
+            "reason": "Interface ResponsiblePerson: field agent.responsible is not a field of any entity."
+          }
+        ],
+        "params": [
+          {
+            "name": "agentId",
+            "target": "configuration",
+            "field": "agentId"
+          }
+        ],
+        "rules": [
+          "noTechnicalIdsOnScreen"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads the chosen agent’s configuration and the limits the cm lists for it, in one call.\nInput: agentId: the cm reference of the agent chosen in the URL.\nProcessing: Reads the agent from the cm, within the company admin’s organization. Looks up the responsible person reference and returns the organization user’s name, status and login e-mail. Login e-mail and status are derived: they are read from the platform and never stored here. Also returns the record version for the next save, and the cm limits as the cm lists them, in cm order. Returns readable names for display (noTechnicalIdsOnScreen). The responsible reference and the version are returned only so they can be sent back when saving.\nOutput: configuration: the agent’s @name, on/off state, responsible person (absent when none is set) and version. limits: every limit with its label and current value.",
+          "purpose": "Loads the chosen agent’s configuration and the limits the cm lists for it, in one call.",
+          "input": "agentId: the cm reference of the agent chosen in the URL.",
+          "processing": "Reads the agent from the cm, within the company admin’s organization. Looks up the responsible person reference and returns the organization user’s name, status and login e-mail. Login e-mail and status are derived: they are read from the platform and never stored here. Also returns the record version for the next save, and the cm limits as the cm lists them, in cm order. Returns readable names for display (noTechnicalIdsOnScreen). The responsible reference and the version are returned only so they can be sent back when saving.",
+          "output": "configuration: the agent’s @name, on/off state, responsible person (absent when none is set) and version. limits: every limit with its label and current value."
+        }
+      },
+      {
+        "route": "agents.agent_configuration.searchResponsibleCandidates",
+        "kind": "qry",
+        "uses": [
+          "listOrganizationUser"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "list",
+            "path": "users",
+            "entity": "OrganizationUser",
+            "items": "items",
+            "page": "users.page",
+            "pageSize": "users.pageSize",
+            "hasMore": "users.hasMore",
+            "fields": [
+              {
+                "field": "details.identification.name",
+                "path": "details.identification.name"
+              },
+              {
+                "field": "details.identification.status",
+                "path": "details.identification.status"
+              },
+              {
+                "field": "details.agents.loginEmail",
+                "path": "details.agents.loginEmail"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "users.items.agent.responsible",
+            "reason": "COMPUTED_NOT_DISCLOSED: agents.agent_configuration.searchResponsibleCandidates items.agent.responsible"
+          },
+          {
+            "kind": "unresolved",
+            "path": "users.agent.responsible",
+            "reason": "Interface ResponsiblePerson: field agent.responsible is not a field of any entity."
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "users",
+            "pages": "users"
+          },
+          {
+            "name": "pageSize",
+            "target": "users",
+            "pages": "users"
+          },
+          {
+            "name": "search",
+            "target": "users",
+            "optional": true
+          }
+        ],
+        "rules": [
+          "noTechnicalIdsOnScreen"
+        ],
+        "doc": {
+          "raw": "Purpose: Finds organization users with a platform login who can be chosen as the agent’s responsible person.\nInput: search: part of the person’s name typed by the admin. page and pageSize: the page of results requested.\nProcessing: Uses the locate.users capability of OrganizationUser, filtered by name, within the admin’s organization and ordered by name. Returns only the fields the adminChoosePeople grant allows (name, status, login e-mail), plus the reference to save in Agent.responsible. No technical id is meant for display (noTechnicalIdsOnScreen).\nOutput: users: one page of candidate people, each with their reference, name, status and login e-mail, as { items, page, pageSize, hasMore }.",
+          "purpose": "Finds organization users with a platform login who can be chosen as the agent’s responsible person.",
+          "input": "search: part of the person’s name typed by the admin. page and pageSize: the page of results requested.",
+          "processing": "Uses the locate.users capability of OrganizationUser, filtered by name, within the admin’s organization and ordered by name. Returns only the fields the adminChoosePeople grant allows (name, status, login e-mail), plus the reference to save in Agent.responsible. No technical id is meant for display (noTechnicalIdsOnScreen).",
+          "output": "users: one page of candidate people, each with their reference, name, status and login e-mail, as { items, page, pageSize, hasMore }."
+        }
+      },
+      {
+        "route": "agents.agent_configuration.saveAgentConfiguration",
+        "kind": "cmd",
+        "uses": [
+          "updateAgent",
+          "listExecutionSummary",
+          "getOrganizationUser"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "configuration",
+            "entity": "ExecutionSummary",
+            "fields": [
+              {
+                "field": "version",
+                "path": "version"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "configuration",
+            "entity": "Agent",
+            "relationship": "executionAgent",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "isOn",
+                "path": "isOn"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "configuration.responsible",
+            "entity": "OrganizationUser",
+            "relationship": "executionRequester",
+            "fields": [
+              {
+                "field": "details.identification.name",
+                "path": "details.identification.name"
+              },
+              {
+                "field": "details.identification.status",
+                "path": "details.identification.status"
+              },
+              {
+                "field": "details.agents.loginEmail",
+                "path": "details.agents.loginEmail"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "configuration.responsible.agent.responsible",
+            "reason": "COMPUTED_NOT_DISCLOSED: agents.agent_configuration.saveAgentConfiguration responsible.agent.responsible"
+          },
+          {
+            "kind": "list",
+            "path": "limits",
+            "entity": "Agent",
+            "items": "",
+            "fields": [
+              {
+                "field": "label",
+                "path": "limits.label"
+              },
+              {
+                "field": "value",
+                "path": "limits.value"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "configuration.responsible.agent.responsible",
+            "reason": "Interface ResponsiblePerson: field agent.responsible is not a field of any entity."
+          }
+        ],
+        "params": [
+          {
+            "name": "responsible",
+            "target": "",
+            "optional": true
+          }
+        ],
+        "rules": [
+          "agentNameUniqueAmongActive"
+        ],
+        "doc": {
+          "raw": "Purpose: Saves the agent’s @name, on/off state and responsible person in the cm.\nInput: agentId: the cm reference of the agent, from the URL. expectVersion: the version of the configuration the admin loaded; the save is refused if the record changed since then. name: the new @name. isOn: whether the agent is on. responsible: the reference of the organization user chosen as responsible.\nProcessing: Checks expectVersion against the current version, then sends the update to the cm. agentNameUniqueAmongActive: if another active agent already uses the @name, the cm refuses it; the endpoint changes nothing and returns a clear ’name already taken’ error. On success, reads the agent back from the cm and looks up the responsible person’s name, status and login e-mail.\nOutput: configuration: the agent in its new saved state (@name, on/off, responsible person, new version). limits: the agent’s limits as the cm lists them after the save.",
+          "purpose": "Saves the agent’s @name, on/off state and responsible person in the cm.",
+          "input": "agentId: the cm reference of the agent, from the URL. expectVersion: the version of the configuration the admin loaded; the save is refused if the record changed since then. name: the new @name. isOn: whether the agent is on. responsible: the reference of the organization user chosen as responsible.",
+          "processing": "Checks expectVersion against the current version, then sends the update to the cm. agentNameUniqueAmongActive: if another active agent already uses the @name, the cm refuses it; the endpoint changes nothing and returns a clear ’name already taken’ error. On success, reads the agent back from the cm and looks up the responsible person’s name, status and login e-mail.",
+          "output": "configuration: the agent in its new saved state (@name, on/off, responsible person, new version). limits: the agent’s limits as the cm lists them after the save."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

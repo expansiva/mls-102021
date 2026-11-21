@@ -1,0 +1,57 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/executionSummary.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "table",
+  "artifactId": "executionSummary",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/executionSummary.defs.ts"
+  ],
+  "data": {
+    "tableId": "executionSummary",
+    "entityId": "ExecutionSummary",
+    "physicalName": "agents_executionsummary",
+    "primaryKey": [
+      "id"
+    ],
+    "uniqueKeys": [
+      [
+        "executionRef"
+      ]
+    ],
+    "indexes": [
+      {
+        "name": "agents_executionsummary_executionRef",
+        "columns": [
+          "executionRef"
+        ],
+        "unique": true
+      },
+      {
+        "name": "agents_executionsummary_agentId",
+        "columns": [
+          "agentId"
+        ],
+        "unique": false
+      },
+      {
+        "name": "agents_executionsummary_personId",
+        "columns": [
+          "personId"
+        ],
+        "unique": false
+      },
+      {
+        "name": "agents_executionsummary_startedAt",
+        "columns": [
+          "startedAt"
+        ],
+        "unique": false
+      }
+    ]
+  }
+} as const;
+
+export default definition;

@@ -1,0 +1,226 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/agent_activity.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "agent_activity",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/usecases/getAgent.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listExecutionSummary.defs.ts"
+  ],
+  "data": {
+    "pageId": "agent_activity",
+    "requests": [
+      {
+        "route": "agents.agent_activity.getAgentActivity",
+        "kind": "qry",
+        "uses": [
+          "getAgent",
+          "listExecutionSummary"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "agent",
+            "entity": "Agent",
+            "fields": [
+              {
+                "field": "name",
+                "path": "name"
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "path": "executions",
+            "entity": "ExecutionSummary",
+            "items": "items",
+            "page": "executions.page",
+            "pageSize": "executions.pageSize",
+            "hasMore": "executions.hasMore",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "startedAt",
+                "path": "startedAt"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "executions.items.details.actions",
+            "entity": "ExecutionSummary",
+            "fields": [
+              {
+                "field": "toolName",
+                "path": "details.actions.toolName"
+              },
+              {
+                "field": "result",
+                "path": "details.actions.result"
+              },
+              {
+                "field": "resultNote",
+                "path": "details.actions.resultNote"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "executions.organizationUser",
+            "rules": [
+              "noTechnicalIdsOnScreen"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "executions.details.actions",
+            "reason": "ExecutionSummary inside ExecutionSummary needs one L4 relationship between them; found 0."
+          },
+          {
+            "kind": "unresolved",
+            "path": "executions.items.organizationUser",
+            "reason": "PROJECTION_FIELD_UNKNOWN: Route agents.agent_activity.getAgentActivity projects ExecutionSummary.organizationUser, which is not a field of the ontology."
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "executions",
+            "pages": "executions"
+          },
+          {
+            "name": "pageSize",
+            "target": "executions",
+            "pages": "executions"
+          },
+          {
+            "name": "agentId",
+            "target": "executions",
+            "field": "agentId"
+          }
+        ],
+        "rules": [
+          "activityNewestFirst",
+          "noTechnicalIdsOnScreen"
+        ],
+        "doc": {
+          "raw": "Purpose: Opens the activity page of the chosen agent: its name and the first page of its executions, newest first, each with its actions and results.\nInput: agentId: the agent chosen in the URL (cm id of the agent). page, pageSize: the page of executions to load.\nProcessing: Reads the agent name from the cm. Lists the ExecutionSummary records whose agentId is the chosen agent, ordered by startedAt descending (activityNewestFirst), paged by page and pageSize. For each execution, includes its actions with result and note, and resolves personId to the organization user’s name through read.byId of OrganizationUser so no technical id is shown (noTechnicalIdsOnScreen); executionRef is never returned. Visible to every organization member within the organization.\nOutput: agent: the agent’s @name. executions: { items, page, pageSize, hasMore } of executions newest first, each with start time, duration, cost, whether a person took over, conversation link, the caller’s name when known, and its actions with result and note.",
+          "purpose": "Opens the activity page of the chosen agent: its name and the first page of its executions, newest first, each with its actions and results.",
+          "input": "agentId: the agent chosen in the URL (cm id of the agent). page, pageSize: the page of executions to load.",
+          "processing": "Reads the agent name from the cm. Lists the ExecutionSummary records whose agentId is the chosen agent, ordered by startedAt descending (activityNewestFirst), paged by page and pageSize. For each execution, includes its actions with result and note, and resolves personId to the organization user’s name through read.byId of OrganizationUser so no technical id is shown (noTechnicalIdsOnScreen); executionRef is never returned. Visible to every organization member within the organization.",
+          "output": "agent: the agent’s @name. executions: { items, page, pageSize, hasMore } of executions newest first, each with start time, duration, cost, whether a person took over, conversation link, the caller’s name when known, and its actions with result and note."
+        }
+      },
+      {
+        "route": "agents.agent_activity.listAgentExecutions",
+        "kind": "qry",
+        "uses": [
+          "listExecutionSummary"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "list",
+            "path": "executions",
+            "entity": "ExecutionSummary",
+            "items": "items",
+            "page": "executions.page",
+            "pageSize": "executions.pageSize",
+            "hasMore": "executions.hasMore",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "startedAt",
+                "path": "startedAt"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "executions.items.details.actions",
+            "entity": "ExecutionSummary",
+            "fields": [
+              {
+                "field": "toolName",
+                "path": "details.actions.toolName"
+              },
+              {
+                "field": "result",
+                "path": "details.actions.result"
+              },
+              {
+                "field": "resultNote",
+                "path": "details.actions.resultNote"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "executions.organizationUser",
+            "rules": [
+              "noTechnicalIdsOnScreen"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "executions.details.actions",
+            "reason": "ExecutionSummary inside ExecutionSummary needs one L4 relationship between them; found 0."
+          },
+          {
+            "kind": "unresolved",
+            "path": "executions.items.organizationUser",
+            "reason": "PROJECTION_FIELD_UNKNOWN: Route agents.agent_activity.listAgentExecutions projects ExecutionSummary.organizationUser, which is not a field of the ontology."
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "executions",
+            "pages": "executions"
+          },
+          {
+            "name": "pageSize",
+            "target": "executions",
+            "pages": "executions"
+          },
+          {
+            "name": "agentId",
+            "target": "executions",
+            "field": "agentId"
+          }
+        ],
+        "rules": [
+          "activityNewestFirst",
+          "noTechnicalIdsOnScreen"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads a further page of the chosen agent’s executions, newest first.\nInput: agentId: the agent chosen in the URL. page, pageSize: the page of executions requested.\nProcessing: Same listing as getAgentActivity: ExecutionSummary filtered by agentId, ordered by startedAt descending (activityNewestFirst), paged; actions included; caller resolved to a readable name, never an id (noTechnicalIdsOnScreen); executionRef never returned.\nOutput: executions: { items, page, pageSize, hasMore } for the requested page, each execution with its details, actions and caller name.",
+          "purpose": "Loads a further page of the chosen agent’s executions, newest first.",
+          "input": "agentId: the agent chosen in the URL. page, pageSize: the page of executions requested.",
+          "processing": "Same listing as getAgentActivity: ExecutionSummary filtered by agentId, ordered by startedAt descending (activityNewestFirst), paged; actions included; caller resolved to a readable name, never an id (noTechnicalIdsOnScreen); executionRef never returned.",
+          "output": "executions: { items, page, pageSize, hasMore } for the requested page, each execution with its details, actions and caller name."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

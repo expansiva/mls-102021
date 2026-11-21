@@ -373,7 +373,7 @@ void test('a get usecase gives the port get(id) returning the entity', () => {
   assert.deepEqual(build.adapters[0].methods.map(method => method.name), port.methods.map(method => method.name));
 });
 
-void test('a preserved port stays put and an incompatible one is diagnosed', async () => {
+void test('a preserved port stays put, one that lacks an operation grows, and an incompatible one is diagnosed', async () => {
   const create: D1PortMethod = { name: 'create', params: ['Note'], returns: 'Note' };
   const list: D1PortMethod = { name: 'list', params: ['NoteFilter'], returns: 'Note[]' };
   const portPath = 'l1/sampleModule/layer_2_application/ports/noteRepository.defs.ts';
@@ -387,10 +387,34 @@ void test('a preserved port stays put and an incompatible one is diagnosed', asy
     portAction: 'preserve',
     preserved: portBytes('Note', 'NoteRepository', [create]),
   }));
-  assert.equal(broken.ok, false);
-  assert.equal(broken.emit.length, 0);
-  assert.equal(codes(broken, 'error').includes('PORT_INCOMPATIBLE'), true);
-  assert.match(broken.problems.find(problem => problem.code === 'PORT_INCOMPATIBLE')?.message || '', /does not implement list/);
+  // d1_267: a preserved port that only lacks a planned operation is written again with the union; before, it was refused ("does not implement list").
+  assert.equal(broken.ok, true, JSON.stringify(broken.problems));
+  const grownPort = broken.emit.find(part => part.definition.artifactType === 'repositoryPort');
+  assert.ok(grownPort, 'the port is emitted');
+  assert.deepEqual((grownPort.definition.data.methods as D1PortMethod[]).map(method => method.name), ['create', 'list']);
+  assert.equal(broken.ports[0].action, 'update');
+  assert.deepEqual(broken.preserved.filter(path => path === portPath), []);
+  assert.deepEqual(broken.normalizations.filter(item => item.code === 'PORT_METHODS_ADDED').map(item => item.detail), ['list']);
+  // The methods the plan does not name stay in the port.
+  const keeps = buildD1Persistence(planned({
+    moduleName: 'sampleModule', entityId: 'Note', tableId: 'note', portId: 'NoteRepository', entities: noteEntity, operations: ['create', 'list'], portAction: 'preserve',
+    preserved: portBytes('Note', 'NoteRepository', [{ name: 'delete', params: ['id'], returns: 'void' }, create]),
+  }));
+  assert.deepEqual((keeps.emit.find(part => part.definition.artifactType === 'repositoryPort')?.definition.data.methods as D1PortMethod[]).map(method => method.name), ['create', 'list', 'delete']);
+  // A method of another signature, or bytes that cannot be read, is not grown: the port stays refused.
+  const clash = buildD1Persistence(planned({
+    moduleName: 'sampleModule', entityId: 'Note', tableId: 'note', portId: 'NoteRepository', entities: noteEntity, operations: ['create', 'list'], portAction: 'preserve',
+    preserved: portBytes('Note', 'NoteRepository', [{ name: 'create', params: ['Other'], returns: 'Note' }]),
+  }));
+  assert.equal(clash.ok, false);
+  assert.equal(clash.emit.length, 0);
+  assert.equal(codes(clash, 'error').includes('PORT_INCOMPATIBLE'), true);
+  const unreadable = buildD1Persistence(planned({
+    moduleName: 'sampleModule', entityId: 'Note', tableId: 'note', portId: 'NoteRepository', entities: noteEntity, operations: ['create', 'list'], portAction: 'preserve',
+    preserved: { unreadable: true },
+  }));
+  assert.equal(unreadable.ok, false);
+  assert.equal(codes(unreadable, 'error').includes('PORT_BYTES_MISSING'), true);
 
   const host = installStudio(PROJECT);
   const info = fileInfoFromDisplay(PROJECT, portPath);

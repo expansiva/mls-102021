@@ -1,0 +1,51 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/http/controllers/agent_behavior.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "agent_behavior",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/agents/layer_2_application/requests/agent_behavior.defs.ts",
+    "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "agent_behavior",
+    "handlers": [
+      {
+        "route": "agents.agent_behavior.getAgentBehavior",
+        "kind": "query",
+        "grantIds": [
+          "adminManageAgents"
+        ],
+        "serviceFunction": "agents.agent_behavior.getAgentBehavior",
+        "contractPath": "l2/agents/web/contracts/agent_behavior.defs.ts",
+        "contractInterface": "Agent_behaviorContracts"
+      },
+      {
+        "route": "agents.agent_behavior.listBehaviorChanges",
+        "kind": "query",
+        "grantIds": [
+          "adminManageAgents"
+        ],
+        "serviceFunction": "agents.agent_behavior.listBehaviorChanges",
+        "contractPath": "l2/agents/web/contracts/agent_behavior.defs.ts",
+        "contractInterface": "Agent_behaviorContracts"
+      },
+      {
+        "route": "agents.agent_behavior.requestBehaviorChange",
+        "kind": "command",
+        "grantIds": [
+          "adminManageAgents"
+        ],
+        "serviceFunction": "agents.agent_behavior.requestBehaviorChange",
+        "contractPath": "l2/agents/web/contracts/agent_behavior.defs.ts",
+        "contractInterface": "Agent_behaviorContracts"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

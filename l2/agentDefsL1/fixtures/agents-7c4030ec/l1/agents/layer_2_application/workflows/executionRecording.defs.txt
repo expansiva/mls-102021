@@ -1,0 +1,37 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/workflows/executionRecording.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "workflowProcess",
+  "artifactId": "executionRecording",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts",
+    "_102047_/l4/agents/ontology/ExecutionSummary.defs.ts",
+    "_102047_/l4/agents/workflows.defs.ts"
+  ],
+  "data": {
+    "processId": "executionRecording",
+    "trigger": {
+      "kind": "event",
+      "event": "cm.record"
+    },
+    "functions": [
+      "recordExecutionSummary"
+    ],
+    "operations": [
+      {
+        "operation": "ExecutionSummary.create",
+        "steps": [
+          "task:recordExecution"
+        ]
+      }
+    ],
+    "occurrence": {
+      "entityId": "ExecutionSummary"
+    }
+  }
+} as const;
+
+export default definition;

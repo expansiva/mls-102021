@@ -1,0 +1,190 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/agent_behavior.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "agent_behavior",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/usecases/getAgentBehavior.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listAgentBehavior.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/undoAgentChange.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.defs.ts"
+  ],
+  "data": {
+    "pageId": "agent_behavior",
+    "requests": [
+      {
+        "route": "agents.agent_behavior.getAgentBehavior",
+        "kind": "qry",
+        "uses": [
+          "getAgentBehavior"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "behavior",
+            "entity": "AgentBehavior",
+            "fields": [
+              {
+                "field": "agent",
+                "path": "agent"
+              },
+              {
+                "field": "summary",
+                "path": "summary"
+              },
+              {
+                "field": "currentBehavior",
+                "path": "currentBehavior"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "behavior.agent.agent.name",
+            "reason": "Interface BehaviorAgent: field agent.name is not a field of any entity."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "agentBehaviorChangedOnlyThroughCm"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads the chosen agent’s current behavior in plain language with its one-line summary and the agent’s @name.\nInput: agentId: the cm identifier of the agent chosen in the URL.\nProcessing: Reads the behavior from the cm (agentBehaviorChangedOnlyThroughCm: nothing is stored in this module) and the agent’s name from the cm. Organization scope of the company admin.\nOutput: The agent behavior: agent id and name, summary and full current behavior text.",
+          "purpose": "Loads the chosen agent’s current behavior in plain language with its one-line summary and the agent’s @name.",
+          "input": "agentId: the cm identifier of the agent chosen in the URL.",
+          "processing": "Reads the behavior from the cm (agentBehaviorChangedOnlyThroughCm: nothing is stored in this module) and the agent’s name from the cm. Organization scope of the company admin.",
+          "output": "The agent behavior: agent id and name, summary and full current behavior text."
+        }
+      },
+      {
+        "route": "agents.agent_behavior.listBehaviorChanges",
+        "kind": "qry",
+        "uses": [
+          "listAgentBehavior"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "list",
+            "path": "changes",
+            "entity": "AgentBehavior",
+            "items": "items",
+            "page": "changes.page",
+            "pageSize": "changes.pageSize",
+            "hasMore": "changes.hasMore",
+            "fields": [
+              {
+                "field": "changeRef",
+                "path": "changes.changeRef"
+              },
+              {
+                "field": "changedBy",
+                "path": "changes.changedBy"
+              },
+              {
+                "field": "changedAt",
+                "path": "changes.changedAt"
+              },
+              {
+                "field": "summary",
+                "path": "changes.summary"
+              },
+              {
+                "field": "undone",
+                "path": "changes.undone"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "changes",
+            "pages": "changes"
+          },
+          {
+            "name": "pageSize",
+            "target": "changes",
+            "pages": "changes"
+          }
+        ],
+        "rules": [
+          "agentBehaviorChangedOnlyThroughCm",
+          "undoRestoresPreviousBehavior"
+        ],
+        "doc": {
+          "raw": "Purpose: Lists the behavior change history of the chosen agent, newest first, one page at a time.\nInput: agentId: the cm identifier of the agent; page and pageSize: the page of the history requested.\nProcessing: Reads the change history from the cm (agentBehaviorChangedOnlyThroughCm), ordered by changedAt descending, resolving the author to a readable name. Changes undone through the cm carry undone = true (undoRestoresPreviousBehavior).\nOutput: A page of changes { items, page, pageSize, hasMore }, each with changeRef, who, when, summary and undone flag.",
+          "purpose": "Lists the behavior change history of the chosen agent, newest first, one page at a time.",
+          "input": "agentId: the cm identifier of the agent; page and pageSize: the page of the history requested.",
+          "processing": "Reads the change history from the cm (agentBehaviorChangedOnlyThroughCm), ordered by changedAt descending, resolving the author to a readable name. Changes undone through the cm carry undone = true (undoRestoresPreviousBehavior).",
+          "output": "A page of changes { items, page, pageSize, hasMore }, each with changeRef, who, when, summary and undone flag."
+        }
+      },
+      {
+        "route": "agents.agent_behavior.requestBehaviorChange",
+        "kind": "cmd",
+        "uses": [
+          "updateAgentAgentBehavior",
+          "undoAgentChange"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "behavior",
+            "entity": "AgentBehavior",
+            "fields": [
+              {
+                "field": "agent",
+                "path": "agent"
+              },
+              {
+                "field": "summary",
+                "path": "summary"
+              },
+              {
+                "field": "currentBehavior",
+                "path": "currentBehavior"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "behavior.agent.agent.name",
+            "reason": "Interface BehaviorAgent: field agent.name is not a field of any entity."
+          }
+        ],
+        "params": [
+          {
+            "name": "changeRequest",
+            "target": "",
+            "optional": true
+          },
+          {
+            "name": "undoChangeRef",
+            "target": "",
+            "optional": true
+          }
+        ],
+        "rules": [
+          "agentBehaviorChangedOnlyThroughCm",
+          "behaviorChangeByAdminOnly",
+          "undoRestoresPreviousBehavior"
+        ],
+        "doc": {
+          "raw": "Purpose: Sends the admin’s plain-language change request, or the undo of a change picked from the history, to the cm.\nInput: agentId: the agent whose behavior changes; changeRequest: the plain-language request written by the admin; undoChangeRef: the cm reference of the change to undo. Exactly one of changeRequest or undoChangeRef is given. expectVersion: the version of the record, asked by updateAgent.\nProcessing: Refuses callers who are not company admin (behaviorChangeByAdminOnly). Refuses when both or neither of changeRequest and undoChangeRef are given. Forwards the request or the undo to the cm, which records the change with the caller as author; nothing is stored in this module (agentBehaviorChangedOnlyThroughCm). An undo restores the behavior before that change and the cm marks it undone (undoRestoresPreviousBehavior).\nOutput: The agent behavior in its new state: agent, summary and current behavior text as the cm returns them.",
+          "purpose": "Sends the admin’s plain-language change request, or the undo of a change picked from the history, to the cm.",
+          "input": "agentId: the agent whose behavior changes; changeRequest: the plain-language request written by the admin; undoChangeRef: the cm reference of the change to undo. Exactly one of changeRequest or undoChangeRef is given. expectVersion: the version of the record, asked by updateAgent.",
+          "processing": "Refuses callers who are not company admin (behaviorChangeByAdminOnly). Refuses when both or neither of changeRequest and undoChangeRef are given. Forwards the request or the undo to the cm, which records the change with the caller as author; nothing is stored in this module (agentBehaviorChangedOnlyThroughCm). An undo restores the behavior before that change and the cm marks it undone (undoRestoresPreviousBehavior).",
+          "output": "The agent behavior in its new state: agent, summary and current behavior text as the cm returns them."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

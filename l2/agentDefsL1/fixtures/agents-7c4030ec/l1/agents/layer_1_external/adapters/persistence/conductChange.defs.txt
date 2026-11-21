@@ -1,0 +1,46 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/conductChange.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "table",
+  "artifactId": "conductChange",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/conductChange.defs.ts"
+  ],
+  "data": {
+    "tableId": "conductChange",
+    "entityId": "ConductChange",
+    "physicalName": "agents_conductchange",
+    "primaryKey": [
+      "id"
+    ],
+    "uniqueKeys": [],
+    "indexes": [
+      {
+        "name": "agents_conductchange_agentId",
+        "columns": [
+          "agentId"
+        ],
+        "unique": false
+      },
+      {
+        "name": "agents_conductchange_personId",
+        "columns": [
+          "personId"
+        ],
+        "unique": false
+      },
+      {
+        "name": "agents_conductchange_changedAt",
+        "columns": [
+          "changedAt"
+        ],
+        "unique": false
+      }
+    ]
+  }
+} as const;
+
+export default definition;

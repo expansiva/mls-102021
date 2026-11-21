@@ -1,0 +1,79 @@
+/// <mls fileReference="_102047_/l2/agents/web/contracts/tool_catalog.defs.ts" enhancement="_blank"/>
+
+/** One action of the tool catalog with its readable name, plain-language description and status in the current release. */
+export interface CatalogTool {
+  name: string;
+  details: {
+    description: string;
+  };
+  status: 'available' | 'removed';
+}
+
+/** A subject inside a module of the tool catalog, with the actions it groups. */
+export interface CatalogSubject {
+  subject: string;
+  details: {
+    subjectTitle: string;
+  };
+  tools: CatalogTool[];
+}
+
+/** A module of the tool catalog (an app module or the cm itself), with its subjects and their actions. */
+export interface CatalogModule {
+  moduleName: string;
+  details: {
+    moduleTitle: string;
+  };
+  subjects: CatalogSubject[];
+}
+
+/** A tool of the catalog with the number of agents that have it turned on. */
+export interface ToolUsage {
+  name: string;
+  details: {
+    moduleTitle: string;
+    subjectTitle: string;
+  };
+  readonly usedByAgents: number;
+}
+
+/** A tool as a catalog change: when it entered the catalog and, if it left the release, when it was marked removed. */
+export interface CatalogUpdate {
+  name: string;
+  status: 'available' | 'removed';
+  details: {
+    moduleTitle: string;
+    subjectTitle: string;
+    addedAt?: string;
+    removedAt?: string;
+  };
+}
+
+export interface Tool_catalogContracts {
+  /**
+   * Purpose: Loads the organization’s whole tool catalog as a module / subject / action tree. It also returns how many agents use each tool.
+   * Input: None. The organization comes from the logged-in person.
+   * Processing: Reads every Tool in the catalog, including removed ones. Under toolNeverDeleted, a tool that left the release is kept and returned with status removed. Groups the tools by moduleName, then by subject, and orders them by moduleTitle, subjectTitle and name. Returns readable names only, never ids, toolKey or catalogItem (noTechnicalIdsOnScreen). toolUsage is computed only for callers whose grant allows Tool.details.usedByAgents (companyAdmin). For each tool, usedByAgents counts the distinct agents with an AgentTool for that tool whose enabled is true. One grouped query computes all counts, and the value is never stored. The list is ordered by usedByAgents, highest first, then by name. For organizationMember, toolUsage is omitted.
+   * Output: modules: every module with its subjects and their actions (name, description, status). toolUsage: every tool with its module and subject titles and the number of agents that have it on, most used first. It is absent when the caller may not see it.
+   */
+  'agents.tool_catalog.getToolCatalog': {
+    kind: 'qry';
+    input: {};
+    output: { modules: CatalogModule[]; toolUsage?: ToolUsage[] };
+    rules: ['noTechnicalIdsOnScreen', 'toolNeverDeleted'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageTools', 'memberReadToolCatalog']; scope: 'organization' };
+  };
+  /**
+   * Purpose: Lists the tool catalog changes made by rebuilds after a new module or release, newest first, page by page. A change is a tool added or a tool marked removed.
+   * Input: page and pageSize: the requested page of changes and its size.
+   * Processing: Reads the Tools in the organization’s catalog. Rebuilds create, update and mark them removed (catalogRebuiltOnRelease), and removed tools are kept (toolNeverDeleted). Orders the tools by the later of removedAt and addedAt, newest first, and pages the result. addedAt and removedAt are returned only to callers whose grant allows them (companyAdmin). No ids are returned (noTechnicalIdsOnScreen).
+   * Output: updates: a page { items, page, pageSize, hasMore } of tools. Each has its name, status, module and subject titles and the date it was added. A removed tool also has the date it was marked removed.
+   */
+  'agents.tool_catalog.listCatalogUpdates': {
+    kind: 'qry';
+    input: { page: number; pageSize: number };
+    output: { updates: { items: CatalogUpdate[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['catalogRebuiltOnRelease', 'toolNeverDeleted', 'noTechnicalIdsOnScreen'];
+    access: { actors: ['companyAdmin', 'organizationMember']; grants: ['adminManageTools', 'memberReadToolCatalog']; scope: 'organization' };
+  };
+}

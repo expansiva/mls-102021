@@ -1,0 +1,538 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/seeds.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "persistenceSeeds",
+  "artifactId": "seeds",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/agentDraft.defs.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/agentTool.defs.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/conductChange.defs.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/executionSummary.defs.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/personToolRestriction.defs.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/tool.defs.ts"
+  ],
+  "data": {
+    "seedId": "seeds",
+    "phase": "plan",
+    "scenarios": [
+      {
+        "scenarioId": "createVirtualEmployee",
+        "tableId": "agentDraft",
+        "source": "journey:createVirtualEmployee",
+        "constraints": [
+          "state:preparing"
+        ],
+        "refs": [],
+        "states": [
+          "preparing"
+        ],
+        "entityId": "AgentDraft",
+        "stateField": "status"
+      },
+      {
+        "scenarioId": "reviewAndActivateDraft",
+        "tableId": "agentDraft",
+        "source": "journey:reviewAndActivateDraft",
+        "constraints": [
+          "state:activated"
+        ],
+        "refs": [],
+        "states": [
+          "activated"
+        ],
+        "entityId": "AgentDraft",
+        "stateField": "status"
+      },
+      {
+        "scenarioId": "adjustAgentTools",
+        "tableId": "agentTool",
+        "source": "journey:adjustAgentTools",
+        "constraints": [
+          "ref:toolId:Tool",
+          "uniqueKeys:agentId+toolId"
+        ],
+        "refs": [
+          {
+            "field": "toolId",
+            "relationshipId": "agentToolTool",
+            "entityId": "Tool"
+          }
+        ],
+        "states": [],
+        "entityId": "AgentTool"
+      },
+      {
+        "scenarioId": "reviewAndActivateDraft",
+        "tableId": "agentTool",
+        "source": "journey:reviewAndActivateDraft",
+        "constraints": [
+          "ref:toolId:Tool",
+          "uniqueKeys:agentId+toolId"
+        ],
+        "refs": [
+          {
+            "field": "toolId",
+            "relationshipId": "agentToolTool",
+            "entityId": "Tool"
+          }
+        ],
+        "states": [],
+        "entityId": "AgentTool"
+      },
+      {
+        "scenarioId": "changeMyConduct",
+        "tableId": "conductChange",
+        "source": "journey:changeMyConduct",
+        "constraints": [
+          "ref:personId:OrganizationUser"
+        ],
+        "refs": [
+          {
+            "field": "personId",
+            "relationshipId": "conductChangePerson",
+            "entityId": "OrganizationUser"
+          }
+        ],
+        "states": [],
+        "entityId": "ConductChange"
+      },
+      {
+        "scenarioId": "followAgentActivity",
+        "tableId": "executionSummary",
+        "source": "journey:followAgentActivity",
+        "constraints": [
+          "ref:personId:OrganizationUser",
+          "uniqueKeys:executionRef"
+        ],
+        "refs": [
+          {
+            "field": "personId",
+            "relationshipId": "executionRequester",
+            "entityId": "OrganizationUser"
+          }
+        ],
+        "states": [],
+        "entityId": "ExecutionSummary"
+      },
+      {
+        "scenarioId": "restrictPersonTools",
+        "tableId": "personToolRestriction",
+        "source": "journey:restrictPersonTools",
+        "constraints": [
+          "ref:personId:OrganizationUser",
+          "ref:toolId:Tool",
+          "uniqueKeys:personId+toolId"
+        ],
+        "refs": [
+          {
+            "field": "personId",
+            "relationshipId": "restrictionPerson",
+            "entityId": "OrganizationUser"
+          },
+          {
+            "field": "toolId",
+            "relationshipId": "restrictionTool",
+            "entityId": "Tool"
+          }
+        ],
+        "states": [],
+        "entityId": "PersonToolRestriction"
+      },
+      {
+        "scenarioId": "adjustAgentTools",
+        "tableId": "tool",
+        "source": "journey:adjustAgentTools",
+        "constraints": [
+          "uniqueKeys:toolKey"
+        ],
+        "refs": [],
+        "states": [],
+        "entityId": "Tool",
+        "stateField": "status"
+      }
+    ],
+    "dependencies": [
+      {
+        "entityId": "AgentDraft",
+        "kind": "module",
+        "seeded": false
+      },
+      {
+        "entityId": "AgentTool",
+        "kind": "module",
+        "seeded": false
+      },
+      {
+        "entityId": "ConductChange",
+        "kind": "module",
+        "seeded": false
+      },
+      {
+        "entityId": "ExecutionSummary",
+        "kind": "module",
+        "seeded": false
+      },
+      {
+        "entityId": "OrganizationUser",
+        "kind": "mdm",
+        "seeded": false
+      },
+      {
+        "entityId": "PersonToolRestriction",
+        "kind": "module",
+        "seeded": false
+      },
+      {
+        "entityId": "Tool",
+        "kind": "module",
+        "seeded": false
+      }
+    ],
+    "datasets": [
+      {
+        "datasetId": "agentDraft",
+        "tableId": "agentDraft",
+        "owners": [
+          "createVirtualEmployee",
+          "reviewAndActivateDraft"
+        ]
+      },
+      {
+        "datasetId": "agentTool",
+        "tableId": "agentTool",
+        "owners": [
+          "adjustAgentTools",
+          "reviewAndActivateDraft"
+        ]
+      },
+      {
+        "datasetId": "conductChange",
+        "tableId": "conductChange",
+        "owners": [
+          "changeMyConduct"
+        ]
+      },
+      {
+        "datasetId": "executionSummary",
+        "tableId": "executionSummary",
+        "owners": [
+          "followAgentActivity"
+        ]
+      },
+      {
+        "datasetId": "personToolRestriction",
+        "tableId": "personToolRestriction",
+        "owners": [
+          "restrictPersonTools"
+        ]
+      },
+      {
+        "datasetId": "tool",
+        "tableId": "tool",
+        "owners": [
+          "adjustAgentTools"
+        ]
+      }
+    ],
+    "fixture": {
+      "schemaVersion": "2026-09-27-m1-certification-fixture-v1",
+      "phase": "plan",
+      "targets": [
+        "memory",
+        "development"
+      ],
+      "datasets": [
+        {
+          "supportId": "data:AgentDraft",
+          "entityId": "AgentDraft",
+          "tableId": "agentDraft",
+          "dependsOn": [],
+          "sourceRefs": [
+            "grant:adminManageAgents",
+            "journey:createVirtualEmployee/describeAgent",
+            "journey:createVirtualEmployee/followDraftSituation",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "ontology:AgentDraft/lifecycleStates/ready"
+          ]
+        },
+        {
+          "supportId": "data:AgentTool",
+          "entityId": "AgentTool",
+          "tableId": "agentTool",
+          "dependsOn": [
+            "Tool"
+          ],
+          "sourceRefs": [
+            "grant:adminManageTools",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "journey:changeMyConduct/readMyConductHistory",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "journey:createVirtualEmployee/describeAgent",
+            "journey:createVirtualEmployee/followDraftSituation",
+            "journey:createVirtualEmployee/openAgentList",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "journey:restrictPersonTools/choosePerson",
+            "journey:restrictPersonTools/markRestrictions",
+            "journey:restrictPersonTools/reviewRestrictions",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "process:toolCatalogRefresh",
+            "process:virtualEmployeeCreation",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolAgent",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:Tool/agentToolTool",
+            "relationship:Tool/restrictionTool"
+          ]
+        },
+        {
+          "supportId": "data:ConductChange",
+          "entityId": "ConductChange",
+          "tableId": "conductChange",
+          "dependsOn": [],
+          "sourceRefs": [
+            "grant:adminOwnConduct",
+            "grant:memberOwnConduct",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "journey:changeMyConduct/readMyConductHistory",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "journey:restrictPersonTools/choosePerson",
+            "journey:restrictPersonTools/markRestrictions",
+            "journey:restrictPersonTools/reviewRestrictions",
+            "relationship:Agent/executionAgent",
+            "relationship:ConductChange/conductChangePerson",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:PersonToolRestriction/restrictionPerson"
+          ]
+        },
+        {
+          "supportId": "data:ExecutionSummary",
+          "entityId": "ExecutionSummary",
+          "tableId": "executionSummary",
+          "dependsOn": [],
+          "sourceRefs": [
+            "grant:adminReadActivity",
+            "grant:memberReadActivity",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "journey:changeMyConduct/readMyConductHistory",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "journey:createVirtualEmployee/describeAgent",
+            "journey:createVirtualEmployee/followDraftSituation",
+            "journey:createVirtualEmployee/openAgentList",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "journey:restrictPersonTools/choosePerson",
+            "journey:restrictPersonTools/markRestrictions",
+            "journey:restrictPersonTools/reviewRestrictions",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "process:executionRecording",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:ConductChange/conductChangePerson",
+            "relationship:ExecutionSummary/executionAgent",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/executionRequester",
+            "relationship:PersonToolRestriction/restrictionPerson",
+            "relationship:Tool/agentToolTool",
+            "relationship:Tool/restrictionTool"
+          ]
+        },
+        {
+          "supportId": "data:PersonToolRestriction",
+          "entityId": "PersonToolRestriction",
+          "tableId": "personToolRestriction",
+          "dependsOn": [
+            "Tool"
+          ],
+          "sourceRefs": [
+            "grant:adminManageTools",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "journey:changeMyConduct/readMyConductHistory",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "journey:createVirtualEmployee/describeAgent",
+            "journey:createVirtualEmployee/followDraftSituation",
+            "journey:createVirtualEmployee/openAgentList",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "journey:restrictPersonTools/choosePerson",
+            "journey:restrictPersonTools/markRestrictions",
+            "journey:restrictPersonTools/reviewRestrictions",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "relationship:Agent/agentToolAgent",
+            "relationship:Agent/executionAgent",
+            "relationship:ConductChange/conductChangePerson",
+            "relationship:ExecutionSummary/executionRequester",
+            "relationship:OrganizationUser/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionPerson",
+            "relationship:PersonToolRestriction/restrictionTool",
+            "relationship:Tool/agentToolTool",
+            "relationship:Tool/restrictionTool"
+          ]
+        },
+        {
+          "supportId": "data:Tool",
+          "entityId": "Tool",
+          "tableId": "tool",
+          "dependsOn": [],
+          "sourceRefs": [
+            "grant:adminManageTools",
+            "grant:memberReadToolCatalog",
+            "journey:adjustAgentTools/browseToolTree",
+            "journey:adjustAgentTools/enableUnchosenTool",
+            "journey:adjustAgentTools/findAgentForTools",
+            "journey:adjustAgentTools/toggleTools",
+            "journey:changeAgentBehavior/findAgentForBehavior",
+            "journey:changeAgentBehavior/readBehavior",
+            "journey:changeAgentBehavior/requestBehaviorChange",
+            "journey:changeAgentBehavior/undoBehaviorChange",
+            "journey:changeMyConduct/changeConduct",
+            "journey:changeMyConduct/findMyAgent",
+            "journey:changeMyConduct/readMyConduct",
+            "journey:changeMyConduct/readMyConductHistory",
+            "journey:configureAgent/findAgentForConfig",
+            "journey:configureAgent/readConfiguration",
+            "journey:configureAgent/saveConfiguration",
+            "journey:createVirtualEmployee/describeAgent",
+            "journey:createVirtualEmployee/followDraftSituation",
+            "journey:createVirtualEmployee/openAgentList",
+            "journey:followAgentActivity/browseAgents",
+            "journey:followAgentActivity/readActivity",
+            "journey:followAgentActivity/readOverview",
+            "journey:restrictPersonTools/choosePerson",
+            "journey:restrictPersonTools/markRestrictions",
+            "journey:restrictPersonTools/reviewRestrictions",
+            "journey:reviewAndActivateDraft/activateDraft",
+            "journey:reviewAndActivateDraft/adjustDraftTools",
+            "journey:reviewAndActivateDraft/discardDraft",
+            "journey:reviewAndActivateDraft/openReadyDraft",
+            "journey:reviewAndActivateDraft/reviewDraft",
+            "journey:reviewAndActivateDraft/simulateDraft",
+            "journey:simulateAgentByRole/findAgentToSimulate",
+            "journey:simulateAgentByRole/simulateWhatItCan",
+            "journey:simulateAgentByRole/simulateWhatItUnderstands",
+            "journey:simulateAsMyself/findAgentForMe",
+            "journey:simulateAsMyself/seeWhatItCanForMe",
+            "journey:simulateAsMyself/seeWhatItUnderstandsForMe",
+            "process:toolCatalogRefresh",
+            "relationship:Agent/agentToolAgent",
+            "relationship:AgentTool/agentToolTool",
+            "relationship:PersonToolRestriction/restrictionTool",
+            "relationship:Tool/agentToolTool",
+            "relationship:Tool/restrictionTool"
+          ]
+        }
+      ],
+      "runtime": [
+        {
+          "supportId": "identity:companyAdmin",
+          "kind": "identity",
+          "entityId": "OrganizationUser",
+          "actorRefs": [
+            "companyAdmin"
+          ],
+          "gap": "RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for companyAdmin bound to OrganizationUser",
+          "owner": "runtime"
+        },
+        {
+          "supportId": "identity:organizationMember",
+          "kind": "identity",
+          "entityId": "OrganizationUser",
+          "actorRefs": [
+            "organizationMember"
+          ],
+          "gap": "RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for organizationMember bound to OrganizationUser",
+          "owner": "runtime"
+        }
+      ],
+      "gaps": []
+    }
+  }
+} as const;
+
+export default definition;

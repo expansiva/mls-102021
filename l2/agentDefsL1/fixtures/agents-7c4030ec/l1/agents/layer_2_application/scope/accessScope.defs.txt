@@ -1,0 +1,396 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "accessScope",
+  "artifactId": "accessScope",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [],
+  "data": {
+    "scopeId": "accessScope",
+    "grants": [
+      {
+        "grantId": "adminChoosePeople",
+        "actorRef": "companyAdmin",
+        "entityRefs": [
+          "OrganizationUser"
+        ],
+        "disclosure": "fieldsOnly",
+        "allowedFields": [
+          "OrganizationUser.details.identification.name",
+          "OrganizationUser.details.identification.status",
+          "OrganizationUser.details.agents.loginEmail"
+        ],
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "OrganizationUser",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "adminManageAgents",
+        "actorRef": "companyAdmin",
+        "entityRefs": [
+          "Agent",
+          "AgentDraft",
+          "AgentBehavior",
+          "AgentSimulation"
+        ],
+        "disclosure": "fullRecord",
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "Agent",
+            "steps": [],
+            "pending": ""
+          },
+          {
+            "entityId": "AgentDraft",
+            "steps": [],
+            "pending": ""
+          },
+          {
+            "entityId": "AgentBehavior",
+            "steps": [],
+            "pending": ""
+          },
+          {
+            "entityId": "AgentSimulation",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "adminManageTools",
+        "actorRef": "companyAdmin",
+        "entityRefs": [
+          "Tool",
+          "AgentTool",
+          "PersonToolRestriction"
+        ],
+        "disclosure": "fieldsOnly",
+        "allowedFields": [
+          "Tool.id",
+          "Tool.version",
+          "Tool.origin",
+          "Tool.moduleName",
+          "Tool.subject",
+          "Tool.name",
+          "Tool.status",
+          "Tool.details.moduleTitle",
+          "Tool.details.subjectTitle",
+          "Tool.details.description",
+          "Tool.details.releaseLabel",
+          "Tool.details.addedAt",
+          "Tool.details.removedAt",
+          "Tool.details.usedByAgents",
+          "AgentTool.id",
+          "AgentTool.version",
+          "AgentTool.agentId",
+          "AgentTool.toolId",
+          "AgentTool.enabled",
+          "AgentTool.choiceSource",
+          "AgentTool.details",
+          "PersonToolRestriction.id",
+          "PersonToolRestriction.version",
+          "PersonToolRestriction.personId",
+          "PersonToolRestriction.toolId",
+          "PersonToolRestriction.details"
+        ],
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "Tool",
+            "steps": [],
+            "pending": ""
+          },
+          {
+            "entityId": "AgentTool",
+            "steps": [],
+            "pending": ""
+          },
+          {
+            "entityId": "PersonToolRestriction",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "adminOwnConduct",
+        "actorRef": "companyAdmin",
+        "anchorEntity": "OrganizationUser",
+        "entityRefs": [
+          "ConductChange"
+        ],
+        "disclosure": "fullRecord",
+        "scopeMode": "own",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "ConductChange",
+            "steps": [
+              {
+                "relationshipId": "conductChangePerson",
+                "from": "ConductChange",
+                "to": "OrganizationUser",
+                "field": "ConductChange.personId"
+              }
+            ],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "adminOwnConductCurrent",
+        "actorRef": "companyAdmin",
+        "entityRefs": [
+          "PersonalConduct"
+        ],
+        "disclosure": "fullRecord",
+        "scopeMode": "custom",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "PersonalConduct",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "adminReadActivity",
+        "actorRef": "companyAdmin",
+        "entityRefs": [
+          "ExecutionSummary"
+        ],
+        "disclosure": "fieldsOnly",
+        "allowedFields": [
+          "ExecutionSummary.id",
+          "ExecutionSummary.version",
+          "ExecutionSummary.agentId",
+          "ExecutionSummary.personId",
+          "ExecutionSummary.startedAt",
+          "ExecutionSummary.details"
+        ],
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "ExecutionSummary",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "connection_cm",
+        "actorRef": "connection:cm",
+        "entityRefs": [],
+        "disclosure": "fullRecord",
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [],
+        "pending": ""
+      },
+      {
+        "grantId": "connection_platform",
+        "actorRef": "connection:platform",
+        "entityRefs": [],
+        "disclosure": "fullRecord",
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [],
+        "pending": ""
+      },
+      {
+        "grantId": "memberOwnConduct",
+        "actorRef": "organizationMember",
+        "anchorEntity": "OrganizationUser",
+        "entityRefs": [
+          "ConductChange"
+        ],
+        "disclosure": "fullRecord",
+        "scopeMode": "own",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "ConductChange",
+            "steps": [
+              {
+                "relationshipId": "conductChangePerson",
+                "from": "ConductChange",
+                "to": "OrganizationUser",
+                "field": "ConductChange.personId"
+              }
+            ],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "memberOwnConductCurrent",
+        "actorRef": "organizationMember",
+        "entityRefs": [
+          "PersonalConduct"
+        ],
+        "disclosure": "fullRecord",
+        "scopeMode": "custom",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "PersonalConduct",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "memberReadActivity",
+        "actorRef": "organizationMember",
+        "entityRefs": [
+          "ExecutionSummary"
+        ],
+        "disclosure": "fieldsOnly",
+        "allowedFields": [
+          "ExecutionSummary.id",
+          "ExecutionSummary.version",
+          "ExecutionSummary.agentId",
+          "ExecutionSummary.personId",
+          "ExecutionSummary.startedAt",
+          "ExecutionSummary.details"
+        ],
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "ExecutionSummary",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "memberReadToolCatalog",
+        "actorRef": "organizationMember",
+        "entityRefs": [
+          "Tool"
+        ],
+        "disclosure": "fieldsOnly",
+        "allowedFields": [
+          "Tool.moduleName",
+          "Tool.subject",
+          "Tool.name",
+          "Tool.status",
+          "Tool.details.moduleTitle",
+          "Tool.details.subjectTitle",
+          "Tool.details.description"
+        ],
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "Tool",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "memberSeeAgents",
+        "actorRef": "organizationMember",
+        "entityRefs": [
+          "Agent"
+        ],
+        "disclosure": "fieldsOnly",
+        "allowedFields": [
+          "Agent.name",
+          "Agent.definition",
+          "Agent.talksTo",
+          "Agent.onBehalfOf",
+          "Agent.isOn",
+          "Agent.responsible"
+        ],
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "Agent",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "memberSeePeopleNames",
+        "actorRef": "organizationMember",
+        "entityRefs": [
+          "OrganizationUser"
+        ],
+        "disclosure": "fieldsOnly",
+        "allowedFields": [
+          "OrganizationUser.details.identification.name",
+          "OrganizationUser.details.agents.loginEmail"
+        ],
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "OrganizationUser",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "memberSimulateAsMyself",
+        "actorRef": "organizationMember",
+        "entityRefs": [
+          "AgentSimulation"
+        ],
+        "disclosure": "fieldsOnly",
+        "allowedFields": [
+          "AgentSimulation.agent",
+          "AgentSimulation.level",
+          "AgentSimulation.subjectKind",
+          "AgentSimulation.person",
+          "AgentSimulation.sentence",
+          "AgentSimulation.toolVerdicts",
+          "AgentSimulation.understanding"
+        ],
+        "scopeMode": "custom",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "AgentSimulation",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      }
+    ]
+  }
+} as const;
+
+export default definition;

@@ -1,0 +1,41 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/ports/agentToolRepository.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryPort",
+  "artifactId": "AgentToolRepository",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/agentTool.defs.ts"
+  ],
+  "data": {
+    "entityId": "AgentTool",
+    "interfaceName": "AgentToolRepository",
+    "methods": [
+      {
+        "name": "create",
+        "params": [
+          "AgentTool"
+        ],
+        "returns": "AgentTool"
+      },
+      {
+        "name": "list",
+        "params": [
+          "AgentToolFilter"
+        ],
+        "returns": "AgentTool[]"
+      },
+      {
+        "name": "update",
+        "params": [
+          "AgentTool"
+        ],
+        "returns": "AgentTool"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

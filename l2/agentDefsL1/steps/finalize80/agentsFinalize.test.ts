@@ -624,3 +624,20 @@ void test('d1_266 (a): on 30f16c8e the usecase of the step changeConduct records
   const other = Object.values(host.files).find(item => item.shortName === 'updateAgent' && item.extension === '.defs.ts' && item.folder.endsWith('layer_2_application/usecases'))!;
   assert.equal(other.content.includes('conductChangeRepository'), false, 'the usecase of another entity does not');
 });
+
+// d1_267: `agents` at mls-102047@7c4030ec (git show): the ConductChange port the D1 wrote has `list` only, and the usecase of the step that affects it records the row.
+void test('d1_267 (on 7c4030ec): the preserved ConductChange port gets the create a usecase asks of it, and the run goes on to the finalize80', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'agents-7c4030ec', PROJECT);
+  await replanPool(host);
+  await answerNewGaps();
+  const portKey = Object.keys(host.files).find(key => key.endsWith('ports/conductChangeRepository.defs.ts'))!;
+  const methods = (): string[] => [...host.files[portKey].content.matchAll(/"name": "(\w+)"/gu)].map(item => item[1]);
+  assert.deepEqual(methods(), ['list']);
+  const ran = await rederiveRun(host, 'controllers60');
+  assert.deepEqual(failedOf(ran), []);
+  assert.match(ran.find(item => item.stepId === 'persistence40')!.trace, /^persistence40: wrote 1 \(conductChangeRepository\)/u);
+  assert.deepEqual(methods(), ['create', 'list']);
+  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
+  assert.deepEqual(errorsOf(host), []);
+});

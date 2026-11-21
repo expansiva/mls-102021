@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agents",
+  "step": "persistence40",
+  "unitId": "persistence40",
+  "runId": "sha256:86aff819204119e2c7d37b82ba7a926383ab34333d74b9e3af3cc77221c055c5",
+  "snapshotHash": "sha256:86aff819204119e2c7d37b82ba7a926383ab34333d74b9e3af3cc77221c055c5",
+  "draftHash": "sha256:fc02e936638428bd5c2154ea5c55fe14bd2c414512eb53e18415a67f00e5bbd6",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/agentDraft.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/agentDraftRepositoryAdapter.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/conductChange.ts",
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/conductChangeRepositoryAdapter.ts",
+    "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.ts",
+    "_102047_/l1/agents/layer_2_application/ports/conductChangeRepository.ts",
+    "l1/agents/layer_1_external/adapters/persistence/agentDraft.ts",
+    "l1/agents/layer_1_external/adapters/persistence/agentDraftRepositoryAdapter.ts",
+    "l1/agents/layer_1_external/adapters/persistence/conductChange.ts",
+    "l1/agents/layer_1_external/adapters/persistence/conductChangeRepositoryAdapter.ts",
+    "l1/agents/layer_2_application/ports/agentDraftRepository.ts",
+    "l1/agents/layer_2_application/ports/conductChangeRepository.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentDraft.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:296a845e9e70dc6da5e8171358b64046375fc1c31e247ad7a88e57309434cede",
+      "desiredHash": "sha256:296a845e9e70dc6da5e8171358b64046375fc1c31e247ad7a88e57309434cede",
+      "written": "sha256:296a845e9e70dc6da5e8171358b64046375fc1c31e247ad7a88e57309434cede",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/persistence/agentDraft.ts",
+        "l1/agents/layer_1_external/adapters/persistence/agentDraft.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentDraftRepositoryAdapter.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:2eff2ac6038cb1b97be21eb31aa01a0c1a0fc004a9db8e94506d2554a15c9d39",
+      "desiredHash": "sha256:2eff2ac6038cb1b97be21eb31aa01a0c1a0fc004a9db8e94506d2554a15c9d39",
+      "written": "sha256:2eff2ac6038cb1b97be21eb31aa01a0c1a0fc004a9db8e94506d2554a15c9d39",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/persistence/agentDraftRepositoryAdapter.ts",
+        "l1/agents/layer_1_external/adapters/persistence/agentDraftRepositoryAdapter.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/conductChange.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:3251f6e2a10ef71b08642d641e3542b45463db94a76c01c5f3413744e2a77b1f",
+      "desiredHash": "sha256:3251f6e2a10ef71b08642d641e3542b45463db94a76c01c5f3413744e2a77b1f",
+      "written": "sha256:3251f6e2a10ef71b08642d641e3542b45463db94a76c01c5f3413744e2a77b1f",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/persistence/conductChange.ts",
+        "l1/agents/layer_1_external/adapters/persistence/conductChange.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/conductChangeRepositoryAdapter.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:0530235fc732b3a28d5cc50f45aebfbf57dda167d22f10b57956d29eb90f70c8",
+      "desiredHash": "sha256:0530235fc732b3a28d5cc50f45aebfbf57dda167d22f10b57956d29eb90f70c8",
+      "written": "sha256:0530235fc732b3a28d5cc50f45aebfbf57dda167d22f10b57956d29eb90f70c8",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_1_external/adapters/persistence/conductChangeRepositoryAdapter.ts",
+        "l1/agents/layer_1_external/adapters/persistence/conductChangeRepositoryAdapter.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:ddddff5ad6364790fce50844ffe8572abdcdab9e7d6f9a3a390fbbe28241a21c",
+      "desiredHash": "sha256:ddddff5ad6364790fce50844ffe8572abdcdab9e7d6f9a3a390fbbe28241a21c",
+      "written": "sha256:ddddff5ad6364790fce50844ffe8572abdcdab9e7d6f9a3a390fbbe28241a21c",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.ts",
+        "l1/agents/layer_2_application/ports/agentDraftRepository.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/ports/conductChangeRepository.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:43a057131a2a269a620ed64bf76eba0109370b53b51f10adc8d5e19e4378bf2b",
+      "desiredHash": "sha256:43a057131a2a269a620ed64bf76eba0109370b53b51f10adc8d5e19e4378bf2b",
+      "written": "sha256:43a057131a2a269a620ed64bf76eba0109370b53b51f10adc8d5e19e4378bf2b",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/ports/conductChangeRepository.ts",
+        "l1/agents/layer_2_application/ports/conductChangeRepository.ts"
+      ]
+    }
+  ],
+  "issues": [],
+  "sourceKey": "sha256:01d7bec22911db30961e765d3317f1ef2193bfc8d19b91a184242be2db1eb8b0"
+}
