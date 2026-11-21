@@ -148,14 +148,17 @@ export function preservedDefPaths(snapshot: D1InputSnapshot | null): Set<string>
  * d1_266: a preserved usecase def whose `dependencies` are not the ones the plan gives it now. The def of `activate` was written on 18/11, when AgentDraft was
  * kept outside the module and had no port; AgentDraft is a module table now, and the def still did not name its port, so the port never reached the model
  * (it wrote `findById`, a method the port does not have). The dependencies are derived from the plan, so the def is written again with them; a def whose
- * dependencies and the same sources of its call (`data.calls`) stays untouched.
+ * dependencies and the same sources of its call (`data.calls`) stays untouched; one that does not pass the schema of today is written again (d1_271).
  */
-async function dependenciesStale(project: number, defPath: string, wanted: readonly string[], wantedCalls: unknown): Promise<boolean> {
+export async function dependenciesStale(project: number, defPath: string, wanted: readonly string[], wantedCalls: unknown): Promise<boolean> {
   const info = artifactFile(project, defPath);
   const text = info ? await readText(info) : null;
-  const parsed = text ? parseDefinitionSource(text) : null;
-  const definition = parsed && 'definition' in parsed ? readDefinition(parsed.definition) : null;
-  if (!definition || 'issues' in definition) return false;
+  if (!text) return false;
+  // d1_271: a def written in a format of an earlier generator (`data.ports` on the usecases of agendaClinica and comandaRestaurante) does not pass the schema
+  // of today and the finalize80 refuses it. The plan builds the def again in the format of today; one that passes is left as it is.
+  const parsed = parseDefinitionSource(text);
+  const definition = 'definition' in parsed ? readDefinition(parsed.definition) : null;
+  if (!definition || 'issues' in definition) return true;
   const have = new Set(definition.dependencies);
   // d1_269: the sources of the call fields are part of what the plan gives the def now: a def written before them is written again with them.
   if (JSON.stringify(definition.data.calls ?? null) !== JSON.stringify(wantedCalls ?? null)) return true;

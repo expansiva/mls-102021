@@ -23,10 +23,12 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { runResolve25 } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
-import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { seedD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import { loadD1UsecaseWork } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
+import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
+import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 
 const FIXTURE_ID = 'controleEstoque-39a5166';
 const MODULE = 'controleEstoque';
@@ -116,7 +118,13 @@ void test('a preserve usecase keeps its def bytes', async () => {
   host.files[key]!.content = `${JSON.stringify(snapshot, null, 2)}\n`;
   const usecase = loaded.work.request.usecases.find(item => item.usecaseId === preserveId);
   assert.ok(usecase);
-  const bytes = `export const definition = { "artifactId": "${preserveId}" } as const;\n`;
+  // d1_271: a preserved def is left as it is when it passes the schema of today and has what the plan gives it: the bytes are the ones the plan builds for it.
+  const request = { ...loaded.work.request, plans: loaded.work.request.usecases.map(item => fixturePlan(loaded.work.request, item)), llmCalls: 0 };
+  const emitted = buildD1Usecases(request).emit.find(part => part.definition.artifactId === preserveId);
+  assert.ok(emitted);
+  const rendered = renderDefinition(emitted.definition, emitted.pipeline[0].defPath);
+  assert.ok('source' in rendered);
+  const bytes = (rendered as { source: string }).source;
   const info = artifactFile(PROJECT, usecase.defPath);
   assert.ok(info);
   seed(host, info, bytes, 'defs');
