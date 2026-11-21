@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-import { catalogTypeFields } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
+import { catalogMemberType, catalogTypeFields, expectVersionType } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { emitRequestService, emitUsecase } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
@@ -87,7 +87,8 @@ void test('a usecase on an external entity takes its signature from the call: tr
   const emitted = await emitUsecase(update.definition, '_102099_/l1/agents/layer_2_application/usecases/updateAgentDraft.ts', read(all));
   assert.ok('source' in emitted, JSON.stringify(emitted));
   assert.match(emitted.source, /import type \{ CmUpdateAgentInput, CmUpdateAgentOutput \} from '\/_102034_\/l2\/shared\/contracts\/connections\/cm\.js';/u);
-  assert.match(emitted.source, /UpdateAgentDraftInput extends CmUpdateAgentInput \{\n  expectVersion: number;/u);
+  assert.match(emitted.source, /UpdateAgentDraftInput extends CmUpdateAgentInput \{\n  expectVersion: string;/u);
+  assert.equal((update.definition.data as { externalCall: { versionType?: string } }).externalCall.versionType, 'string', 'the cm types the version of the answer as a string');
   // d1_203: no index signature, so a field the catalog does not declare is a compile error in a call and in a read.
   assert.match(emitted.source, /UpdateAgentDraftOutput extends CmUpdateAgentOutput \{\}/u);
   assert.equal(emitted.source.includes('Record<string, unknown>'), false);
@@ -163,3 +164,14 @@ void test('a route that lists two usecases of one external entity (one per call)
   assert.match(emitted.source, /updateAgentAgentBehavior/u);
   assert.match(emitted.source, /undoAgentChange/u);
 });
+
+// d1_276: the type of the version is the catalog's, not a fixed `number`.
+void test('d1_276: expectVersionType reads the version of the answer from the catalog', () => {
+  assert.equal(catalogMemberType(CM_SOURCE, 'CmUpdateAgentOutput', 'version'), 'string');
+  assert.equal(expectVersionType(CM_SOURCE, 'CmUpdateAgentOutput'), 'string');
+  assert.equal(expectVersionType('export interface XOut {\n  version: number;\n}\n', 'XOut'), 'number');
+  // No version in the answer, or no such type: the number of a stored record stays.
+  assert.equal(expectVersionType(CM_SOURCE, 'CmActivateAgentOutput'), 'number');
+  assert.equal(expectVersionType(CM_SOURCE, 'NoSuchType'), 'number');
+});
+

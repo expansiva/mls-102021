@@ -13,7 +13,7 @@ import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/conn
 import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { recordFieldFromGrant, recordFieldsFromGrant, scopeJoins } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
-import { arrivalUpsertProblems, emptyCastProblems, emptyRequiredProblems, gatewayBypassProblems, recordCastProblems, requestRepositoryProblems, importSpecifiers, staticPlainErrorProblems, unknownUsecaseImportProblems, upstreamThrowWithoutReadProblems, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { arrivalUpsertProblems, externalVersionConversionProblems, emptyCastProblems, emptyRequiredProblems, gatewayBypassProblems, recordCastProblems, requestRepositoryProblems, importSpecifiers, staticPlainErrorProblems, unknownUsecaseImportProblems, upstreamThrowWithoutReadProblems, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, infoOfRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -22,7 +22,7 @@ import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTok
 import { pageJourneyIds, processReceives, routeReachableOperations, processStartEvent, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
 import { moduleSpecifier, workflowFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { routeChildWrites } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
-import { childRecordsOf } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { childRecordsOf, externalVersionOf } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { recipeDraft, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -1228,6 +1228,13 @@ export async function delegatedRuleProblems(
   return problems;
 }
 
+/** d1_276: the request calls a usecase whose outside call takes `expectVersion` typed `string` by the catalog. */
+function usedStringVersion(units: readonly M12Unit[], request: M12Unit): boolean {
+  const rows = Array.isArray(request.definition.data.requests) ? request.definition.data.requests.filter(isRecord) : [];
+  const used = new Set(rows.flatMap(row => (Array.isArray(row.uses) ? row.uses.map(String) : [])));
+  return units.some(item => item.definition.artifactType === 'usecase' && used.has(item.unitId) && externalVersionOf(item) === 'string');
+}
+
 export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code: string, notApplicable: readonly M12RuleNotApplicable[]): Promise<string[]> {
   const data = await loadRequestContext(ctx, unit);
   const ruleIds = [...new Set(data.routes.flatMap(route => route.rules))];
@@ -1246,6 +1253,8 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
     ...requestGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, arrivalUpserts: data.arrivalUpserts, usecaseInputs: await usecaseInputsOf(ctx), consumeMessages: consumeMarks(unit.definition.data).map(item => consumeMessageTypeName(item.mark)), ports: repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), usecases: ctx.units.filter(item => item.definition.artifactType === 'usecase').map(item => item.unitId).sort() }),
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
+    // d1_276: a route that passes the version to a usecase whose call takes it as a string never converts it.
+    ...(usedStringVersion(ctx.units, unit) ? externalVersionConversionProblems(code) : []),
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared
     // `create`/`delete` for ItemChecklist, whose port has neither: "repo.create is not a function", tarefas 16/10).
     ...repositoryProblems(code, [...repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), ...moduleGatewayNames(ctx.units)], moduleGatewayNames(ctx.units)),

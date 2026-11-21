@@ -183,6 +183,30 @@ export function catalogFieldUnion(source: string, typeName: string, field: strin
   return alias ? literalUnion(alias[1]) : [];
 }
 
+/**
+ * d1_276: the type text of the member `field` of the type `typeName` of a catalog file (`version: string;` → `string`), or '' when the type or the member is
+ * not there. The version a write answers with is what the catalog types it as; the usecase takes `expectVersion` in that same type.
+ */
+export function catalogMemberType(source: string, typeName: string, field: string): string {
+  if (!ident(typeName) || !ident(field)) return '';
+  const open = typeObjectOpen(source, typeName);
+  if (open < 0) return '';
+  let depth = 0;
+  let body = '';
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '{') depth += 1;
+    if (char === '}') { depth -= 1; if (depth === 0) break; }
+    body += char;
+  }
+  return new RegExp(`(?:^|\\n)\\s*"?${field}"?\\??\\s*:\\s*([^;\\n]+);`, 'u').exec(body)?.[1].trim() ?? '';
+}
+
+/** The type of `expectVersion` of a usecase that calls `operation` (d1_276): `string` when the catalog types the `version` of its answer as `string`, else `number`. */
+export function expectVersionType(source: string, outputType: string): 'string' | 'number' {
+  return catalogMemberType(source, outputType, 'version') === 'string' ? 'string' : 'number';
+}
+
 export interface CatalogField {
   name: string;
   optional: boolean;

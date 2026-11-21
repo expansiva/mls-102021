@@ -8,7 +8,7 @@
 
 import { connectionCatalogSource, l1OwnerOfRef } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
-import { catalogOperations, catalogTypeFields } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
+import { catalogOperations, catalogTypeFields, expectVersionType } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 type Read = (ref: string) => Promise<string | null>;
@@ -93,7 +93,9 @@ async function externalPlan(definition: M1Definition, entityDep: string, read: R
   const outputFields = catalogTypeFields(catalogSource, operation.outputType);
   if (!inputFields || !outputFields) return { definition, detail: `${operation.inputType} or ${operation.outputType} is not declared in ${catalogRef}.` };
   const input: SignatureRow[] = inputFields.map(field => ({ name: field.name, type: 'string' }));
-  if (operation.expectsVersion && !input.some(item => item.name === 'expectVersion')) input.push({ name: 'expectVersion', type: 'number' });
+  // d1_276: the version of an entity kept outside is what the catalog says (the cm: string), not the `number` of a record the module stores.
+  const versionType = expectVersionType(catalogSource, operation.outputType);
+  if (operation.expectsVersion && !input.some(item => item.name === 'expectVersion')) input.push({ name: 'expectVersion', type: versionType });
   const output: SignatureRow[] = outputFields.map(field => ({ name: field.name, type: 'string' }));
   return {
     definition: {
@@ -107,6 +109,7 @@ async function externalPlan(definition: M1Definition, entityDep: string, read: R
           inputType: operation.inputType,
           outputType: operation.outputType,
           expectsVersion: operation.expectsVersion,
+          ...(operation.expectsVersion ? { versionType } : {}),
           catalogSpecifier: found?.importPath ?? catalogImportPath(connectionId),
         },
         ports: [],

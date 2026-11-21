@@ -38,6 +38,8 @@ export interface M12CodeGateInput {
   externalPort?: string;
   /** The usecase writes an external entity: the system outside meets its rules through the call (d1_196). */
   externalEntity?: boolean;
+  /** d1_276: the catalog types the `expectVersion` of this call as `string` (`externalCall.versionType` of the def): the file never converts it to a number. */
+  stringVersion?: boolean;
   /** Calls the def of the integration gives this usecase as consumer (`connections[].consumer`): the file must make each one (d1_219). */
   consumerCalls?: readonly M12ConsumerCall[];
   /** Where the required fields of those calls that no field of the usecase names come from (`data.calls` of the def, d1_269): the file must build each one. */
@@ -775,6 +777,19 @@ export function repositoryProblems(code: string, knownPorts?: readonly string[],
  * stored one and increments it itself, so `version: current.version + 1` is always refused with
  * CONCURRENCY_CONFLICT (fecharComanda and cancelarItemComanda did this).
  */
+/**
+ * d1_276: the version of an entity kept outside is typed by the catalog (`string` in the cm), and the call takes it as it is. `Number(...)` (or `parseInt`,
+ * `parseFloat`, a unary `+`) over `expectVersion` or a `version` turns the string into a number the system refuses (`Number(input.expectVersion)` of
+ * agent_behavior and my_conduct). Only for a version the catalog types as `string`: the version of a record the module stores stays a number.
+ */
+export function externalVersionConversionProblems(code: string): string[] {
+  const clean = withoutComments(code);
+  const converted = /\b(?:Number|parseInt|parseFloat)\s*\(\s*[^()]*\b(?:expectVersion|version)\b[^()]*\)/u.test(clean);
+  return converted
+    ? ['VERSION_CONVERTED: the version of an entity kept outside is a string, as the catalog types it: pass `expectVersion` and `version` as they come, without `Number(...)`, `parseInt` or `parseFloat`. The system refuses a number.']
+    : [];
+}
+
 export function versionProblems(code: string): string[] {
   const increments = /\bversion\s*:\s*[^,\n;}]*\+\s*1\b|\.version\s*\+\s*1\b|\.version\s*\+\+|\.version\s*\+=/u;
   return increments.test(code)
@@ -959,6 +974,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...repositoryProblems(code, input.ports, input.gateways, input.externalPort));
   problems.push(...gatewayBypassProblems(code));
   problems.push(...versionProblems(code));
+  if (input.stringVersion) problems.push(...externalVersionConversionProblems(code));
   problems.push(...derivedReadProblems(code, input.derivedPaths ?? []));
   if (input.operation === 'list') problems.push(...listFilterProblems(code));
   problems.push(...parentRuleProblems(code, input.parentRules ?? []));

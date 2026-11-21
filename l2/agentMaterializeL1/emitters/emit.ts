@@ -326,7 +326,7 @@ function emitExternalUsecase(
   }
   const inputType = `${pascal(fnName)}Input`;
   const outputTypeName = `${pascal(fnName)}Output`;
-  const version = call.expectsVersion === true ? '  expectVersion: number;\n' : '';
+  const version = call.expectsVersion === true ? `  expectVersion: ${call.versionType === 'string' ? 'string' : 'number'};\n` : '';
   void fn;
   return {
     runsStub: true,

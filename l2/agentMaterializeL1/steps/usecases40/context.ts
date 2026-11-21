@@ -6,7 +6,7 @@
 
 import { connectionCatalogSource, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { emitUsecase, emittedValueExports, ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
-import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
+import { catalogOperations, expectVersionType } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -264,6 +264,12 @@ export function consumerCallsOf(ctx: M12Context, functionName: string, artifactI
   return out;
 }
 
+/** d1_276: the type the catalog gives the `expectVersion` of the call this usecase makes (`data.externalCall.versionType`), or '' when it has none. */
+export function externalVersionOf(unit: M12Unit): string {
+  const call = unit.definition.data.externalCall;
+  return call && typeof call === 'object' && typeof (call as { versionType?: unknown }).versionType === 'string' ? String((call as { versionType: string }).versionType) : '';
+}
+
 /** `data.calls` of the usecase def, as the gate and the context read it (d1_269). Nothing when the def has none. */
 export function callInputsOfDef(unit: M12Unit): M12CallInputs[] {
   const value = unit.definition.data.calls;
@@ -329,7 +335,7 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
       const effect = row.effect ? ` Covers effect \`${row.effect}\`.` : '';
       if (!operation) return `- \`${row.operationId}\`: the catalog does not list this operation.${effect}`;
       const version = operation.expectsVersion
-        ? ' The usecase receives `expectVersion` in its input (what the screen sent, from the `version` it read), passes `{ expectVersion }` in `opts`, and does not put it in the catalog `input`. When it is missing the gateway answers `invalid`.'
+        ? ` The usecase receives \`expectVersion\` in its input (what the screen sent, from the \`version\` it read), typed \`${expectVersionType(catalogSource ?? '', operation.outputType)}\` as the catalog types the \`version\` of the answer: it passes it on as it is in \`opts\` (\`{ expectVersion }\`), never converted (no \`Number(...)\`), and does not put it in the catalog \`input\`. When it is missing the gateway answers \`invalid\`.`
         : '';
       const later = operation.reply === 'later'
         ? ` The method returns the id of the work (\`${operation.outputType}\`). The usecase returns that id as its output and does not wait for the result. Do not create a column or a correlation table for it. Store it only when an l4 rule or entity says to store it. The result arrives later through the serve operation \`${operation.resultOperation}\`.`
@@ -1160,7 +1166,7 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const arrival = arrivalOf(ctx, unit);
   return [
     ...waived.problems,
-    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ...(arrival ? { arrival } : {}), ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), callInputs: callInputsOfDef(unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId), childRecords: childRecordsOf(ctx, unit), usecaseInputs: await usecaseInputsOf(ctx), mdmCalls: mdmBoundCalls(unit.definition.data) }),
+    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), stringVersion: externalVersionOf(unit) === 'string', derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ...(arrival ? { arrival } : {}), ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), callInputs: callInputsOfDef(unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId), childRecords: childRecordsOf(ctx, unit), usecaseInputs: await usecaseInputsOf(ctx), mdmCalls: mdmBoundCalls(unit.definition.data) }),
   ];
 }
 
