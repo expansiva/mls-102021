@@ -590,3 +590,15 @@ void test('d1_255 (on 30f16c8e): the result the manager reads at the end of the 
   assert.match((result.runSummary ?? []).join('\n'), /^domain30: wrote /mu);
   assert.match((result.runSummary ?? []).join('\n'), /^support70: /mu);
 });
+
+void test('d1_264 (2): on 30f16c8e the cm list of agents is not consumed by the read of AgentDraft, which the module stores; the other consumers stay', async () => {
+  const host = await seedA30Ready();
+  assert.deepEqual(failedOf(await rederiveRun(host, 'controllers60')), []);
+  const outbound = Object.values(host.files).find(file => file.shortName === 'outbound' && file.extension === '.defs.ts' && file.level === 1)!;
+  const consumers = (operation: string): string[] => [...outbound.content.matchAll(new RegExp(`"operationId": "${operation}",\\s*"consumer": "(\\w+)"`, 'gu'))].map(item => item[1]).sort();
+  assert.deepEqual(consumers('listAgents'), ['listAgent', 'toolCatalogRefresh']);
+  // The writes and the transitions of AgentDraft keep their calls: the cm `Agent` includes the draft.
+  assert.deepEqual(consumers('createAgent'), ['createAgentDraft']);
+  assert.deepEqual(consumers('activateAgent'), ['activate']);
+  assert.deepEqual(consumers('discardAgentDraft'), ['discard']);
+});

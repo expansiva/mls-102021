@@ -314,3 +314,26 @@ void test('routeCallsOf: an unknown page has no calls', () => {
     transitionRef: '',
   }), []);
 });
+
+// d1_264: the read of an entity the module stores stays on its repository when the call names other entities.
+void test('a call that names other entities does not serve the read of an entity the module stores; a write and an unknown entity keep the step', () => {
+  const stored = {
+    open: { journeyId: 'open', business: { steps: [
+      { stepId: 'follow', kind: 'locate', entity: 'Draft' },
+      { stepId: 'send', kind: 'act', entity: 'Draft', effect: 'create' },
+    ] } },
+  };
+  const calls = [
+    { connectionId: 'cm', operationId: 'listAgents', direction: 'call', usedBy: ['open.follow'], entityRefs: ['Agent'] },
+    { connectionId: 'cm', operationId: 'createAgent', direction: 'call', usedBy: ['open.send'], entityRefs: ['Agent'] },
+  ];
+  const usecases = [usecase('listDraft', 'Draft', 'list'), usecase('createDraft', 'Draft', 'create')];
+  const calls0 = (kinds: Map<string, string>) => externalCallsOf({ journeys: stored, connections: calls, usecases, entityKind: kinds, allEntities: true })
+    .map(match => `${match.usecaseId}:${match.calls.map(call => call.operationId).join()}`);
+  assert.deepEqual(calls0(new Map([['Draft', 'entity']])), ['listDraft:', 'createDraft:createAgent'], 'a stored entity: the list is not served, the write is');
+  assert.deepEqual(calls0(new Map([['Draft', 'external']])), ['listDraft:listAgents', 'createDraft:createAgent'], 'an external entity: the call serves it');
+  assert.deepEqual(calls0(new Map()), ['listDraft:listAgents', 'createDraft:createAgent'], 'an entity the L4 does not give: as before');
+  const route = (kinds: Map<string, string>) => routeCallsOf({ needs: { pages: [{ pageId: 'p', reads: [{ entity: 'Draft', from: ['journey:open/follow'] }] }] }, journeys: stored, connections: calls, entityKind: kinds, pageId: 'p', entity: 'Draft', operation: 'list', transitionRef: '' });
+  assert.deepEqual(route(new Map([['Draft', 'entity']])), []);
+  assert.deepEqual(route(new Map()), ['cm.listAgents']);
+});
