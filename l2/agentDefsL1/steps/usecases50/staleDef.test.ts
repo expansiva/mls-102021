@@ -12,11 +12,11 @@ import { pendingDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.j
 import { dependenciesStale } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 
 const PROJECT = 102099;
-const DEF_PATH = `_${PROJECT}_/l1/agendaClinica/layer_2_application/usecases/getConsulta.defs.ts`;
-const DEPENDENCIES = [`_${PROJECT}_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts`];
+const DEF_PATH = `_${PROJECT}_/l1/moduloTeste/layer_2_application/usecases/getItem.defs.ts`;
+const DEPENDENCIES = [`_${PROJECT}_/l1/moduloTeste/layer_3_domain/entities/item.defs.ts`];
 
 function valid(): string {
-  const definition = pendingDefinition('usecase', 'getConsulta', 'agendaClinica', { usecaseId: 'getConsulta', entityId: 'Consulta', operation: 'get', rulesApplied: [], effects: [] });
+  const definition = pendingDefinition('usecase', 'getItem', 'moduloTeste', { usecaseId: 'getItem', entityId: 'Item', operation: 'get', rulesApplied: [], effects: [] });
   definition.dependencies = [...DEPENDENCIES];
   const rendered = renderDefinition(definition, DEF_PATH);
   assert.ok('source' in rendered, JSON.stringify(rendered));
@@ -35,7 +35,7 @@ void test('a def that passes the schema and has what the plan gives is left as i
 });
 
 void test('a def of an earlier format (data.ports) does not pass the schema and is written again', async () => {
-  onDisk(valid().replace('"effects": []', '"effects": [],\n    "ports": ["ConsultaRepository"]'));
+  onDisk(valid().replace('"effects": []', '"effects": [],\n    "ports": ["ItemRepository"]'));
   assert.equal(await dependenciesStale(PROJECT, DEF_PATH, DEPENDENCIES, undefined), true);
 });
 
@@ -48,7 +48,7 @@ void test('a def that cannot be read as a definition is written again; a def tha
 
 void test('the criteria of d1_266 stay: other dependencies, other call sources', async () => {
   onDisk(valid());
-  assert.equal(await dependenciesStale(PROJECT, DEF_PATH, [...DEPENDENCIES, `_${PROJECT}_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts`], undefined), true);
+  assert.equal(await dependenciesStale(PROJECT, DEF_PATH, [...DEPENDENCIES, `_${PROJECT}_/l1/moduloTeste/layer_2_application/ports/itemRepository.defs.ts`], undefined), true);
   assert.equal(await dependenciesStale(PROJECT, DEF_PATH, DEPENDENCIES, [{ call: 'a.b', input: [{ field: 'x', from: { kind: 'input', field: 'y' } }] }]), true);
   assert.ok(fileKey);
 });
