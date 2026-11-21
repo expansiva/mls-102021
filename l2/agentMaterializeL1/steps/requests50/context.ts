@@ -6,7 +6,7 @@
 
 import { usecaseInputsOf, type M12InputField } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
 import { connectionCatalogSource, isCatalogImport, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
-import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { isRecord, parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { systemIdentity } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { requestsObjectBodies } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
 import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
@@ -1144,11 +1144,15 @@ export function requestGate(code: string, input: {
  * A route rule the request names only in a comment that hands it to a usecase ("createItemComanda enforces
  * itensSomenteEmComandaAberta"). The handoff holds only when that usecase carries the ruleId in its code; the usecase
  * gate then makes it read the record the rule is about. On 06/10 neither side checked the comanda of a launched item.
+ * d1_265: the handoff is held only against a usecase whose def assigns the rule (`rulesApplied`). A comment that says a usecase "is a read, nothing is stored"
+ * names a rule the def never gave it (simulationSavesNothing, a rule of non-effect), and no AppError can say that: the comment on the route stands.
+ * `assignedRules` is the `rulesApplied` of the usecase def; `null` (no def to read) keeps the demand.
  */
 export async function delegatedRuleProblems(
   code: string,
   ruleIds: readonly string[],
   readUsecase: (name: string) => Promise<string | null>,
+  assignedRules: (name: string) => Promise<readonly string[] | null> = async () => null,
 ): Promise<string[]> {
   const usecases = [...new Set(importSpecifiers(code)
     .filter(specifier => specifier.includes('/layer_2_application/usecases/'))
@@ -1160,6 +1164,8 @@ export async function delegatedRuleProblems(
     for (const name of usecases.filter(item => lines.some(line => new RegExp(`\\b${item}\\b`, 'u').test(line)))) {
       const source = await readUsecase(name);
       if (source && (source.includes(`'${ruleId}'`) || source.includes(`"${ruleId}"`))) continue;
+      const assigned = await assignedRules(name);
+      if (assigned && !assigned.includes(ruleId)) continue;
       problems.push(`Rule ${ruleId} is handed to ${name} in a comment, but ${name} does not apply it (no AppError with ruleId '${ruleId}'). Check it here: read the record the rule is about through its usecase and throw an AppError with ruleId '${ruleId}' when it is broken.`);
     }
   }
@@ -1172,6 +1178,13 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const waived = readNotApplicable(notApplicable, ruleIds);
   const waivedIds = new Set(waived.items.map(item => item.ruleId));
   const readUsecase = (name: string): Promise<string | null> => ctx.read(`_${ctx.run.project}_/l1/${ctx.run.module}/layer_2_application/usecases/${name}.ts`);
+  const assignedRules = async (name: string): Promise<readonly string[] | null> => {
+    const text = await ctx.read(`_${ctx.run.project}_/l1/${ctx.run.module}/layer_2_application/usecases/${name}.defs.ts`);
+    const parsed = text ? parseDefinitionSource(text) : null;
+    const definition = parsed && 'definition' in parsed && isRecord(parsed.definition) ? parsed.definition : null;
+    const data = definition && isRecord(definition.data) ? definition.data : null;
+    return data && Array.isArray(data.rulesApplied) ? data.rulesApplied.map(String) : null;
+  };
   return [
     ...waived.problems,
     ...requestGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, arrivalUpserts: data.arrivalUpserts, usecaseInputs: await usecaseInputsOf(ctx), consumeMessages: consumeMarks(unit.definition.data).map(item => consumeMessageTypeName(item.mark)), ports: repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), usecases: ctx.units.filter(item => item.definition.artifactType === 'usecase').map(item => item.unitId).sort() }),
@@ -1180,7 +1193,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared
     // `create`/`delete` for ItemChecklist, whose port has neither: "repo.create is not a function", tarefas 16/10).
     ...repositoryProblems(code, [...repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), ...moduleGatewayNames(ctx.units)], moduleGatewayNames(ctx.units)),
-    ...await delegatedRuleProblems(code, ruleIds.filter(ruleId => !waivedIds.has(ruleId)), readUsecase),
+    ...await delegatedRuleProblems(code, ruleIds.filter(ruleId => !waivedIds.has(ruleId)), readUsecase, assignedRules),
   ];
 }
 

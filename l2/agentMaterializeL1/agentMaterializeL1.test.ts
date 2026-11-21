@@ -784,6 +784,13 @@ test('a rule about a parent record obliges reading it (an item was launched in a
   assert.ok(without[0].includes('handed to createItemComanda'), without[0]);
   const withIt = await delegatedRuleProblems(request, ['itensSomenteEmComandaAberta'], async () => "throw new AppError('X', '', 409, { ruleId: 'itensSomenteEmComandaAberta' });");
   assert.deepEqual(withIt, []);
+  // d1_265: the def of the usecase decides whether it was given the rule. One that lists it is held to it (the case above); one that does not (a read, and a
+  // rule of non-effect the route notes in a comment) is not.
+  const note = "import { listAgentSimulation } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.js';\n// simulationSavesNothing: listAgentSimulation performs a simulation, not a write.\nawait listAgentSimulation(input, ctx);";
+  assert.equal((await delegatedRuleProblems(note, ['simulationSavesNothing'], async () => 'export async function listAgentSimulation() {}')).length, 1, 'with no def to read the demand stays');
+  assert.deepEqual(await delegatedRuleProblems(note, ['simulationSavesNothing'], async () => 'export async function listAgentSimulation() {}', async () => []), [], 'the def gave it no rule');
+  assert.equal((await delegatedRuleProblems(note, ['simulationSavesNothing'], async () => 'export async function listAgentSimulation() {}', async () => ['simulationSavesNothing'])).length, 1, 'the def gave it this rule: held to it');
+  assert.equal((await delegatedRuleProblems(request, ['itensSomenteEmComandaAberta'], async () => 'export async function createItemComanda() {}', async () => ['itensSomenteEmComandaAberta'])).length, 1);
   assert.deepEqual(await delegatedRuleProblems("// valorTotalItemComandaCalculado: quantidade x preço\nconst total = q * p;", ['valorTotalItemComandaCalculado'], async () => null), [], 'a comment on a calculation still names the rule');
 });
 

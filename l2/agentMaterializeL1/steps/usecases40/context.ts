@@ -286,9 +286,14 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
     'The def names this usecase the consumer of every operation listed below: the file must call each one as `gateway.<operation>(…)`. A listed operation that is not called refuses the file.',
   ];
   const external = externalEntityIds(ctx.units);
-  if (rows.some(row => row.entityRefs.some(entity => external.has(entity)))) {
+  // d1_265: the entity the usecase works on decides, not the entities the call names: the cm call `activateAgent` names the external `Agent`, but the
+  // usecase `activate` moves the AgentDraft, which the module stores, so its transition is written on the module copy and the gateway is called too.
+  const own = ctx.units.find(item => item.definition.artifactType === 'usecase' && item.definition.artifactId === artifactId)?.definition.data.entityId;
+  const ownEntity = typeof own === 'string' && own ? own : '';
+  const keptOutside = ownEntity ? external.has(ownEntity) : rows.some(row => row.entityRefs.some(entity => external.has(entity)));
+  if (keptOutside) {
     blocks.push('The entity is kept outside this module. Read and write it only through the gateway. Do not call `resolveRepository` for the entity repository, do not use `ctx.mdm` for it, and do not use a table.');
-  } else if (rows.some(row => row.entityRefs.length > 0)) {
+  } else if (ownEntity || rows.some(row => row.entityRefs.length > 0)) {
     blocks.push('The entity is stored in this module and also lives in the system outside. Keep the repository for the module copy and call the gateway for the operations below, in the order the l4 rules under "Rules" say. The gateway call is not optional: it is how the change reaches the system outside.');
   }
   for (const connectionId of [...byConnection.keys()].sort()) {

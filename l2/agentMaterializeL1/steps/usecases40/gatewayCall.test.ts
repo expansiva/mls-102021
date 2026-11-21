@@ -176,3 +176,22 @@ void test('d1_219 s3: the request of the T1 that invented ports to reach the sys
   ].join('\n');
   assert.deepEqual(repositoryProblems(through, ports, ['GithubGateway']), []);
 });
+
+void test('d1_265: the entity the usecase works on decides the text, not the entities the call names', async () => {
+  await withHost(async () => {
+    // `createContentFile` moves ContentFile, which the module stores; the call names ContentFolder, which is external: the module copy is written too.
+    const { ctx } = setup('moduleDatabase');
+    const units = (ctx as unknown as { units: M12Unit[] }).units;
+    const folder = unit('domainEntity', 'ContentFolder', { entityId: 'ContentFolder', storageTarget: 'external' }, `_${PROJECT}_/l1/${MODULE}/layer_3_domain/entities/contentFolder.ts`);
+    const outbound = units.find(item => item.definition.artifactType === 'integrationOutbound')!;
+    (outbound.definition.data as { connections: unknown[] }).connections = [connection('gravarArquivo', 'createContentFile', ['ContentFolder'], 'update')];
+    (ctx as unknown as { units: M12Unit[] }).units = [...units, folder];
+    const text = await connectionGatewaySection(ctx, 'createContentFile', 'createContentFile');
+    assert.match(text, /The entity is stored in this module and also lives in the system outside\. Keep the repository for the module copy/u);
+    assert.equal(text.includes('kept outside this module'), false);
+    // The usecase of the external entity itself keeps the text it had.
+    const external = unit('domainEntity', 'ContentFile', { entityId: 'ContentFile', storageTarget: 'external' }, `_${PROJECT}_/l1/${MODULE}/layer_3_domain/entities/contentFile.ts`);
+    (ctx as unknown as { units: M12Unit[] }).units = [...units.filter(item => item.definition.artifactId !== 'ContentFile'), folder, external];
+    assert.match(await connectionGatewaySection(ctx, 'createContentFile', 'createContentFile'), /The entity is kept outside this module/u);
+  });
+});
