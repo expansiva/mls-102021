@@ -514,7 +514,8 @@ void test('d1_253 (on 30f16c8e): /rederive controllers60, the state stays, /rede
 
   // No usecase def disappeared in the whole sequence. The ones the routes now need are added (the first run wrote them).
   const after = usecaseDefNames(host);
-  assert.deepEqual(usecasesBefore.filter(name => !after.includes(name)), []);
+  // The fixture and the rules are fixed: the sequence adds exactly these three (the first run writes them) and drops none.
+  assert.deepEqual(after, [...usecasesBefore, 'getPersonalConduct', 'listConductChange', 'updateAgentDraft'].sort());
 
   // 5: a def edited by hand between the first run and the second command is refused, and the edit stays.
   const other = await seedA30Ready();
@@ -536,6 +537,37 @@ void test('d1_255 (on 30f16c8e): the result the manager reads at the end of the 
   const result = JSON.parse(text) as { materializeTargets?: string[]; runSummary?: string[]; rederiveChanged?: number };
   assert.ok((result.rederiveChanged ?? 0) > 0);
   assert.equal(result.materializeTargets?.length, result.rederiveChanged);
+  // The fixture and the rules are fixed: the exact targets the manager has to materialize.
+  assert.deepEqual(result.materializeTargets, [
+    'layer_1_external/adapters/http/controllers/agents',
+    'layer_1_external/adapters/http/controllers/my_conduct',
+    'layer_1_external/adapters/integration/outbound',
+    'layer_1_external/adapters/persistence/agentDraft',
+    'layer_1_external/adapters/persistence/agentDraftRepositoryAdapter',
+    'layer_1_external/adapters/persistence/conductChange',
+    'layer_1_external/adapters/persistence/conductChangeRepositoryAdapter',
+    'layer_1_external/adapters/persistence/registerRepositories',
+    'layer_1_external/adapters/persistence/seeds',
+    'layer_1_external/auth/authorityMap',
+    'layer_2_application/ports/agentDraftRepository',
+    'layer_2_application/ports/conductChangeRepository',
+    'layer_2_application/requests/agent_behavior',
+    'layer_2_application/requests/agent_configuration',
+    'layer_2_application/requests/agent_overview',
+    'layer_2_application/requests/agents',
+    'layer_2_application/requests/cm',
+    'layer_2_application/requests/draft_review',
+    'layer_2_application/requests/my_conduct',
+    'layer_2_application/requests/person_restrictions',
+    'layer_2_application/requests/tool_catalog',
+    'layer_2_application/scope/accessScope',
+    'layer_2_application/usecases/getPersonalConduct',
+    'layer_2_application/usecases/listConductChange',
+    'layer_2_application/usecases/updateAgentDraft',
+    'layer_3_domain/entities/agentDraft',
+    'layer_3_domain/entities/conductChange',
+    'layer_3_domain/entities/personalConduct',
+  ].map(def => `@@agentMaterializeL1 {"target":"_102047_/l1/agents/${def}.defs.ts"}`));
   assert.match((result.runSummary ?? []).join('\n'), /^domain30: wrote /mu);
   assert.match((result.runSummary ?? []).join('\n'), /^support70: /mu);
 });
