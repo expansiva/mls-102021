@@ -1,0 +1,121 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/adapters/persistence/seeds.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "persistenceSeeds",
+  "artifactId": "seeds",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts",
+    "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts"
+  ],
+  "data": {
+    "seedId": "seeds",
+    "phase": "plan",
+    "scenarios": [
+      {
+        "scenarioId": "acompanharAvisosMudanca",
+        "tableId": "repositoryChange",
+        "source": "journey:acompanharAvisosMudanca",
+        "constraints": [],
+        "refs": [],
+        "states": [],
+        "entityId": "RepositoryChange"
+      },
+      {
+        "scenarioId": "consultarConteudoRepositorio",
+        "tableId": "repositoryEntry",
+        "source": "journey:consultarConteudoRepositorio",
+        "constraints": [
+          "ref:parentEntryId:RepositoryEntry",
+          "uniqueKeys:path"
+        ],
+        "refs": [
+          {
+            "field": "parentEntryId",
+            "relationshipId": "entryParentFolder",
+            "entityId": "RepositoryEntry"
+          }
+        ],
+        "states": [],
+        "entityId": "RepositoryEntry"
+      }
+    ],
+    "dependencies": [
+      {
+        "entityId": "RepositoryChange",
+        "kind": "module",
+        "seeded": false
+      },
+      {
+        "entityId": "RepositoryEntry",
+        "kind": "module",
+        "seeded": false
+      }
+    ],
+    "datasets": [
+      {
+        "datasetId": "repositoryChange",
+        "tableId": "repositoryChange",
+        "owners": [
+          "acompanharAvisosMudanca"
+        ]
+      },
+      {
+        "datasetId": "repositoryEntry",
+        "tableId": "repositoryEntry",
+        "owners": [
+          "consultarConteudoRepositorio"
+        ]
+      }
+    ],
+    "fixture": {
+      "schemaVersion": "2026-09-27-m1-certification-fixture-v1",
+      "phase": "plan",
+      "targets": [
+        "memory",
+        "development"
+      ],
+      "datasets": [
+        {
+          "supportId": "data:RepositoryChange",
+          "entityId": "RepositoryChange",
+          "tableId": "repositoryChange",
+          "dependsOn": [],
+          "sourceRefs": [
+            "grant:administradorAcompanhaAvisos",
+            "journey:acompanharAvisosMudanca/listarAvisos",
+            "journey:acompanharAvisosMudanca/verAviso"
+          ]
+        },
+        {
+          "supportId": "data:RepositoryEntry",
+          "entityId": "RepositoryEntry",
+          "tableId": "repositoryEntry",
+          "dependsOn": [],
+          "sourceRefs": [
+            "grant:administradorConsultaRepositorio",
+            "journey:consultarConteudoRepositorio/lerArquivo",
+            "journey:consultarConteudoRepositorio/listarPastasArquivos"
+          ]
+        }
+      ],
+      "runtime": [
+        {
+          "supportId": "identity:administrador",
+          "kind": "identity",
+          "entityId": "",
+          "actorRefs": [
+            "administrador"
+          ],
+          "gap": "PERSON_ENTITY_UNDECLARED: actor administrador declares no personEntity; the test identity cannot be bound",
+          "owner": "runtime"
+        }
+      ],
+      "gaps": []
+    }
+  }
+} as const;
+
+export default definition;

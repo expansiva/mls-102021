@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "step": "persistence40",
+  "unitId": "persistence40",
+  "runId": "sha256:7f1f7c7c7f34a89b8b20171f4c149115fc9bd32cf0c6fcbbf073be8a99ccdf4d",
+  "snapshotHash": "sha256:7f1f7c7c7f34a89b8b20171f4c149115fc9bd32cf0c6fcbbf073be8a99ccdf4d",
+  "draftHash": "sha256:9c39d2f447451c0f727f651b366e426e34f8b28ff0515b0e1df52d76c6736409",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.ts",
+    "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.ts",
+    "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.ts",
+    "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.ts",
+    "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.ts",
+    "_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.ts",
+    "l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.ts",
+    "l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.ts",
+    "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.ts",
+    "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.ts",
+    "l1/repoHost/layer_2_application/ports/repositoryChangeRepository.ts",
+    "l1/repoHost/layer_2_application/ports/repositoryEntryRepository.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:164305d6078c501a4465059ef7caa730812a2f3e20a5efc436e42f52307d4f4f",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.ts",
+        "l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:2c98b5133376d7f746dcd5ac0d9883de7052f39379c43958c4f813a53f9bb0ab",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.ts",
+        "l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:456156b31abdddce934d803fb68d5c191f934f725c179e931edc09c831d81bde",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.ts",
+        "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:d0180e3bbd2c66db273d26f1adc3292a52ccb5dc5ae88358dc447d0fab93abca",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.ts",
+        "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:646043a1a9da5b39980c5bf2a78889e40d4d1867838a39029e267068c2a67234",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.ts",
+        "l1/repoHost/layer_2_application/ports/repositoryChangeRepository.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:828e5fa6fbe9d71e2f774ce275b7ac8d8b7db464ac7906ec499cc8b1c2edab99",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.ts",
+        "l1/repoHost/layer_2_application/ports/repositoryEntryRepository.ts"
+      ]
+    }
+  ],
+  "issues": []
+}

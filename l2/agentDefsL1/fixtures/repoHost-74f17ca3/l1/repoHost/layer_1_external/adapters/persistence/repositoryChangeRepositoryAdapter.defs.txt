@@ -1,0 +1,50 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryAdapter",
+  "artifactId": "RepositoryChangeRepository",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts",
+    "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts"
+  ],
+  "data": {
+    "entityId": "RepositoryChange",
+    "portId": "RepositoryChangeRepository",
+    "tableId": "repositoryChange",
+    "columns": [
+      {
+        "field": "id",
+        "column": "id"
+      },
+      {
+        "field": "version",
+        "column": "json:version"
+      },
+      {
+        "field": "changedAt",
+        "column": "changedAt"
+      },
+      {
+        "field": "details.commitMessage",
+        "column": "json:details.commitMessage"
+      },
+      {
+        "field": "details.author",
+        "column": "json:details.author"
+      },
+      {
+        "field": "details.files.path",
+        "column": "json:details.files.path"
+      },
+      {
+        "field": "details.files.change",
+        "column": "json:details.files.change"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

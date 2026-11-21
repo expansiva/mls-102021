@@ -1,0 +1,63 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "accessScope",
+  "artifactId": "accessScope",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [],
+  "data": {
+    "scopeId": "accessScope",
+    "grants": [
+      {
+        "grantId": "administradorAcompanhaAvisos",
+        "actorRef": "administrador",
+        "entityRefs": [
+          "RepositoryChange"
+        ],
+        "disclosure": "fullRecord",
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "RepositoryChange",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "administradorConsultaRepositorio",
+        "actorRef": "administrador",
+        "entityRefs": [
+          "RepositoryEntry"
+        ],
+        "disclosure": "fullRecord",
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [
+          {
+            "entityId": "RepositoryEntry",
+            "steps": [],
+            "pending": ""
+          }
+        ],
+        "pending": ""
+      },
+      {
+        "grantId": "connection_github",
+        "actorRef": "connection:github",
+        "entityRefs": [],
+        "disclosure": "fullRecord",
+        "scopeMode": "organization",
+        "session": "verified",
+        "path": [],
+        "pending": ""
+      }
+    ]
+  }
+} as const;
+
+export default definition;

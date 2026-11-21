@@ -1,0 +1,31 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_2_application/requests/github.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "github",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts"
+  ],
+  "data": {
+    "pageId": "github",
+    "requests": [
+      {
+        "route": "repoHost.github.repositorioMudou",
+        "kind": "cmd",
+        "uses": [
+          "createRepositoryChange"
+        ],
+        "transaction": "single",
+        "output": [],
+        "params": [],
+        "rules": [],
+        "serves": "github.repositorioMudou"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

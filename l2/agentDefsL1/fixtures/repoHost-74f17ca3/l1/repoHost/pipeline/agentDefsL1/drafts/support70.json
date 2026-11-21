@@ -1,0 +1,727 @@
+{
+  "schemaVersion": "2026-10-01-d1-support-v2",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "llmCalls": 0,
+  "ok": true,
+  "enumerations": [
+    {
+      "entityId": "RepositoryChange",
+      "path": "details.files.change",
+      "values": [
+        "added",
+        "modified",
+        "removed"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Scope and registry have no values slot. Enum values stay on the domain draft.",
+      "origin": {
+        "owner": "module",
+        "writer": "module",
+        "derived": false,
+        "restriction": "own",
+        "catalogValues": [],
+        "catalogSource": "",
+        "roleBinding": false
+      },
+      "uses": [],
+      "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+    },
+    {
+      "entityId": "RepositoryEntry",
+      "path": "entryType",
+      "values": [
+        "folder",
+        "file"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Scope and registry have no values slot. Enum values stay on the domain draft.",
+      "origin": {
+        "owner": "module",
+        "writer": "module",
+        "derived": false,
+        "restriction": "own",
+        "catalogValues": [],
+        "catalogSource": "",
+        "roleBinding": false
+      },
+      "uses": [],
+      "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+    }
+  ],
+  "resolutions": [
+    {
+      "grantId": "administradorAcompanhaAvisos",
+      "actorRef": "administrador",
+      "entityRefs": [
+        "RepositoryChange"
+      ],
+      "disclosure": "fullRecord",
+      "allowedFields": [],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "RepositoryChange",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "administradorConsultaRepositorio",
+      "actorRef": "administrador",
+      "entityRefs": [
+        "RepositoryEntry"
+      ],
+      "disclosure": "fullRecord",
+      "allowedFields": [],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [
+        {
+          "entityId": "RepositoryEntry",
+          "steps": [],
+          "pending": ""
+        }
+      ],
+      "pending": "",
+      "helperId": ""
+    },
+    {
+      "grantId": "connection_github",
+      "actorRef": "connection:github",
+      "entityRefs": [],
+      "disclosure": "fullRecord",
+      "allowedFields": [],
+      "anchorEntity": "",
+      "scopeMode": "organization",
+      "session": "verified",
+      "path": [],
+      "pending": "",
+      "helperId": ""
+    }
+  ],
+  "helpers": [],
+  "removedHelpers": [],
+  "registry": [
+    {
+      "portId": "GithubGateway",
+      "adapterArtifactId": "outbound",
+      "factory": "outbound",
+      "defPath": "l1/repoHost/layer_1_external/adapters/integration/outbound.defs.ts",
+      "dependsOn": [
+        "102047/repoHost/integrationOutbound/outbound"
+      ]
+    },
+    {
+      "portId": "RepositoryChangeRepository",
+      "adapterArtifactId": "RepositoryChangeRepository",
+      "factory": "RepositoryChangeRepository",
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.defs.ts",
+      "dependsOn": [
+        "102047/repoHost/repositoryAdapter/RepositoryChangeRepository"
+      ]
+    },
+    {
+      "portId": "RepositoryEntryRepository",
+      "adapterArtifactId": "RepositoryEntryRepository",
+      "factory": "RepositoryEntryRepository",
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.defs.ts",
+      "dependsOn": [
+        "102047/repoHost/repositoryAdapter/RepositoryEntryRepository"
+      ]
+    }
+  ],
+  "publication": {
+    "stillToRegister": [
+      {
+        "artifactType": "integrationOutbound",
+        "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/integration/outbound.defs.ts",
+        "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/integration/outbound.ts",
+        "registers": "outbound events"
+      },
+      {
+        "artifactType": "repositoryRegistration",
+        "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+        "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/registerRepositories.ts",
+        "registers": "adapter factories"
+      },
+      {
+        "artifactType": "persistenceSeeds",
+        "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/seeds.defs.ts",
+        "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/seeds.ts",
+        "registers": "seed plan"
+      },
+      {
+        "artifactType": "authorityMap",
+        "defPath": "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+        "outputPath": "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.ts",
+        "registers": "authority entries"
+      },
+      {
+        "artifactType": "externalConnection",
+        "defPath": "_102047_/l1/repoHost/layer_1_external/connections/github.defs.ts",
+        "outputPath": "_102047_/l1/repoHost/layer_1_external/connections/github.ts",
+        "registers": "scope grants"
+      },
+      {
+        "artifactType": "accessScope",
+        "defPath": "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts",
+        "outputPath": "_102047_/l1/repoHost/layer_2_application/scope/accessScope.ts",
+        "registers": "scope grants"
+      }
+    ],
+    "later": []
+  },
+  "seedPlan": {
+    "phase": "plan",
+    "materialized": false,
+    "rowCount": 0,
+    "datasets": [
+      {
+        "datasetId": "repositoryChange",
+        "tableId": "repositoryChange",
+        "owners": [
+          "acompanharAvisosMudanca"
+        ]
+      },
+      {
+        "datasetId": "repositoryEntry",
+        "tableId": "repositoryEntry",
+        "owners": [
+          "consultarConteudoRepositorio"
+        ]
+      }
+    ],
+    "dependencies": [
+      {
+        "entityId": "RepositoryChange",
+        "kind": "module",
+        "seeded": false
+      },
+      {
+        "entityId": "RepositoryEntry",
+        "kind": "module",
+        "seeded": false
+      }
+    ]
+  },
+  "effectPlan": {
+    "phase": "plan",
+    "executed": false,
+    "capability": {
+      "symbol": "IQueueRuntime.publish",
+      "path": "mls-102034/l1/server/layer_1_external/data/runtime.ts",
+      "owner": "RequestContext.data.pgQueue",
+      "payload": "{ topic: string; payload: unknown }",
+      "delivery": "Postgres insert into mdm_outbox. Memory keeps an array. No module consumer is registered.",
+      "transaction": "Postgres publish uses the transaction executor. Memory runInTransaction does not roll back.",
+      "requestContextPublish": false,
+      "bound": false
+    }
+  },
+  "problems": [
+    {
+      "severity": "review",
+      "code": "INTEGRATION_UNBOUND",
+      "path": "gravarArquivoRepositorio",
+      "message": "gravarArquivoRepositorio is preserved. No runtime mechanism is named."
+    },
+    {
+      "severity": "review",
+      "code": "POOL_ABSENT",
+      "path": "gravarArquivoRepositorio",
+      "message": "inbound gravarArquivoRepositorio is not in the selected pool. It was kept and no endpoint was added."
+    },
+    {
+      "severity": "review",
+      "code": "INTEGRATION_UNBOUND",
+      "path": "repositorioAlterado",
+      "message": "repositorioAlterado is preserved. No runtime mechanism is named."
+    }
+  ],
+  "normalizations": [
+    {
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "domain30.enumerations",
+      "detail": "2 enum values stay on the domain draft. support70 does not copy them."
+    }
+  ],
+  "emit": [
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "integrationOutbound",
+        "artifactId": "outbound",
+        "moduleName": "repoHost",
+        "status": "blocked",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts"
+        ],
+        "data": {
+          "integrationId": "outbound",
+          "events": [
+            {
+              "eventId": "repositorioAlterado",
+              "on": "RepositoryChange.create",
+              "entityId": "RepositoryChange",
+              "mechanism": "",
+              "consumer": "createRepositoryChange"
+            }
+          ],
+          "inbound": [
+            {
+              "inboundId": "gravarArquivoRepositorio",
+              "operations": [],
+              "mechanism": "",
+              "consumer": "gravarArquivoRepositorio"
+            }
+          ],
+          "connections": [
+            {
+              "connectionId": "github",
+              "operationId": "lerArquivo",
+              "consumer": "listRepositoryEntry",
+              "entityRefs": [
+                "RepositoryEntry"
+              ],
+              "effect": "read"
+            },
+            {
+              "connectionId": "github",
+              "operationId": "listarConteudo",
+              "consumer": "listRepositoryEntry",
+              "entityRefs": [
+                "RepositoryEntry"
+              ],
+              "effect": "list"
+            }
+          ],
+          "gaps": [
+            {
+              "itemId": "gravarArquivoRepositorio",
+              "kind": "inbound",
+              "code": "POOL_ABSENT"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/integrationOutbound/outbound",
+          "type": "integrationOutbound",
+          "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/integration/outbound.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/integration/outbound.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/usecase/createRepositoryChange"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/integrationOutbound.md"
+          ]
+        }
+      ],
+      "blockReason": "INTEGRATION_UNBOUND: repositorioAlterado has no runtime mechanism."
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryRegistration",
+        "artifactId": "registerRepositories",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_1_external/adapters/integration/outbound.defs.ts",
+          "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.defs.ts",
+          "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.defs.ts"
+        ],
+        "data": {
+          "registrationId": "registerRepositories",
+          "adapters": [
+            {
+              "portId": "GithubGateway",
+              "adapterArtifactId": "outbound"
+            },
+            {
+              "portId": "RepositoryChangeRepository",
+              "adapterArtifactId": "RepositoryChangeRepository"
+            },
+            {
+              "portId": "RepositoryEntryRepository",
+              "adapterArtifactId": "RepositoryEntryRepository"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/repositoryRegistration/registerRepositories",
+          "type": "repositoryRegistration",
+          "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/registerRepositories.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_1_external/adapters/integration/outbound.defs.ts",
+            "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.defs.ts",
+            "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/integrationOutbound/outbound",
+            "102047/repoHost/repositoryAdapter/RepositoryChangeRepository",
+            "102047/repoHost/repositoryAdapter/RepositoryEntryRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/repositoryRegistration.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "persistenceSeeds",
+        "artifactId": "seeds",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts",
+          "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts"
+        ],
+        "data": {
+          "seedId": "seeds",
+          "phase": "plan",
+          "scenarios": [
+            {
+              "scenarioId": "acompanharAvisosMudanca",
+              "tableId": "repositoryChange",
+              "source": "journey:acompanharAvisosMudanca",
+              "constraints": [],
+              "refs": [],
+              "states": [],
+              "entityId": "RepositoryChange"
+            },
+            {
+              "scenarioId": "consultarConteudoRepositorio",
+              "tableId": "repositoryEntry",
+              "source": "journey:consultarConteudoRepositorio",
+              "constraints": [
+                "ref:parentEntryId:RepositoryEntry",
+                "uniqueKeys:path"
+              ],
+              "refs": [
+                {
+                  "field": "parentEntryId",
+                  "relationshipId": "entryParentFolder",
+                  "entityId": "RepositoryEntry"
+                }
+              ],
+              "states": [],
+              "entityId": "RepositoryEntry"
+            }
+          ],
+          "dependencies": [
+            {
+              "entityId": "RepositoryChange",
+              "kind": "module",
+              "seeded": false
+            },
+            {
+              "entityId": "RepositoryEntry",
+              "kind": "module",
+              "seeded": false
+            }
+          ],
+          "datasets": [
+            {
+              "datasetId": "repositoryChange",
+              "tableId": "repositoryChange",
+              "owners": [
+                "acompanharAvisosMudanca"
+              ]
+            },
+            {
+              "datasetId": "repositoryEntry",
+              "tableId": "repositoryEntry",
+              "owners": [
+                "consultarConteudoRepositorio"
+              ]
+            }
+          ],
+          "fixture": {
+            "schemaVersion": "2026-09-27-m1-certification-fixture-v1",
+            "phase": "plan",
+            "targets": [
+              "memory",
+              "development"
+            ],
+            "datasets": [
+              {
+                "supportId": "data:RepositoryChange",
+                "entityId": "RepositoryChange",
+                "tableId": "repositoryChange",
+                "dependsOn": [],
+                "sourceRefs": [
+                  "grant:administradorAcompanhaAvisos",
+                  "journey:acompanharAvisosMudanca/listarAvisos",
+                  "journey:acompanharAvisosMudanca/verAviso"
+                ]
+              },
+              {
+                "supportId": "data:RepositoryEntry",
+                "entityId": "RepositoryEntry",
+                "tableId": "repositoryEntry",
+                "dependsOn": [],
+                "sourceRefs": [
+                  "grant:administradorConsultaRepositorio",
+                  "journey:consultarConteudoRepositorio/lerArquivo",
+                  "journey:consultarConteudoRepositorio/listarPastasArquivos"
+                ]
+              }
+            ],
+            "runtime": [
+              {
+                "supportId": "identity:administrador",
+                "kind": "identity",
+                "entityId": "",
+                "actorRefs": [
+                  "administrador"
+                ],
+                "gap": "PERSON_ENTITY_UNDECLARED: actor administrador declares no personEntity; the test identity cannot be bound",
+                "owner": "runtime"
+              }
+            ],
+            "gaps": []
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/persistenceSeeds/seeds",
+          "type": "persistenceSeeds",
+          "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/seeds.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/seeds.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts",
+            "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/table/repositoryChange",
+            "102047/repoHost/table/repositoryEntry"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/persistenceSeeds.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "authorityMap",
+        "artifactId": "authorityMap",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts"
+        ],
+        "data": {
+          "mapId": "authorityMap",
+          "entries": [
+            {
+              "grantId": "administradorAcompanhaAvisos",
+              "actorRef": "administrador"
+            },
+            {
+              "grantId": "administradorConsultaRepositorio",
+              "actorRef": "administrador"
+            },
+            {
+              "grantId": "connection_github",
+              "actorRef": "connection:github"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/authorityMap/authorityMap",
+          "type": "authorityMap",
+          "defPath": "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/accessScope/accessScope"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/authorityMap.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "externalConnection",
+        "artifactId": "github",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l4/repoHost/integration.defs.ts"
+        ],
+        "data": {
+          "systemId": "github",
+          "title": "GitHub",
+          "description": "Serviço que hospeda o repositório de conteúdo da empresa. O módulo lista pastas e arquivos, lê arquivos, grava arquivos novos ou alterados com mensagem de registro e recebe o aviso quando o repositório muda.",
+          "settings": [
+            {
+              "id": "repositorio",
+              "title": "Repositório",
+              "description": "Qual é o repositório de conteúdo da empresa no GitHub (dono e nome do repositório).",
+              "secret": false
+            },
+            {
+              "id": "chaveAcesso",
+              "title": "Chave de acesso",
+              "description": "Chave que dá ao módulo acesso de leitura e gravação ao repositório.",
+              "secret": true
+            },
+            {
+              "id": "segredoAviso",
+              "title": "Segredo dos avisos",
+              "description": "Segredo combinado com o GitHub para conferir que os avisos de mudança vêm realmente dele.",
+              "secret": true
+            }
+          ],
+          "operations": [
+            {
+              "operationId": "listarConteudo",
+              "direction": "call",
+              "description": "Pede a lista de pastas e arquivos de um caminho do repositório."
+            },
+            {
+              "operationId": "lerArquivo",
+              "direction": "call",
+              "description": "Pede o conteúdo de um arquivo do repositório."
+            },
+            {
+              "operationId": "gravarArquivo",
+              "direction": "call",
+              "description": "Grava um arquivo novo ou alterado no repositório, com a mensagem de registro."
+            },
+            {
+              "operationId": "repositorioMudou",
+              "direction": "serve",
+              "description": "O GitHub avisa que o repositório mudou, informando o registro da mudança e os arquivos afetados."
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/externalConnection/github",
+          "type": "externalConnection",
+          "defPath": "_102047_/l1/repoHost/layer_1_external/connections/github.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_1_external/connections/github.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [],
+          "dependsOn": [],
+          "skills": []
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "accessScope",
+        "artifactId": "accessScope",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "scopeId": "accessScope",
+          "grants": [
+            {
+              "grantId": "administradorAcompanhaAvisos",
+              "actorRef": "administrador",
+              "entityRefs": [
+                "RepositoryChange"
+              ],
+              "disclosure": "fullRecord",
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "RepositoryChange",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "administradorConsultaRepositorio",
+              "actorRef": "administrador",
+              "entityRefs": [
+                "RepositoryEntry"
+              ],
+              "disclosure": "fullRecord",
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [
+                {
+                  "entityId": "RepositoryEntry",
+                  "steps": [],
+                  "pending": ""
+                }
+              ],
+              "pending": ""
+            },
+            {
+              "grantId": "connection_github",
+              "actorRef": "connection:github",
+              "entityRefs": [],
+              "disclosure": "fullRecord",
+              "scopeMode": "organization",
+              "session": "verified",
+              "path": [],
+              "pending": ""
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/accessScope/accessScope",
+          "type": "accessScope",
+          "defPath": "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_2_application/scope/accessScope.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [],
+          "dependsOn": [],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/accessScope.md"
+          ]
+        }
+      ]
+    }
+  ]
+}

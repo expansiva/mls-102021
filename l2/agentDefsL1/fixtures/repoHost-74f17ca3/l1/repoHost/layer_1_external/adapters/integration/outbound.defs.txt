@@ -1,0 +1,61 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/adapters/integration/outbound.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "integrationOutbound",
+  "artifactId": "outbound",
+  "moduleName": "repoHost",
+  "status": "blocked",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts"
+  ],
+  "data": {
+    "integrationId": "outbound",
+    "events": [
+      {
+        "eventId": "repositorioAlterado",
+        "on": "RepositoryChange.create",
+        "entityId": "RepositoryChange",
+        "mechanism": "",
+        "consumer": "createRepositoryChange"
+      }
+    ],
+    "inbound": [
+      {
+        "inboundId": "gravarArquivoRepositorio",
+        "operations": [],
+        "mechanism": "",
+        "consumer": "gravarArquivoRepositorio"
+      }
+    ],
+    "connections": [
+      {
+        "connectionId": "github",
+        "operationId": "lerArquivo",
+        "consumer": "listRepositoryEntry",
+        "entityRefs": [
+          "RepositoryEntry"
+        ],
+        "effect": "read"
+      },
+      {
+        "connectionId": "github",
+        "operationId": "listarConteudo",
+        "consumer": "listRepositoryEntry",
+        "entityRefs": [
+          "RepositoryEntry"
+        ],
+        "effect": "list"
+      }
+    ],
+    "gaps": [
+      {
+        "itemId": "gravarArquivoRepositorio",
+        "kind": "inbound",
+        "code": "POOL_ABSENT"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

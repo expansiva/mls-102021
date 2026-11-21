@@ -266,6 +266,7 @@ export function buildD1InputSnapshot(
     usecases: selectedUsecases,
     entityKind,
     taken: new Set([...backendUsecases.keys(), ...effortUsecases.keys()]),
+    splitStored: true,
   });
   selectedUsecases.splice(0, selectedUsecases.length, ...split.usecases);
   for (const item of split.splits) {

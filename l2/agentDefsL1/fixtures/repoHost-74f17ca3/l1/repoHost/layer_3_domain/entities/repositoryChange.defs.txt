@@ -1,0 +1,62 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "RepositoryChange",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [],
+  "data": {
+    "entityId": "RepositoryChange",
+    "storageTarget": "moduleDatabase",
+    "fields": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "derived": true
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "changedAt",
+        "type": "timestamp"
+      },
+      {
+        "name": "details",
+        "type": "object"
+      },
+      {
+        "name": "details.commitMessage",
+        "type": "text"
+      },
+      {
+        "name": "details.author",
+        "type": "string"
+      },
+      {
+        "name": "details.files",
+        "type": "object"
+      },
+      {
+        "name": "details.files.path",
+        "type": "string"
+      },
+      {
+        "name": "details.files.change",
+        "type": "enum"
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [],
+    "imports": []
+  }
+} as const;
+
+export default definition;

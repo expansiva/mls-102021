@@ -1,0 +1,32 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "table",
+  "artifactId": "repositoryChange",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts"
+  ],
+  "data": {
+    "tableId": "repositoryChange",
+    "entityId": "RepositoryChange",
+    "physicalName": "repoHost_repositorychange",
+    "primaryKey": [
+      "id"
+    ],
+    "uniqueKeys": [],
+    "indexes": [
+      {
+        "name": "repoHost_repositorychange_changedAt",
+        "columns": [
+          "changedAt"
+        ],
+        "unique": false
+      }
+    ]
+  }
+} as const;
+
+export default definition;

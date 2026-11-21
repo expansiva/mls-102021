@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "2026-10-06-d1-resolve-v1",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "sourceKey": "sha256:2439feb7bb400ce21c91bccb8eaf6d1b78c5fc7ea3222b72a8d0756bd53ba69a",
+  "llmCalls": 4,
+  "routes": [
+    {
+      "route": "repoHost.avisos_mudanca.obterAviso",
+      "pageId": "avisos_mudanca",
+      "answers": [
+        {
+          "path": "output.aviso.details.files.change",
+          "kind": "fieldPath",
+          "choice": "details.files.change",
+          "call": "resolve25-worker-r0",
+          "gapKey": "[\"repoHost.avisos_mudanca.obterAviso\",\"output.aviso.details.files.change\",\"fieldPath\",\"Interface ArquivoAfetado: field change is not a field of any entity.\",[\"details.files.change\",\"none\"]]"
+        },
+        {
+          "path": "output.aviso.details.files",
+          "kind": "entity",
+          "choice": "none",
+          "call": "resolve25-worker-r0b",
+          "gapKey": "[\"repoHost.avisos_mudanca.obterAviso\",\"output.aviso.details.files\",\"entity\",\"Interface ArquivoAfetado: fields path, details.files.change are not all fields of one entity or of one entity linked to it by an N:1 relationship.\",[\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "repoHost.conteudo_repositorio.lerArquivo",
+      "pageId": "conteudo_repositorio",
+      "answers": [
+        {
+          "path": "output.arquivo.conteudo",
+          "kind": "fieldPath",
+          "choice": "none",
+          "call": "resolve25-worker-r1",
+          "gapKey": "[\"repoHost.conteudo_repositorio.lerArquivo\",\"output.arquivo.conteudo\",\"fieldPath\",\"Interface ArquivoRepositorio: field conteudo is not a field of any entity.\",[\"none\"]]"
+        },
+        {
+          "path": "input.id",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r1",
+          "gapKey": "[\"repoHost.conteudo_repositorio.lerArquivo\",\"input.id\",\"filterField\",\"Input id is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"none\"]]"
+        }
+      ]
+    },
+    {
+      "route": "repoHost.conteudo_repositorio.listarItensRepositorio",
+      "pageId": "conteudo_repositorio",
+      "answers": [
+        {
+          "path": "input.busca",
+          "kind": "filterField",
+          "choice": "itens:path",
+          "call": "resolve25-worker-r2",
+          "gapKey": "[\"repoHost.conteudo_repositorio.listarItensRepositorio\",\"input.busca\",\"filterField\",\"Input busca is not the last segment of any field of the output entities; it filters one of their text fields.\",[\"itens:details.contentVersion\",\"itens:details.mimeType\",\"itens:details.name\",\"itens:path\",\"none\"]]"
+        }
+      ]
+    }
+  ]
+}

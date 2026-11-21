@@ -1,0 +1,648 @@
+{
+  "schemaVersion": "2026-09-24-d1-report-v3",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "calls": {
+    "finalizeCalledModel": false,
+    "finalizeOpenedRepair": false,
+    "repliesDelivered": null,
+    "repliesUnknown": "usecases50 call log is absent",
+    "promptsAssembled": null,
+    "repairsScheduled": null,
+    "invocationReplies": null,
+    "invocationUnknown": "usecases50 call log is absent"
+  },
+  "executableBackend": false,
+  "inventoryNote": "Inventory recognition is not certification of an executable backend.",
+  "defsStatus": "complete",
+  "materialization": "pending",
+  "outcome": "complete",
+  "blocking": "",
+  "phases": [
+    {
+      "stepId": "entry10",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "input20",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "resolve25",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "domain30",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "persistence40",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "usecases50",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "controllers60",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "support70",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "finalize80",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    }
+  ],
+  "findings": [
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "details.files.change",
+      "message": "No consumer: RepositoryChange details.files.change. Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "RepositoryChange details.files.change"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "entryType",
+      "message": "No consumer: RepositoryEntry entryType. Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "RepositoryEntry entryType"
+    },
+    {
+      "severity": "review",
+      "code": "INTEGRATION_UNBOUND",
+      "path": "gravarArquivoRepositorio",
+      "message": "gravarArquivoRepositorio is preserved. No runtime mechanism is named.",
+      "ownerRef": "gravarArquivoRepositorio"
+    },
+    {
+      "severity": "review",
+      "code": "INTEGRATION_UNBOUND",
+      "path": "l4/repoHost/integration.defs.ts",
+      "message": "Outbound repositorioAlterado is preserved. No runtime mechanism is named on the integration artifact.",
+      "ownerRef": "repositorioAlterado"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/repoHost/web/contracts/avisos_mudanca.defs.ts",
+      "message": "Route repoHost.avisos_mudanca.obterAviso output.aviso.details.files is not derived: Interface ArquivoAfetado: fields path, details.files.change are not all fields of one entity or of one entity linked to it by an N:1 relationship.",
+      "ownerRef": "repoHost.avisos_mudanca.obterAviso"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/repoHost/web/contracts/conteudo_repositorio.defs.ts",
+      "message": "Route repoHost.conteudo_repositorio.lerArquivo output.arquivo.conteudo is not derived: Interface ArquivoRepositorio: field conteudo is not a field of any entity.",
+      "ownerRef": "repoHost.conteudo_repositorio.lerArquivo"
+    },
+    {
+      "severity": "review",
+      "code": "POOL_ABSENT",
+      "path": "gravarArquivoRepositorio",
+      "message": "inbound gravarArquivoRepositorio is not in the selected pool. It was kept and no endpoint was added.",
+      "ownerRef": "gravarArquivoRepositorio"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_FROM_CONTRACT",
+      "path": "l2/repoHost/web/contracts/github.defs.ts",
+      "message": "Route repoHost.github.repositorioMudou needs RepositoryChange.create, which is not in the planned pool. Usecase createRepositoryChange was created from the contract.",
+      "ownerRef": "createRepositoryChange"
+    }
+  ],
+  "declaredNotConsumedBy": [
+    "persistence40",
+    "usecases50",
+    "controllers60",
+    "support70"
+  ],
+  "enumerations": {
+    "consumed": [],
+    "notConsumed": [
+      {
+        "entityId": "RepositoryChange",
+        "path": "details.files.change",
+        "values": [
+          "added",
+          "modified",
+          "removed"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "module",
+          "writer": "module",
+          "derived": false,
+          "restriction": "own",
+          "catalogValues": [],
+          "catalogSource": "",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "RepositoryEntry",
+        "path": "entryType",
+        "values": [
+          "folder",
+          "file"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "module",
+          "writer": "module",
+          "derived": false,
+          "restriction": "own",
+          "catalogValues": [],
+          "catalogSource": "",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      }
+    ]
+  },
+  "files": [
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:repoHost.avisos_mudanca.listarAvisos",
+        "endpoint:repoHost.avisos_mudanca.obterAviso"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:repoHost.conteudo_repositorio.lerArquivo",
+        "endpoint:repoHost.conteudo_repositorio.listarItensRepositorio"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/github.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:repoHost.github.repositorioMudou"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/integration/outbound.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "event:repositorioAlterado"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "adapter:RepositoryChangeRepository",
+        "adapter:RepositoryEntryRepository"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "table:repositoryChange"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:RepositoryChangeRepository",
+        "table:repositoryChange"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "table:repositoryEntry"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:RepositoryEntryRepository",
+        "table:repositoryEntry"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/seeds.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "table:repositoryChange",
+        "table:repositoryEntry"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "grant:administradorAcompanhaAvisos",
+        "grant:administradorConsultaRepositorio"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/connections/github.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "external:github"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:RepositoryChangeRepository"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:RepositoryEntryRepository"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/requests/avisos_mudanca.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:repoHost.avisos_mudanca.listarAvisos",
+        "endpoint:repoHost.avisos_mudanca.obterAviso"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/requests/conteudo_repositorio.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:repoHost.conteudo_repositorio.lerArquivo",
+        "endpoint:repoHost.conteudo_repositorio.listarItensRepositorio"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/requests/github.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:repoHost.github.repositorioMudou"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/scope/accessScope.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "grant:administradorAcompanhaAvisos",
+        "grant:administradorConsultaRepositorio"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createRepositoryChange",
+        "endpoint:repoHost.github.repositorioMudou"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/usecases/listRepositoryChange.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listRepositoryChange",
+        "endpoint:repoHost.avisos_mudanca.listarAvisos",
+        "endpoint:repoHost.avisos_mudanca.obterAviso"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/usecases/listRepositoryEntry.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listRepositoryEntry",
+        "endpoint:repoHost.conteudo_repositorio.lerArquivo",
+        "endpoint:repoHost.conteudo_repositorio.listarItensRepositorio"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createRepositoryChange",
+        "usecase:listRepositoryChange"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listRepositoryEntry"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    }
+  ],
+  "sources": [
+    {
+      "path": "l2/repoHost/web/contracts/avisos_mudanca.defs.ts",
+      "sha256": "sha256:b9a1df1af0028a6fd1a136b89d46006474b5c35e4ad18d6038810190ea323e08",
+      "state": "present"
+    },
+    {
+      "path": "l2/repoHost/web/contracts/conteudo_repositorio.defs.ts",
+      "sha256": "sha256:a94f0dd76ff901d51a7ee07a6b8595cd608bd24a9904e97685e1dff0adcde5d8",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/access.defs.ts",
+      "sha256": "sha256:b4a2ba37fe00cc962626f0ea3f655b4b25eea75fea8051dae8e18699c91ec460",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/integration.defs.ts",
+      "sha256": "sha256:1043afd4a79f2288b27fc94edb8f42240b4534d188c6f21fca8aa3eea8a29440",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/journeys/acompanharAvisosMudanca.defs.ts",
+      "sha256": "sha256:d47e6058cb8b6d7753aef9eedd84f75e3324438d77b40af5e99ce2e2afe4c2b2",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/journeys/consultarConteudoRepositorio.defs.ts",
+      "sha256": "sha256:5c18bf10ed1ee3b7b107bcc350305d4087f2a10cc228ff6d64e1c0940b2d9feb",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/journeys/index.defs.ts",
+      "sha256": "sha256:06b7536ce65fd641d61a25f38155248868bcedd09706db99e02713ece7702cab",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/module.defs.ts",
+      "sha256": "sha256:91a1e30f58e5c41c550c23dd66b2b74f59716d4f094fc3f98b37f7fd351f9845",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/ontology/index.defs.ts",
+      "sha256": "sha256:9b31c747791a7d02234f1007299b212bbb2e9d62fe4af1e6a4a0bc1435243ff8",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/ontology/RepositoryChange.defs.ts",
+      "sha256": "sha256:3f560f70fa174eb4d558b6b703deac76e0256fcaa480f6e5d0af2196f4288614",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/ontology/RepositoryEntry.defs.ts",
+      "sha256": "sha256:00e98925d0bbbfd16d125abbc5010378206417772b69b5e73711f7f85988d7a9",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/pool/l1/pipeline.json",
+      "sha256": "sha256:555f0cc7fd9f11ab3a88da439af9f4d58efab1eeea19104d024c466445310989",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/pool/l1/web/needs.json",
+      "sha256": "sha256:ea01853c958c74d20e5349f2ddbdcec4019caa3b8b06658c9eedd05fac043ec2",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/pool/l2/web/backend.json",
+      "sha256": "sha256:c8a434b13b33d99f911d6ca2a2beb94e70da68aff6a9fdff7f3d1d503e0cac3d",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/pool/l2/web/effort.json",
+      "sha256": "sha256:3e38a22c3c350ea9abf9f3e7e53fa7b88850dfdccb8ecc3bf41ffd0d472a76b0",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/pool/l2/web/menu.json",
+      "sha256": "sha256:b92e3dc6ad5b14c2944441c26da10a04f2410244a4490735f4bde46b4e40c176",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/rules.defs.ts",
+      "sha256": "sha256:7a8bd244852dad7da5e18f23dbde185a11d2c5eec209c4cd19bc5e8c3187e0ac",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/workflows.defs.ts",
+      "sha256": "sha256:9a8bb1c794d3519b14aabbfa659747fc14a01b91785ae15f018cd833bb3e9e5c",
+      "state": "present"
+    }
+  ],
+  "materializationPending": [
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/github.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/github.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/integration/outbound.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/integration/outbound.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/registerRepositories.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/seeds.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/seeds.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/connections/github.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_1_external/connections/github.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/requests/avisos_mudanca.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_2_application/requests/avisos_mudanca.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/requests/conteudo_repositorio.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_2_application/requests/conteudo_repositorio.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/requests/github.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_2_application/requests/github.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/scope/accessScope.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_2_application/scope/accessScope.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/usecases/listRepositoryChange.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryChange.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/usecases/listRepositoryEntry.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryEntry.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts",
+      "outputPath": "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.ts",
+      "present": false
+    }
+  ],
+  "coverage": {
+    "checked": true,
+    "gaps": []
+  },
+  "inventory": {
+    "usecaseIds": [
+      "createRepositoryChange",
+      "listRepositoryChange",
+      "listRepositoryEntry"
+    ],
+    "routes": [
+      "repoHost.avisos_mudanca.listarAvisos",
+      "repoHost.avisos_mudanca.obterAviso",
+      "repoHost.conteudo_repositorio.lerArquivo",
+      "repoHost.conteudo_repositorio.listarItensRepositorio",
+      "repoHost.github.repositorioMudou"
+    ],
+    "portIds": [
+      "RepositoryChangeRepository",
+      "RepositoryEntryRepository"
+    ],
+    "tableIds": [
+      "repositoryChange",
+      "repositoryEntry"
+    ]
+  },
+  "snapshotHash": "sha256:7f1f7c7c7f34a89b8b20171f4c149115fc9bd32cf0c6fcbbf073be8a99ccdf4d"
+}

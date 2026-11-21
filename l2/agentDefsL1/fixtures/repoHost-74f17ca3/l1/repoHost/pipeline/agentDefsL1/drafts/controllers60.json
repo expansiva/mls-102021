@@ -1,0 +1,1563 @@
+{
+  "schemaVersion": "2026-10-01-d1-controllers-adapter",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "llmCalls": 0,
+  "ok": true,
+  "measuredRoutes": 5,
+  "measuredPages": 3,
+  "enumerations": [
+    {
+      "entityId": "RepositoryChange",
+      "path": "details.files.change",
+      "values": [
+        "added",
+        "modified",
+        "removed"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Controller projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "RepositoryEntry",
+      "path": "entryType",
+      "values": [
+        "folder",
+        "file"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Controller projection has no values slot. Enum values stay on the domain draft."
+    }
+  ],
+  "controllers": [
+    {
+      "pageId": "avisos_mudanca",
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.defs.ts",
+      "handlers": [
+        {
+          "route": "repoHost.avisos_mudanca.listarAvisos",
+          "pageId": "avisos_mudanca",
+          "kind": "query",
+          "usecaseId": "",
+          "functionName": "",
+          "serviceFunction": "repoHost.avisos_mudanca.listarAvisos",
+          "contractPath": "l2/repoHost/web/contracts/avisos_mudanca.defs.ts",
+          "contractInterface": "Avisos_mudancaContracts",
+          "inputSymbol": "",
+          "outputSymbol": "",
+          "status": "toCreate",
+          "preserved": false,
+          "grantIds": [
+            "administradorAcompanhaAvisos"
+          ],
+          "projection": {
+            "shape": "object",
+            "fields": [
+              "items.id",
+              "items.changedAt",
+              "items.details"
+            ],
+            "envelope": "passthrough"
+          },
+          "session": "verified",
+          "steps": [
+            "transport",
+            "session",
+            "authorize",
+            "call",
+            "project",
+            "bff"
+          ],
+          "scopePlan": [
+            {
+              "grantId": "administradorAcompanhaAvisos",
+              "actorRef": "administrador",
+              "entityRefs": [
+                "RepositoryChange"
+              ],
+              "disclosure": "fullRecord",
+              "allowedFields": [],
+              "anchorEntity": "",
+              "relationships": [],
+              "pending": "",
+              "emittedBy": "support70"
+            }
+          ]
+        },
+        {
+          "route": "repoHost.avisos_mudanca.obterAviso",
+          "pageId": "avisos_mudanca",
+          "kind": "query",
+          "usecaseId": "",
+          "functionName": "",
+          "serviceFunction": "repoHost.avisos_mudanca.obterAviso",
+          "contractPath": "l2/repoHost/web/contracts/avisos_mudanca.defs.ts",
+          "contractInterface": "Avisos_mudancaContracts",
+          "inputSymbol": "",
+          "outputSymbol": "",
+          "status": "toCreate",
+          "preserved": false,
+          "grantIds": [
+            "administradorAcompanhaAvisos"
+          ],
+          "projection": {
+            "shape": "object",
+            "fields": [
+              "id",
+              "changedAt",
+              "details"
+            ],
+            "envelope": "passthrough"
+          },
+          "session": "verified",
+          "steps": [
+            "transport",
+            "session",
+            "authorize",
+            "call",
+            "project",
+            "bff"
+          ],
+          "scopePlan": [
+            {
+              "grantId": "administradorAcompanhaAvisos",
+              "actorRef": "administrador",
+              "entityRefs": [
+                "RepositoryChange"
+              ],
+              "disclosure": "fullRecord",
+              "allowedFields": [],
+              "anchorEntity": "",
+              "relationships": [],
+              "pending": "",
+              "emittedBy": "support70"
+            }
+          ]
+        }
+      ],
+      "staleRoutes": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "httpController",
+        "artifactId": "avisos_mudanca",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/requests/avisos_mudanca.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts"
+        ],
+        "data": {
+          "pageId": "avisos_mudanca",
+          "handlers": [
+            {
+              "route": "repoHost.avisos_mudanca.listarAvisos",
+              "kind": "query",
+              "grantIds": [
+                "administradorAcompanhaAvisos"
+              ],
+              "serviceFunction": "repoHost.avisos_mudanca.listarAvisos",
+              "contractPath": "l2/repoHost/web/contracts/avisos_mudanca.defs.ts",
+              "contractInterface": "Avisos_mudancaContracts"
+            },
+            {
+              "route": "repoHost.avisos_mudanca.obterAviso",
+              "kind": "query",
+              "grantIds": [
+                "administradorAcompanhaAvisos"
+              ],
+              "serviceFunction": "repoHost.avisos_mudanca.obterAviso",
+              "contractPath": "l2/repoHost/web/contracts/avisos_mudanca.defs.ts",
+              "contractInterface": "Avisos_mudancaContracts"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "pageId": "conteudo_repositorio",
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.defs.ts",
+      "handlers": [
+        {
+          "route": "repoHost.conteudo_repositorio.lerArquivo",
+          "pageId": "conteudo_repositorio",
+          "kind": "query",
+          "usecaseId": "",
+          "functionName": "",
+          "serviceFunction": "repoHost.conteudo_repositorio.lerArquivo",
+          "contractPath": "l2/repoHost/web/contracts/conteudo_repositorio.defs.ts",
+          "contractInterface": "Conteudo_repositorioContracts",
+          "inputSymbol": "",
+          "outputSymbol": "",
+          "status": "toCreate",
+          "preserved": false,
+          "grantIds": [
+            "administradorConsultaRepositorio"
+          ],
+          "projection": {
+            "shape": "object",
+            "fields": [
+              "id",
+              "path",
+              "entryType",
+              "details",
+              "conteudo"
+            ],
+            "envelope": "passthrough"
+          },
+          "session": "verified",
+          "steps": [
+            "transport",
+            "session",
+            "authorize",
+            "call",
+            "project",
+            "bff"
+          ],
+          "scopePlan": [
+            {
+              "grantId": "administradorConsultaRepositorio",
+              "actorRef": "administrador",
+              "entityRefs": [
+                "RepositoryEntry"
+              ],
+              "disclosure": "fullRecord",
+              "allowedFields": [],
+              "anchorEntity": "",
+              "relationships": [
+                {
+                  "relationshipId": "entryParentFolder",
+                  "from": "RepositoryEntry",
+                  "to": "RepositoryEntry",
+                  "field": "RepositoryEntry.parentEntryId"
+                }
+              ],
+              "pending": "",
+              "emittedBy": "support70"
+            }
+          ]
+        },
+        {
+          "route": "repoHost.conteudo_repositorio.listarItensRepositorio",
+          "pageId": "conteudo_repositorio",
+          "kind": "query",
+          "usecaseId": "",
+          "functionName": "",
+          "serviceFunction": "repoHost.conteudo_repositorio.listarItensRepositorio",
+          "contractPath": "l2/repoHost/web/contracts/conteudo_repositorio.defs.ts",
+          "contractInterface": "Conteudo_repositorioContracts",
+          "inputSymbol": "",
+          "outputSymbol": "",
+          "status": "toCreate",
+          "preserved": false,
+          "grantIds": [
+            "administradorConsultaRepositorio"
+          ],
+          "projection": {
+            "shape": "object",
+            "fields": [
+              "items.id",
+              "items.path",
+              "items.entryType",
+              "items.parentEntryId",
+              "items.details"
+            ],
+            "envelope": "passthrough"
+          },
+          "session": "verified",
+          "steps": [
+            "transport",
+            "session",
+            "authorize",
+            "call",
+            "project",
+            "bff"
+          ],
+          "scopePlan": [
+            {
+              "grantId": "administradorConsultaRepositorio",
+              "actorRef": "administrador",
+              "entityRefs": [
+                "RepositoryEntry"
+              ],
+              "disclosure": "fullRecord",
+              "allowedFields": [],
+              "anchorEntity": "",
+              "relationships": [
+                {
+                  "relationshipId": "entryParentFolder",
+                  "from": "RepositoryEntry",
+                  "to": "RepositoryEntry",
+                  "field": "RepositoryEntry.parentEntryId"
+                }
+              ],
+              "pending": "",
+              "emittedBy": "support70"
+            }
+          ]
+        }
+      ],
+      "staleRoutes": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "httpController",
+        "artifactId": "conteudo_repositorio",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/requests/conteudo_repositorio.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts"
+        ],
+        "data": {
+          "pageId": "conteudo_repositorio",
+          "handlers": [
+            {
+              "route": "repoHost.conteudo_repositorio.lerArquivo",
+              "kind": "query",
+              "grantIds": [
+                "administradorConsultaRepositorio"
+              ],
+              "serviceFunction": "repoHost.conteudo_repositorio.lerArquivo",
+              "contractPath": "l2/repoHost/web/contracts/conteudo_repositorio.defs.ts",
+              "contractInterface": "Conteudo_repositorioContracts"
+            },
+            {
+              "route": "repoHost.conteudo_repositorio.listarItensRepositorio",
+              "kind": "query",
+              "grantIds": [
+                "administradorConsultaRepositorio"
+              ],
+              "serviceFunction": "repoHost.conteudo_repositorio.listarItensRepositorio",
+              "contractPath": "l2/repoHost/web/contracts/conteudo_repositorio.defs.ts",
+              "contractInterface": "Conteudo_repositorioContracts"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "pageId": "github",
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/github.defs.ts",
+      "handlers": [
+        {
+          "route": "repoHost.github.repositorioMudou",
+          "pageId": "github",
+          "kind": "command",
+          "usecaseId": "",
+          "functionName": "",
+          "serviceFunction": "repoHost.github.repositorioMudou",
+          "contractPath": "",
+          "contractInterface": "",
+          "inputSymbol": "",
+          "outputSymbol": "",
+          "status": "toCreate",
+          "preserved": false,
+          "grantIds": [
+            "connection_github"
+          ],
+          "projection": {
+            "shape": "unresolved",
+            "fields": [],
+            "envelope": "passthrough"
+          },
+          "session": "verified",
+          "steps": [
+            "transport",
+            "session",
+            "authorize",
+            "call",
+            "project",
+            "bff"
+          ],
+          "scopePlan": [
+            {
+              "grantId": "connection_github",
+              "actorRef": "connection:github",
+              "entityRefs": [],
+              "disclosure": "fullRecord",
+              "allowedFields": [],
+              "anchorEntity": "",
+              "relationships": [],
+              "pending": "",
+              "emittedBy": "support70"
+            }
+          ]
+        }
+      ],
+      "staleRoutes": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "httpController",
+        "artifactId": "github",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/requests/github.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts"
+        ],
+        "data": {
+          "pageId": "github",
+          "handlers": [
+            {
+              "route": "repoHost.github.repositorioMudou",
+              "kind": "command",
+              "grantIds": [
+                "connection_github"
+              ],
+              "serviceFunction": "repoHost.github.repositorioMudou"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "services": [
+    {
+      "pageId": "avisos_mudanca",
+      "defPath": "l1/repoHost/layer_2_application/requests/avisos_mudanca.defs.ts",
+      "requests": [
+        {
+          "route": "repoHost.avisos_mudanca.listarAvisos",
+          "kind": "qry",
+          "uses": [
+            "listRepositoryChange"
+          ],
+          "transaction": "none",
+          "output": [
+            {
+              "kind": "list",
+              "path": "avisos",
+              "entity": "RepositoryChange",
+              "items": "items",
+              "page": "avisos.page",
+              "pageSize": "avisos.pageSize",
+              "hasMore": "avisos.hasMore",
+              "fields": [
+                {
+                  "field": "id",
+                  "path": "id"
+                },
+                {
+                  "field": "changedAt",
+                  "path": "changedAt"
+                },
+                {
+                  "field": "details",
+                  "path": "details"
+                }
+              ]
+            }
+          ],
+          "params": [
+            {
+              "name": "page",
+              "target": "avisos",
+              "pages": "avisos"
+            },
+            {
+              "name": "pageSize",
+              "target": "avisos",
+              "pages": "avisos"
+            }
+          ],
+          "rules": [
+            "repoHostChangesNewestFirst"
+          ],
+          "doc": {
+            "raw": "Finalidade: Lista os avisos de mudança recebidos do serviço do repositório, em páginas, para acompanhamento pelo administrador.\nEntrada: page: número da página pedida; pageSize: quantidade de avisos por página.\nProcessamento: Busca os avisos de mudança da organização e ordena por changedAt decrescente, do mais recente ao mais antigo (repoHostChangesNewestFirst). Pagina pelo page e pageSize informados.\nSaída: Página de avisos com id, momento da mudança, mensagem de registro e autor, no formato { items, page, pageSize, hasMore }.",
+            "purpose": "Lista os avisos de mudança recebidos do serviço do repositório, em páginas, para acompanhamento pelo administrador.",
+            "input": "page: número da página pedida; pageSize: quantidade de avisos por página.",
+            "processing": "Busca os avisos de mudança da organização e ordena por changedAt decrescente, do mais recente ao mais antigo (repoHostChangesNewestFirst). Pagina pelo page e pageSize informados.",
+            "output": "Página de avisos com id, momento da mudança, mensagem de registro e autor, no formato { items, page, pageSize, hasMore }."
+          }
+        },
+        {
+          "route": "repoHost.avisos_mudanca.obterAviso",
+          "kind": "qry",
+          "uses": [
+            "listRepositoryChange"
+          ],
+          "transaction": "none",
+          "output": [
+            {
+              "kind": "entity",
+              "path": "aviso",
+              "entity": "RepositoryChange",
+              "fields": [
+                {
+                  "field": "id",
+                  "path": "id"
+                },
+                {
+                  "field": "changedAt",
+                  "path": "changedAt"
+                },
+                {
+                  "field": "details",
+                  "path": "details"
+                }
+              ]
+            },
+            {
+              "kind": "unresolved",
+              "path": "aviso.details.files",
+              "reason": "Interface ArquivoAfetado: fields path, details.files.change are not all fields of one entity or of one entity linked to it by an N:1 relationship."
+            }
+          ],
+          "params": [
+            {
+              "name": "id",
+              "target": "aviso",
+              "field": "id"
+            }
+          ],
+          "rules": [],
+          "doc": {
+            "raw": "Finalidade: Abre um aviso de mudança pelo id com todos os seus dados.\nEntrada: id: identificador do aviso escolhido.\nProcessamento: Lê o aviso pelo id dentro da organização do administrador, com a lista de arquivos afetados e o tipo de alteração de cada um.\nSaída: O aviso com momento da mudança, mensagem de registro completa, autor e arquivos afetados (caminho e tipo de alteração).",
+            "purpose": "Abre um aviso de mudança pelo id com todos os seus dados.",
+            "input": "id: identificador do aviso escolhido.",
+            "processing": "Lê o aviso pelo id dentro da organização do administrador, com a lista de arquivos afetados e o tipo de alteração de cada um.",
+            "output": "O aviso com momento da mudança, mensagem de registro completa, autor e arquivos afetados (caminho e tipo de alteração)."
+          }
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "requestService",
+        "artifactId": "avisos_mudanca",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryChange.defs.ts"
+        ],
+        "data": {
+          "pageId": "avisos_mudanca",
+          "requests": [
+            {
+              "route": "repoHost.avisos_mudanca.listarAvisos",
+              "kind": "qry",
+              "uses": [
+                "listRepositoryChange"
+              ],
+              "transaction": "none",
+              "output": [
+                {
+                  "kind": "list",
+                  "path": "avisos",
+                  "entity": "RepositoryChange",
+                  "items": "items",
+                  "page": "avisos.page",
+                  "pageSize": "avisos.pageSize",
+                  "hasMore": "avisos.hasMore",
+                  "fields": [
+                    {
+                      "field": "id",
+                      "path": "id"
+                    },
+                    {
+                      "field": "changedAt",
+                      "path": "changedAt"
+                    },
+                    {
+                      "field": "details",
+                      "path": "details"
+                    }
+                  ]
+                }
+              ],
+              "params": [
+                {
+                  "name": "page",
+                  "target": "avisos",
+                  "pages": "avisos"
+                },
+                {
+                  "name": "pageSize",
+                  "target": "avisos",
+                  "pages": "avisos"
+                }
+              ],
+              "rules": [
+                "repoHostChangesNewestFirst"
+              ],
+              "doc": {
+                "raw": "Finalidade: Lista os avisos de mudança recebidos do serviço do repositório, em páginas, para acompanhamento pelo administrador.\nEntrada: page: número da página pedida; pageSize: quantidade de avisos por página.\nProcessamento: Busca os avisos de mudança da organização e ordena por changedAt decrescente, do mais recente ao mais antigo (repoHostChangesNewestFirst). Pagina pelo page e pageSize informados.\nSaída: Página de avisos com id, momento da mudança, mensagem de registro e autor, no formato { items, page, pageSize, hasMore }.",
+                "purpose": "Lista os avisos de mudança recebidos do serviço do repositório, em páginas, para acompanhamento pelo administrador.",
+                "input": "page: número da página pedida; pageSize: quantidade de avisos por página.",
+                "processing": "Busca os avisos de mudança da organização e ordena por changedAt decrescente, do mais recente ao mais antigo (repoHostChangesNewestFirst). Pagina pelo page e pageSize informados.",
+                "output": "Página de avisos com id, momento da mudança, mensagem de registro e autor, no formato { items, page, pageSize, hasMore }."
+              }
+            },
+            {
+              "route": "repoHost.avisos_mudanca.obterAviso",
+              "kind": "qry",
+              "uses": [
+                "listRepositoryChange"
+              ],
+              "transaction": "none",
+              "output": [
+                {
+                  "kind": "entity",
+                  "path": "aviso",
+                  "entity": "RepositoryChange",
+                  "fields": [
+                    {
+                      "field": "id",
+                      "path": "id"
+                    },
+                    {
+                      "field": "changedAt",
+                      "path": "changedAt"
+                    },
+                    {
+                      "field": "details",
+                      "path": "details"
+                    }
+                  ]
+                },
+                {
+                  "kind": "unresolved",
+                  "path": "aviso.details.files",
+                  "reason": "Interface ArquivoAfetado: fields path, details.files.change are not all fields of one entity or of one entity linked to it by an N:1 relationship."
+                }
+              ],
+              "params": [
+                {
+                  "name": "id",
+                  "target": "aviso",
+                  "field": "id"
+                }
+              ],
+              "rules": [],
+              "doc": {
+                "raw": "Finalidade: Abre um aviso de mudança pelo id com todos os seus dados.\nEntrada: id: identificador do aviso escolhido.\nProcessamento: Lê o aviso pelo id dentro da organização do administrador, com a lista de arquivos afetados e o tipo de alteração de cada um.\nSaída: O aviso com momento da mudança, mensagem de registro completa, autor e arquivos afetados (caminho e tipo de alteração).",
+                "purpose": "Abre um aviso de mudança pelo id com todos os seus dados.",
+                "input": "id: identificador do aviso escolhido.",
+                "processing": "Lê o aviso pelo id dentro da organização do administrador, com a lista de arquivos afetados e o tipo de alteração de cada um.",
+                "output": "O aviso com momento da mudança, mensagem de registro completa, autor e arquivos afetados (caminho e tipo de alteração)."
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "pageId": "conteudo_repositorio",
+      "defPath": "l1/repoHost/layer_2_application/requests/conteudo_repositorio.defs.ts",
+      "requests": [
+        {
+          "route": "repoHost.conteudo_repositorio.listarItensRepositorio",
+          "kind": "qry",
+          "uses": [
+            "listRepositoryEntry"
+          ],
+          "transaction": "none",
+          "output": [
+            {
+              "kind": "list",
+              "path": "itens",
+              "entity": "RepositoryEntry",
+              "items": "items",
+              "page": "itens.page",
+              "pageSize": "itens.pageSize",
+              "hasMore": "itens.hasMore",
+              "fields": [
+                {
+                  "field": "id",
+                  "path": "id"
+                },
+                {
+                  "field": "path",
+                  "path": "path"
+                },
+                {
+                  "field": "entryType",
+                  "path": "entryType"
+                },
+                {
+                  "field": "parentEntryId",
+                  "path": "parentEntryId"
+                },
+                {
+                  "field": "details",
+                  "path": "details"
+                }
+              ]
+            }
+          ],
+          "params": [
+            {
+              "name": "page",
+              "target": "itens",
+              "pages": "itens"
+            },
+            {
+              "name": "pageSize",
+              "target": "itens",
+              "pages": "itens"
+            },
+            {
+              "name": "parentEntryId",
+              "target": "itens",
+              "field": "parentEntryId",
+              "optional": true
+            },
+            {
+              "name": "busca",
+              "target": "itens",
+              "field": "path",
+              "optional": true
+            }
+          ],
+          "rules": [
+            "repoHostParentMustBeFolder",
+            "repoHostNameFromPath"
+          ],
+          "doc": {
+            "raw": "Finalidade: Lista as pastas e arquivos do repositório de uma pasta (ou da raiz) ou os que correspondem a uma busca pelo caminho, para navegação.\nEntrada: parentEntryId: id da pasta cujo conteúdo é listado; ausente lista os itens da raiz. busca: texto contido no caminho; quando informado, busca em todo o repositório ignorando a pasta. page e pageSize: página solicitada e tamanho da página.\nProcessamento: Sem busca, usa listByForeignKey/locate.byColumn filtrando por parentEntryId (itens sem pasta pai quando ausente); a pasta informada deve ser do tipo folder (repoHostParentMustBeFolder). Com busca, usa locate.byText sobre o caminho. Ordena pastas antes de arquivos e depois por nome; o nome é o último trecho do caminho (repoHostNameFromPath). Escopo da organização do administrador.\nSaída: Página de itens { items, page, pageSize, hasMore } com id, caminho, tipo, pasta pai, nome e tamanho (tamanho só para arquivos).",
+            "purpose": "Lista as pastas e arquivos do repositório de uma pasta (ou da raiz) ou os que correspondem a uma busca pelo caminho, para navegação.",
+            "input": "parentEntryId: id da pasta cujo conteúdo é listado; ausente lista os itens da raiz. busca: texto contido no caminho; quando informado, busca em todo o repositório ignorando a pasta. page e pageSize: página solicitada e tamanho da página.",
+            "processing": "Sem busca, usa listByForeignKey/locate.byColumn filtrando por parentEntryId (itens sem pasta pai quando ausente); a pasta informada deve ser do tipo folder (repoHostParentMustBeFolder). Com busca, usa locate.byText sobre o caminho. Ordena pastas antes de arquivos e depois por nome; o nome é o último trecho do caminho (repoHostNameFromPath). Escopo da organização do administrador.",
+            "output": "Página de itens { items, page, pageSize, hasMore } com id, caminho, tipo, pasta pai, nome e tamanho (tamanho só para arquivos)."
+          }
+        },
+        {
+          "route": "repoHost.conteudo_repositorio.lerArquivo",
+          "kind": "qry",
+          "uses": [
+            "listRepositoryEntry"
+          ],
+          "transaction": "none",
+          "output": [
+            {
+              "kind": "entity",
+              "path": "arquivo",
+              "entity": "RepositoryEntry",
+              "fields": [
+                {
+                  "field": "id",
+                  "path": "id"
+                },
+                {
+                  "field": "path",
+                  "path": "path"
+                },
+                {
+                  "field": "entryType",
+                  "path": "entryType"
+                },
+                {
+                  "field": "details",
+                  "path": "details"
+                }
+              ]
+            },
+            {
+              "kind": "computed",
+              "path": "arquivo.conteudo",
+              "entity": "RepositoryEntry",
+              "rules": [
+                "repoHostFolderHasNoContent"
+              ]
+            },
+            {
+              "kind": "unresolved",
+              "path": "arquivo.conteudo",
+              "reason": "Interface ArquivoRepositorio: field conteudo is not a field of any entity."
+            }
+          ],
+          "params": [
+            {
+              "name": "id",
+              "target": "arquivo",
+              "field": "id"
+            }
+          ],
+          "rules": [
+            "repoHostFolderHasNoContent"
+          ],
+          "doc": {
+            "raw": "Finalidade: Abre um arquivo do repositório e traz o conteúdo atual do serviço que o hospeda junto com os dados de versão e sincronização.\nEntrada: id: id do item do repositório escolhido.\nProcessamento: Lê o item por read.byId; se for uma pasta, recusa a leitura, pois pasta não tem conteúdo, tamanho nem tipo de mídia (repoHostFolderHasNoContent). Chama repoHost.readFileContent para obter o conteúdo atual pelo caminho; o conteúdo não é guardado.\nSaída: O arquivo com id, caminho, tipo, nome, versão do conteúdo, tamanho, tipo de mídia, última sincronização e o conteúdo como está no repositório.",
+            "purpose": "Abre um arquivo do repositório e traz o conteúdo atual do serviço que o hospeda junto com os dados de versão e sincronização.",
+            "input": "id: id do item do repositório escolhido.",
+            "processing": "Lê o item por read.byId; se for uma pasta, recusa a leitura, pois pasta não tem conteúdo, tamanho nem tipo de mídia (repoHostFolderHasNoContent). Chama repoHost.readFileContent para obter o conteúdo atual pelo caminho; o conteúdo não é guardado.",
+            "output": "O arquivo com id, caminho, tipo, nome, versão do conteúdo, tamanho, tipo de mídia, última sincronização e o conteúdo como está no repositório."
+          }
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "requestService",
+        "artifactId": "conteudo_repositorio",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryEntry.defs.ts"
+        ],
+        "data": {
+          "pageId": "conteudo_repositorio",
+          "requests": [
+            {
+              "route": "repoHost.conteudo_repositorio.listarItensRepositorio",
+              "kind": "qry",
+              "uses": [
+                "listRepositoryEntry"
+              ],
+              "transaction": "none",
+              "output": [
+                {
+                  "kind": "list",
+                  "path": "itens",
+                  "entity": "RepositoryEntry",
+                  "items": "items",
+                  "page": "itens.page",
+                  "pageSize": "itens.pageSize",
+                  "hasMore": "itens.hasMore",
+                  "fields": [
+                    {
+                      "field": "id",
+                      "path": "id"
+                    },
+                    {
+                      "field": "path",
+                      "path": "path"
+                    },
+                    {
+                      "field": "entryType",
+                      "path": "entryType"
+                    },
+                    {
+                      "field": "parentEntryId",
+                      "path": "parentEntryId"
+                    },
+                    {
+                      "field": "details",
+                      "path": "details"
+                    }
+                  ]
+                }
+              ],
+              "params": [
+                {
+                  "name": "page",
+                  "target": "itens",
+                  "pages": "itens"
+                },
+                {
+                  "name": "pageSize",
+                  "target": "itens",
+                  "pages": "itens"
+                },
+                {
+                  "name": "parentEntryId",
+                  "target": "itens",
+                  "field": "parentEntryId",
+                  "optional": true
+                },
+                {
+                  "name": "busca",
+                  "target": "itens",
+                  "field": "path",
+                  "optional": true
+                }
+              ],
+              "rules": [
+                "repoHostParentMustBeFolder",
+                "repoHostNameFromPath"
+              ],
+              "doc": {
+                "raw": "Finalidade: Lista as pastas e arquivos do repositório de uma pasta (ou da raiz) ou os que correspondem a uma busca pelo caminho, para navegação.\nEntrada: parentEntryId: id da pasta cujo conteúdo é listado; ausente lista os itens da raiz. busca: texto contido no caminho; quando informado, busca em todo o repositório ignorando a pasta. page e pageSize: página solicitada e tamanho da página.\nProcessamento: Sem busca, usa listByForeignKey/locate.byColumn filtrando por parentEntryId (itens sem pasta pai quando ausente); a pasta informada deve ser do tipo folder (repoHostParentMustBeFolder). Com busca, usa locate.byText sobre o caminho. Ordena pastas antes de arquivos e depois por nome; o nome é o último trecho do caminho (repoHostNameFromPath). Escopo da organização do administrador.\nSaída: Página de itens { items, page, pageSize, hasMore } com id, caminho, tipo, pasta pai, nome e tamanho (tamanho só para arquivos).",
+                "purpose": "Lista as pastas e arquivos do repositório de uma pasta (ou da raiz) ou os que correspondem a uma busca pelo caminho, para navegação.",
+                "input": "parentEntryId: id da pasta cujo conteúdo é listado; ausente lista os itens da raiz. busca: texto contido no caminho; quando informado, busca em todo o repositório ignorando a pasta. page e pageSize: página solicitada e tamanho da página.",
+                "processing": "Sem busca, usa listByForeignKey/locate.byColumn filtrando por parentEntryId (itens sem pasta pai quando ausente); a pasta informada deve ser do tipo folder (repoHostParentMustBeFolder). Com busca, usa locate.byText sobre o caminho. Ordena pastas antes de arquivos e depois por nome; o nome é o último trecho do caminho (repoHostNameFromPath). Escopo da organização do administrador.",
+                "output": "Página de itens { items, page, pageSize, hasMore } com id, caminho, tipo, pasta pai, nome e tamanho (tamanho só para arquivos)."
+              }
+            },
+            {
+              "route": "repoHost.conteudo_repositorio.lerArquivo",
+              "kind": "qry",
+              "uses": [
+                "listRepositoryEntry"
+              ],
+              "transaction": "none",
+              "output": [
+                {
+                  "kind": "entity",
+                  "path": "arquivo",
+                  "entity": "RepositoryEntry",
+                  "fields": [
+                    {
+                      "field": "id",
+                      "path": "id"
+                    },
+                    {
+                      "field": "path",
+                      "path": "path"
+                    },
+                    {
+                      "field": "entryType",
+                      "path": "entryType"
+                    },
+                    {
+                      "field": "details",
+                      "path": "details"
+                    }
+                  ]
+                },
+                {
+                  "kind": "computed",
+                  "path": "arquivo.conteudo",
+                  "entity": "RepositoryEntry",
+                  "rules": [
+                    "repoHostFolderHasNoContent"
+                  ]
+                },
+                {
+                  "kind": "unresolved",
+                  "path": "arquivo.conteudo",
+                  "reason": "Interface ArquivoRepositorio: field conteudo is not a field of any entity."
+                }
+              ],
+              "params": [
+                {
+                  "name": "id",
+                  "target": "arquivo",
+                  "field": "id"
+                }
+              ],
+              "rules": [
+                "repoHostFolderHasNoContent"
+              ],
+              "doc": {
+                "raw": "Finalidade: Abre um arquivo do repositório e traz o conteúdo atual do serviço que o hospeda junto com os dados de versão e sincronização.\nEntrada: id: id do item do repositório escolhido.\nProcessamento: Lê o item por read.byId; se for uma pasta, recusa a leitura, pois pasta não tem conteúdo, tamanho nem tipo de mídia (repoHostFolderHasNoContent). Chama repoHost.readFileContent para obter o conteúdo atual pelo caminho; o conteúdo não é guardado.\nSaída: O arquivo com id, caminho, tipo, nome, versão do conteúdo, tamanho, tipo de mídia, última sincronização e o conteúdo como está no repositório.",
+                "purpose": "Abre um arquivo do repositório e traz o conteúdo atual do serviço que o hospeda junto com os dados de versão e sincronização.",
+                "input": "id: id do item do repositório escolhido.",
+                "processing": "Lê o item por read.byId; se for uma pasta, recusa a leitura, pois pasta não tem conteúdo, tamanho nem tipo de mídia (repoHostFolderHasNoContent). Chama repoHost.readFileContent para obter o conteúdo atual pelo caminho; o conteúdo não é guardado.",
+                "output": "O arquivo com id, caminho, tipo, nome, versão do conteúdo, tamanho, tipo de mídia, última sincronização e o conteúdo como está no repositório."
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "pageId": "github",
+      "defPath": "l1/repoHost/layer_2_application/requests/github.defs.ts",
+      "requests": [
+        {
+          "route": "repoHost.github.repositorioMudou",
+          "kind": "cmd",
+          "uses": [
+            "createRepositoryChange"
+          ],
+          "transaction": "single",
+          "output": [],
+          "params": [],
+          "rules": [],
+          "serves": "github.repositorioMudou"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "requestService",
+        "artifactId": "github",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts"
+        ],
+        "data": {
+          "pageId": "github",
+          "requests": [
+            {
+              "route": "repoHost.github.repositorioMudou",
+              "kind": "cmd",
+              "uses": [
+                "createRepositoryChange"
+              ],
+              "transaction": "single",
+              "output": [],
+              "params": [],
+              "rules": [],
+              "serves": "github.repositorioMudou"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "problems": [],
+  "normalizations": [
+    {
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "domain30.enumerations",
+      "detail": "2 enum values stay on the domain draft. controllers60 does not copy them."
+    }
+  ],
+  "emit": [
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "httpController",
+        "artifactId": "avisos_mudanca",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/requests/avisos_mudanca.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts"
+        ],
+        "data": {
+          "pageId": "avisos_mudanca",
+          "handlers": [
+            {
+              "route": "repoHost.avisos_mudanca.listarAvisos",
+              "kind": "query",
+              "grantIds": [
+                "administradorAcompanhaAvisos"
+              ],
+              "serviceFunction": "repoHost.avisos_mudanca.listarAvisos",
+              "contractPath": "l2/repoHost/web/contracts/avisos_mudanca.defs.ts",
+              "contractInterface": "Avisos_mudancaContracts"
+            },
+            {
+              "route": "repoHost.avisos_mudanca.obterAviso",
+              "kind": "query",
+              "grantIds": [
+                "administradorAcompanhaAvisos"
+              ],
+              "serviceFunction": "repoHost.avisos_mudanca.obterAviso",
+              "contractPath": "l2/repoHost/web/contracts/avisos_mudanca.defs.ts",
+              "contractInterface": "Avisos_mudancaContracts"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/httpController/avisos_mudanca",
+          "type": "httpController",
+          "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_2_application/requests/avisos_mudanca.defs.ts",
+            "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts",
+            "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/requestService/avisos_mudanca",
+            "102047/repoHost/accessScope/accessScope",
+            "102047/repoHost/authorityMap/authorityMap"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/httpController.md"
+          ],
+          "routes": [
+            "repoHost.avisos_mudanca.listarAvisos",
+            "repoHost.avisos_mudanca.obterAviso"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "httpController",
+        "artifactId": "conteudo_repositorio",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/requests/conteudo_repositorio.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts"
+        ],
+        "data": {
+          "pageId": "conteudo_repositorio",
+          "handlers": [
+            {
+              "route": "repoHost.conteudo_repositorio.lerArquivo",
+              "kind": "query",
+              "grantIds": [
+                "administradorConsultaRepositorio"
+              ],
+              "serviceFunction": "repoHost.conteudo_repositorio.lerArquivo",
+              "contractPath": "l2/repoHost/web/contracts/conteudo_repositorio.defs.ts",
+              "contractInterface": "Conteudo_repositorioContracts"
+            },
+            {
+              "route": "repoHost.conteudo_repositorio.listarItensRepositorio",
+              "kind": "query",
+              "grantIds": [
+                "administradorConsultaRepositorio"
+              ],
+              "serviceFunction": "repoHost.conteudo_repositorio.listarItensRepositorio",
+              "contractPath": "l2/repoHost/web/contracts/conteudo_repositorio.defs.ts",
+              "contractInterface": "Conteudo_repositorioContracts"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/httpController/conteudo_repositorio",
+          "type": "httpController",
+          "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_2_application/requests/conteudo_repositorio.defs.ts",
+            "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts",
+            "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/requestService/conteudo_repositorio",
+            "102047/repoHost/accessScope/accessScope",
+            "102047/repoHost/authorityMap/authorityMap"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/httpController.md"
+          ],
+          "routes": [
+            "repoHost.conteudo_repositorio.lerArquivo",
+            "repoHost.conteudo_repositorio.listarItensRepositorio"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "httpController",
+        "artifactId": "github",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/requests/github.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts"
+        ],
+        "data": {
+          "pageId": "github",
+          "handlers": [
+            {
+              "route": "repoHost.github.repositorioMudou",
+              "kind": "command",
+              "grantIds": [
+                "connection_github"
+              ],
+              "serviceFunction": "repoHost.github.repositorioMudou"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/httpController/github",
+          "type": "httpController",
+          "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/github.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/github.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_2_application/requests/github.defs.ts",
+            "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts",
+            "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/requestService/github",
+            "102047/repoHost/accessScope/accessScope",
+            "102047/repoHost/authorityMap/authorityMap"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/httpController.md"
+          ],
+          "routes": [
+            "repoHost.github.repositorioMudou"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "requestService",
+        "artifactId": "avisos_mudanca",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryChange.defs.ts"
+        ],
+        "data": {
+          "pageId": "avisos_mudanca",
+          "requests": [
+            {
+              "route": "repoHost.avisos_mudanca.listarAvisos",
+              "kind": "qry",
+              "uses": [
+                "listRepositoryChange"
+              ],
+              "transaction": "none",
+              "output": [
+                {
+                  "kind": "list",
+                  "path": "avisos",
+                  "entity": "RepositoryChange",
+                  "items": "items",
+                  "page": "avisos.page",
+                  "pageSize": "avisos.pageSize",
+                  "hasMore": "avisos.hasMore",
+                  "fields": [
+                    {
+                      "field": "id",
+                      "path": "id"
+                    },
+                    {
+                      "field": "changedAt",
+                      "path": "changedAt"
+                    },
+                    {
+                      "field": "details",
+                      "path": "details"
+                    }
+                  ]
+                }
+              ],
+              "params": [
+                {
+                  "name": "page",
+                  "target": "avisos",
+                  "pages": "avisos"
+                },
+                {
+                  "name": "pageSize",
+                  "target": "avisos",
+                  "pages": "avisos"
+                }
+              ],
+              "rules": [
+                "repoHostChangesNewestFirst"
+              ],
+              "doc": {
+                "raw": "Finalidade: Lista os avisos de mudança recebidos do serviço do repositório, em páginas, para acompanhamento pelo administrador.\nEntrada: page: número da página pedida; pageSize: quantidade de avisos por página.\nProcessamento: Busca os avisos de mudança da organização e ordena por changedAt decrescente, do mais recente ao mais antigo (repoHostChangesNewestFirst). Pagina pelo page e pageSize informados.\nSaída: Página de avisos com id, momento da mudança, mensagem de registro e autor, no formato { items, page, pageSize, hasMore }.",
+                "purpose": "Lista os avisos de mudança recebidos do serviço do repositório, em páginas, para acompanhamento pelo administrador.",
+                "input": "page: número da página pedida; pageSize: quantidade de avisos por página.",
+                "processing": "Busca os avisos de mudança da organização e ordena por changedAt decrescente, do mais recente ao mais antigo (repoHostChangesNewestFirst). Pagina pelo page e pageSize informados.",
+                "output": "Página de avisos com id, momento da mudança, mensagem de registro e autor, no formato { items, page, pageSize, hasMore }."
+              }
+            },
+            {
+              "route": "repoHost.avisos_mudanca.obterAviso",
+              "kind": "qry",
+              "uses": [
+                "listRepositoryChange"
+              ],
+              "transaction": "none",
+              "output": [
+                {
+                  "kind": "entity",
+                  "path": "aviso",
+                  "entity": "RepositoryChange",
+                  "fields": [
+                    {
+                      "field": "id",
+                      "path": "id"
+                    },
+                    {
+                      "field": "changedAt",
+                      "path": "changedAt"
+                    },
+                    {
+                      "field": "details",
+                      "path": "details"
+                    }
+                  ]
+                },
+                {
+                  "kind": "unresolved",
+                  "path": "aviso.details.files",
+                  "reason": "Interface ArquivoAfetado: fields path, details.files.change are not all fields of one entity or of one entity linked to it by an N:1 relationship."
+                }
+              ],
+              "params": [
+                {
+                  "name": "id",
+                  "target": "aviso",
+                  "field": "id"
+                }
+              ],
+              "rules": [],
+              "doc": {
+                "raw": "Finalidade: Abre um aviso de mudança pelo id com todos os seus dados.\nEntrada: id: identificador do aviso escolhido.\nProcessamento: Lê o aviso pelo id dentro da organização do administrador, com a lista de arquivos afetados e o tipo de alteração de cada um.\nSaída: O aviso com momento da mudança, mensagem de registro completa, autor e arquivos afetados (caminho e tipo de alteração).",
+                "purpose": "Abre um aviso de mudança pelo id com todos os seus dados.",
+                "input": "id: identificador do aviso escolhido.",
+                "processing": "Lê o aviso pelo id dentro da organização do administrador, com a lista de arquivos afetados e o tipo de alteração de cada um.",
+                "output": "O aviso com momento da mudança, mensagem de registro completa, autor e arquivos afetados (caminho e tipo de alteração)."
+              }
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/requestService/avisos_mudanca",
+          "type": "requestService",
+          "defPath": "_102047_/l1/repoHost/layer_2_application/requests/avisos_mudanca.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_2_application/requests/avisos_mudanca.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryChange.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/usecase/listRepositoryChange"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/requestService.md"
+          ],
+          "routes": [
+            "repoHost.avisos_mudanca.listarAvisos",
+            "repoHost.avisos_mudanca.obterAviso"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "requestService",
+        "artifactId": "conteudo_repositorio",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryEntry.defs.ts"
+        ],
+        "data": {
+          "pageId": "conteudo_repositorio",
+          "requests": [
+            {
+              "route": "repoHost.conteudo_repositorio.listarItensRepositorio",
+              "kind": "qry",
+              "uses": [
+                "listRepositoryEntry"
+              ],
+              "transaction": "none",
+              "output": [
+                {
+                  "kind": "list",
+                  "path": "itens",
+                  "entity": "RepositoryEntry",
+                  "items": "items",
+                  "page": "itens.page",
+                  "pageSize": "itens.pageSize",
+                  "hasMore": "itens.hasMore",
+                  "fields": [
+                    {
+                      "field": "id",
+                      "path": "id"
+                    },
+                    {
+                      "field": "path",
+                      "path": "path"
+                    },
+                    {
+                      "field": "entryType",
+                      "path": "entryType"
+                    },
+                    {
+                      "field": "parentEntryId",
+                      "path": "parentEntryId"
+                    },
+                    {
+                      "field": "details",
+                      "path": "details"
+                    }
+                  ]
+                }
+              ],
+              "params": [
+                {
+                  "name": "page",
+                  "target": "itens",
+                  "pages": "itens"
+                },
+                {
+                  "name": "pageSize",
+                  "target": "itens",
+                  "pages": "itens"
+                },
+                {
+                  "name": "parentEntryId",
+                  "target": "itens",
+                  "field": "parentEntryId",
+                  "optional": true
+                },
+                {
+                  "name": "busca",
+                  "target": "itens",
+                  "field": "path",
+                  "optional": true
+                }
+              ],
+              "rules": [
+                "repoHostParentMustBeFolder",
+                "repoHostNameFromPath"
+              ],
+              "doc": {
+                "raw": "Finalidade: Lista as pastas e arquivos do repositório de uma pasta (ou da raiz) ou os que correspondem a uma busca pelo caminho, para navegação.\nEntrada: parentEntryId: id da pasta cujo conteúdo é listado; ausente lista os itens da raiz. busca: texto contido no caminho; quando informado, busca em todo o repositório ignorando a pasta. page e pageSize: página solicitada e tamanho da página.\nProcessamento: Sem busca, usa listByForeignKey/locate.byColumn filtrando por parentEntryId (itens sem pasta pai quando ausente); a pasta informada deve ser do tipo folder (repoHostParentMustBeFolder). Com busca, usa locate.byText sobre o caminho. Ordena pastas antes de arquivos e depois por nome; o nome é o último trecho do caminho (repoHostNameFromPath). Escopo da organização do administrador.\nSaída: Página de itens { items, page, pageSize, hasMore } com id, caminho, tipo, pasta pai, nome e tamanho (tamanho só para arquivos).",
+                "purpose": "Lista as pastas e arquivos do repositório de uma pasta (ou da raiz) ou os que correspondem a uma busca pelo caminho, para navegação.",
+                "input": "parentEntryId: id da pasta cujo conteúdo é listado; ausente lista os itens da raiz. busca: texto contido no caminho; quando informado, busca em todo o repositório ignorando a pasta. page e pageSize: página solicitada e tamanho da página.",
+                "processing": "Sem busca, usa listByForeignKey/locate.byColumn filtrando por parentEntryId (itens sem pasta pai quando ausente); a pasta informada deve ser do tipo folder (repoHostParentMustBeFolder). Com busca, usa locate.byText sobre o caminho. Ordena pastas antes de arquivos e depois por nome; o nome é o último trecho do caminho (repoHostNameFromPath). Escopo da organização do administrador.",
+                "output": "Página de itens { items, page, pageSize, hasMore } com id, caminho, tipo, pasta pai, nome e tamanho (tamanho só para arquivos)."
+              }
+            },
+            {
+              "route": "repoHost.conteudo_repositorio.lerArquivo",
+              "kind": "qry",
+              "uses": [
+                "listRepositoryEntry"
+              ],
+              "transaction": "none",
+              "output": [
+                {
+                  "kind": "entity",
+                  "path": "arquivo",
+                  "entity": "RepositoryEntry",
+                  "fields": [
+                    {
+                      "field": "id",
+                      "path": "id"
+                    },
+                    {
+                      "field": "path",
+                      "path": "path"
+                    },
+                    {
+                      "field": "entryType",
+                      "path": "entryType"
+                    },
+                    {
+                      "field": "details",
+                      "path": "details"
+                    }
+                  ]
+                },
+                {
+                  "kind": "computed",
+                  "path": "arquivo.conteudo",
+                  "entity": "RepositoryEntry",
+                  "rules": [
+                    "repoHostFolderHasNoContent"
+                  ]
+                },
+                {
+                  "kind": "unresolved",
+                  "path": "arquivo.conteudo",
+                  "reason": "Interface ArquivoRepositorio: field conteudo is not a field of any entity."
+                }
+              ],
+              "params": [
+                {
+                  "name": "id",
+                  "target": "arquivo",
+                  "field": "id"
+                }
+              ],
+              "rules": [
+                "repoHostFolderHasNoContent"
+              ],
+              "doc": {
+                "raw": "Finalidade: Abre um arquivo do repositório e traz o conteúdo atual do serviço que o hospeda junto com os dados de versão e sincronização.\nEntrada: id: id do item do repositório escolhido.\nProcessamento: Lê o item por read.byId; se for uma pasta, recusa a leitura, pois pasta não tem conteúdo, tamanho nem tipo de mídia (repoHostFolderHasNoContent). Chama repoHost.readFileContent para obter o conteúdo atual pelo caminho; o conteúdo não é guardado.\nSaída: O arquivo com id, caminho, tipo, nome, versão do conteúdo, tamanho, tipo de mídia, última sincronização e o conteúdo como está no repositório.",
+                "purpose": "Abre um arquivo do repositório e traz o conteúdo atual do serviço que o hospeda junto com os dados de versão e sincronização.",
+                "input": "id: id do item do repositório escolhido.",
+                "processing": "Lê o item por read.byId; se for uma pasta, recusa a leitura, pois pasta não tem conteúdo, tamanho nem tipo de mídia (repoHostFolderHasNoContent). Chama repoHost.readFileContent para obter o conteúdo atual pelo caminho; o conteúdo não é guardado.",
+                "output": "O arquivo com id, caminho, tipo, nome, versão do conteúdo, tamanho, tipo de mídia, última sincronização e o conteúdo como está no repositório."
+              }
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/requestService/conteudo_repositorio",
+          "type": "requestService",
+          "defPath": "_102047_/l1/repoHost/layer_2_application/requests/conteudo_repositorio.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_2_application/requests/conteudo_repositorio.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryEntry.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/usecase/listRepositoryEntry"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/requestService.md"
+          ],
+          "routes": [
+            "repoHost.conteudo_repositorio.listarItensRepositorio",
+            "repoHost.conteudo_repositorio.lerArquivo"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "requestService",
+        "artifactId": "github",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts"
+        ],
+        "data": {
+          "pageId": "github",
+          "requests": [
+            {
+              "route": "repoHost.github.repositorioMudou",
+              "kind": "cmd",
+              "uses": [
+                "createRepositoryChange"
+              ],
+              "transaction": "single",
+              "output": [],
+              "params": [],
+              "rules": [],
+              "serves": "github.repositorioMudou"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/requestService/github",
+          "type": "requestService",
+          "defPath": "_102047_/l1/repoHost/layer_2_application/requests/github.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_2_application/requests/github.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/usecase/createRepositoryChange"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/requestService.md"
+          ],
+          "routes": [
+            "repoHost.github.repositorioMudou"
+          ]
+        }
+      ]
+    }
+  ],
+  "removals": []
+}

@@ -1,0 +1,34 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryPort",
+  "artifactId": "RepositoryChangeRepository",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts"
+  ],
+  "data": {
+    "entityId": "RepositoryChange",
+    "interfaceName": "RepositoryChangeRepository",
+    "methods": [
+      {
+        "name": "create",
+        "params": [
+          "RepositoryChange"
+        ],
+        "returns": "RepositoryChange"
+      },
+      {
+        "name": "list",
+        "params": [
+          "RepositoryChangeFilter"
+        ],
+        "returns": "RepositoryChange[]"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

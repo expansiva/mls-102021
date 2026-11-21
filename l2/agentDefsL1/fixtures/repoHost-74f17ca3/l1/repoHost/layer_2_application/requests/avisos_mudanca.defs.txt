@@ -1,0 +1,123 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_2_application/requests/avisos_mudanca.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "avisos_mudanca",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryChange.defs.ts"
+  ],
+  "data": {
+    "pageId": "avisos_mudanca",
+    "requests": [
+      {
+        "route": "repoHost.avisos_mudanca.listarAvisos",
+        "kind": "qry",
+        "uses": [
+          "listRepositoryChange"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "list",
+            "path": "avisos",
+            "entity": "RepositoryChange",
+            "items": "items",
+            "page": "avisos.page",
+            "pageSize": "avisos.pageSize",
+            "hasMore": "avisos.hasMore",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "changedAt",
+                "path": "changedAt"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "avisos",
+            "pages": "avisos"
+          },
+          {
+            "name": "pageSize",
+            "target": "avisos",
+            "pages": "avisos"
+          }
+        ],
+        "rules": [
+          "repoHostChangesNewestFirst"
+        ],
+        "doc": {
+          "raw": "Finalidade: Lista os avisos de mudança recebidos do serviço do repositório, em páginas, para acompanhamento pelo administrador.\nEntrada: page: número da página pedida; pageSize: quantidade de avisos por página.\nProcessamento: Busca os avisos de mudança da organização e ordena por changedAt decrescente, do mais recente ao mais antigo (repoHostChangesNewestFirst). Pagina pelo page e pageSize informados.\nSaída: Página de avisos com id, momento da mudança, mensagem de registro e autor, no formato { items, page, pageSize, hasMore }.",
+          "purpose": "Lista os avisos de mudança recebidos do serviço do repositório, em páginas, para acompanhamento pelo administrador.",
+          "input": "page: número da página pedida; pageSize: quantidade de avisos por página.",
+          "processing": "Busca os avisos de mudança da organização e ordena por changedAt decrescente, do mais recente ao mais antigo (repoHostChangesNewestFirst). Pagina pelo page e pageSize informados.",
+          "output": "Página de avisos com id, momento da mudança, mensagem de registro e autor, no formato { items, page, pageSize, hasMore }."
+        }
+      },
+      {
+        "route": "repoHost.avisos_mudanca.obterAviso",
+        "kind": "qry",
+        "uses": [
+          "listRepositoryChange"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "aviso",
+            "entity": "RepositoryChange",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "changedAt",
+                "path": "changedAt"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "aviso.details.files",
+            "reason": "Interface ArquivoAfetado: fields path, details.files.change are not all fields of one entity or of one entity linked to it by an N:1 relationship."
+          }
+        ],
+        "params": [
+          {
+            "name": "id",
+            "target": "aviso",
+            "field": "id"
+          }
+        ],
+        "rules": [],
+        "doc": {
+          "raw": "Finalidade: Abre um aviso de mudança pelo id com todos os seus dados.\nEntrada: id: identificador do aviso escolhido.\nProcessamento: Lê o aviso pelo id dentro da organização do administrador, com a lista de arquivos afetados e o tipo de alteração de cada um.\nSaída: O aviso com momento da mudança, mensagem de registro completa, autor e arquivos afetados (caminho e tipo de alteração).",
+          "purpose": "Abre um aviso de mudança pelo id com todos os seus dados.",
+          "input": "id: identificador do aviso escolhido.",
+          "processing": "Lê o aviso pelo id dentro da organização do administrador, com a lista de arquivos afetados e o tipo de alteração de cada um.",
+          "output": "O aviso com momento da mudança, mensagem de registro completa, autor e arquivos afetados (caminho e tipo de alteração)."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

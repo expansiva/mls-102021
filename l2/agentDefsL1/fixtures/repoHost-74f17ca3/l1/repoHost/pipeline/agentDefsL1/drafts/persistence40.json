@@ -1,0 +1,896 @@
+{
+  "schemaVersion": "2026-09-21-d1-persistence-v1",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "llmCalls": 0,
+  "ok": true,
+  "enumerations": [
+    {
+      "entityId": "RepositoryChange",
+      "path": "details.files.change",
+      "values": [
+        "added",
+        "modified",
+        "removed"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "RepositoryEntry",
+      "path": "entryType",
+      "values": [
+        "folder",
+        "file"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    }
+  ],
+  "uniqueKeys": [
+    {
+      "entityId": "RepositoryChange",
+      "tableId": "repositoryChange",
+      "uniqueKeys": [],
+      "consumed": true,
+      "placedOn": "table.data.uniqueKeys"
+    },
+    {
+      "entityId": "RepositoryEntry",
+      "tableId": "repositoryEntry",
+      "uniqueKeys": [
+        [
+          "path"
+        ]
+      ],
+      "consumed": true,
+      "placedOn": "table.data.uniqueKeys"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "RepositoryChangeRepository",
+      "entityId": "RepositoryChange",
+      "action": "create",
+      "defPath": "l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "RepositoryChange"
+          ],
+          "returns": "RepositoryChange"
+        },
+        {
+          "name": "list",
+          "params": [
+            "RepositoryChangeFilter"
+          ],
+          "returns": "RepositoryChange[]"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryPort",
+        "artifactId": "RepositoryChangeRepository",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "RepositoryChange",
+          "interfaceName": "RepositoryChangeRepository",
+          "methods": [
+            {
+              "name": "create",
+              "params": [
+                "RepositoryChange"
+              ],
+              "returns": "RepositoryChange"
+            },
+            {
+              "name": "list",
+              "params": [
+                "RepositoryChangeFilter"
+              ],
+              "returns": "RepositoryChange[]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "portId": "RepositoryEntryRepository",
+      "entityId": "RepositoryEntry",
+      "action": "create",
+      "defPath": "l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts",
+      "methods": [
+        {
+          "name": "list",
+          "params": [
+            "RepositoryEntryFilter"
+          ],
+          "returns": "RepositoryEntry[]"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryPort",
+        "artifactId": "RepositoryEntryRepository",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "RepositoryEntry",
+          "interfaceName": "RepositoryEntryRepository",
+          "methods": [
+            {
+              "name": "list",
+              "params": [
+                "RepositoryEntryFilter"
+              ],
+              "returns": "RepositoryEntry[]"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "repositoryChange",
+      "entityId": "RepositoryChange",
+      "action": "create",
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts",
+      "physicalName": "repoHost_repositorychange",
+      "detailsColumn": "details",
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "table",
+        "artifactId": "repositoryChange",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "tableId": "repositoryChange",
+          "entityId": "RepositoryChange",
+          "physicalName": "repoHost_repositorychange",
+          "primaryKey": [
+            "id"
+          ],
+          "uniqueKeys": [],
+          "indexes": [
+            {
+              "name": "repoHost_repositorychange_changedAt",
+              "columns": [
+                "changedAt"
+              ],
+              "unique": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tableId": "repositoryEntry",
+      "entityId": "RepositoryEntry",
+      "action": "create",
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts",
+      "physicalName": "repoHost_repositoryentry",
+      "detailsColumn": "details",
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "table",
+        "artifactId": "repositoryEntry",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "tableId": "repositoryEntry",
+          "entityId": "RepositoryEntry",
+          "physicalName": "repoHost_repositoryentry",
+          "primaryKey": [
+            "id"
+          ],
+          "uniqueKeys": [
+            [
+              "path"
+            ]
+          ],
+          "indexes": [
+            {
+              "name": "repoHost_repositoryentry_path",
+              "columns": [
+                "path"
+              ],
+              "unique": true
+            },
+            {
+              "name": "repoHost_repositoryentry_entryType",
+              "columns": [
+                "entryType"
+              ],
+              "unique": false
+            },
+            {
+              "name": "repoHost_repositoryentry_parentEntryId",
+              "columns": [
+                "parentEntryId"
+              ],
+              "unique": false
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "adapters": [
+    {
+      "portId": "RepositoryChangeRepository",
+      "entityId": "RepositoryChange",
+      "tableId": "repositoryChange",
+      "action": "create",
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "RepositoryChange"
+          ],
+          "returns": "RepositoryChange"
+        },
+        {
+          "name": "list",
+          "params": [
+            "RepositoryChangeFilter"
+          ],
+          "returns": "RepositoryChange[]"
+        }
+      ],
+      "bindings": [
+        {
+          "field": "id",
+          "column": "id",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "version",
+          "column": "json:version",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "changedAt",
+          "column": "changedAt",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "details.commitMessage",
+          "column": "json:details.commitMessage",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.author",
+          "column": "json:details.author",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.files.path",
+          "column": "json:details.files.path",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.files.change",
+          "column": "json:details.files.change",
+          "nullable": false,
+          "placement": "json"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryAdapter",
+        "artifactId": "RepositoryChangeRepository",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "RepositoryChange",
+          "portId": "RepositoryChangeRepository",
+          "tableId": "repositoryChange",
+          "columns": [
+            {
+              "field": "id",
+              "column": "id"
+            },
+            {
+              "field": "version",
+              "column": "json:version"
+            },
+            {
+              "field": "changedAt",
+              "column": "changedAt"
+            },
+            {
+              "field": "details.commitMessage",
+              "column": "json:details.commitMessage"
+            },
+            {
+              "field": "details.author",
+              "column": "json:details.author"
+            },
+            {
+              "field": "details.files.path",
+              "column": "json:details.files.path"
+            },
+            {
+              "field": "details.files.change",
+              "column": "json:details.files.change"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "portId": "RepositoryEntryRepository",
+      "entityId": "RepositoryEntry",
+      "tableId": "repositoryEntry",
+      "action": "create",
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.defs.ts",
+      "methods": [
+        {
+          "name": "list",
+          "params": [
+            "RepositoryEntryFilter"
+          ],
+          "returns": "RepositoryEntry[]"
+        }
+      ],
+      "bindings": [
+        {
+          "field": "id",
+          "column": "id",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "version",
+          "column": "json:version",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "path",
+          "column": "path",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "entryType",
+          "column": "entryType",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "parentEntryId",
+          "column": "parentEntryId",
+          "nullable": true,
+          "placement": "column"
+        },
+        {
+          "field": "details.name",
+          "column": "json:details.name",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.contentVersion",
+          "column": "json:details.contentVersion",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.sizeBytes",
+          "column": "json:details.sizeBytes",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.mimeType",
+          "column": "json:details.mimeType",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.lastSyncedAt",
+          "column": "json:details.lastSyncedAt",
+          "nullable": true,
+          "placement": "json"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryAdapter",
+        "artifactId": "RepositoryEntryRepository",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "RepositoryEntry",
+          "portId": "RepositoryEntryRepository",
+          "tableId": "repositoryEntry",
+          "columns": [
+            {
+              "field": "id",
+              "column": "id"
+            },
+            {
+              "field": "version",
+              "column": "json:version"
+            },
+            {
+              "field": "path",
+              "column": "path"
+            },
+            {
+              "field": "entryType",
+              "column": "entryType"
+            },
+            {
+              "field": "parentEntryId",
+              "column": "parentEntryId"
+            },
+            {
+              "field": "details.name",
+              "column": "json:details.name"
+            },
+            {
+              "field": "details.contentVersion",
+              "column": "json:details.contentVersion"
+            },
+            {
+              "field": "details.sizeBytes",
+              "column": "json:details.sizeBytes"
+            },
+            {
+              "field": "details.mimeType",
+              "column": "json:details.mimeType"
+            },
+            {
+              "field": "details.lastSyncedAt",
+              "column": "json:details.lastSyncedAt"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "problems": [],
+  "normalizations": [
+    {
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "domain30.enumerations",
+      "detail": "2 enum values stay on the domain draft. persistence40 does not copy them."
+    },
+    {
+      "code": "PK_INDEX_OMITTED",
+      "path": "id",
+      "detail": "The primary key is not repeated as a secondary index."
+    },
+    {
+      "code": "PK_INDEX_OMITTED",
+      "path": "id",
+      "detail": "The primary key is not repeated as a secondary index."
+    },
+    {
+      "code": "OUT_OF_STEP",
+      "path": "l1/repoHost/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+      "detail": "persistence40 does not write seeds or the registry."
+    },
+    {
+      "code": "OUT_OF_STEP",
+      "path": "l1/repoHost/layer_1_external/adapters/persistence/seeds.defs.ts",
+      "detail": "persistence40 does not write seeds or the registry."
+    },
+    {
+      "code": "DETAILS_COLUMN",
+      "path": "RepositoryChange.details",
+      "detail": "Non-indexed fields use the runtime details JSONB column. Keys inside it are the logical paths."
+    },
+    {
+      "code": "ID_COLUMN",
+      "path": "RepositoryChange.id",
+      "detail": "Primary key column name is the logical field id."
+    },
+    {
+      "code": "VERSION_IN_DETAILS",
+      "path": "RepositoryChange.version",
+      "detail": "Row version stays the logical field version inside details JSON. It is not the table schema version and it was not renamed."
+    },
+    {
+      "code": "DETAILS_COLUMN",
+      "path": "RepositoryEntry.details",
+      "detail": "Non-indexed fields use the runtime details JSONB column. Keys inside it are the logical paths."
+    },
+    {
+      "code": "ID_COLUMN",
+      "path": "RepositoryEntry.id",
+      "detail": "Primary key column name is the logical field id."
+    },
+    {
+      "code": "VERSION_IN_DETAILS",
+      "path": "RepositoryEntry.version",
+      "detail": "Row version stays the logical field version inside details JSON. It is not the table schema version and it was not renamed."
+    }
+  ],
+  "preserved": [],
+  "removed": [],
+  "emit": [
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "table",
+        "artifactId": "repositoryChange",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts"
+        ],
+        "data": {
+          "tableId": "repositoryChange",
+          "entityId": "RepositoryChange",
+          "physicalName": "repoHost_repositorychange",
+          "primaryKey": [
+            "id"
+          ],
+          "uniqueKeys": [],
+          "indexes": [
+            {
+              "name": "repoHost_repositorychange_changedAt",
+              "columns": [
+                "changedAt"
+              ],
+              "unique": false
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/table/repositoryChange",
+          "type": "table",
+          "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/domainEntity/RepositoryChange"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/table.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryAdapter",
+        "artifactId": "RepositoryChangeRepository",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts"
+        ],
+        "data": {
+          "entityId": "RepositoryChange",
+          "portId": "RepositoryChangeRepository",
+          "tableId": "repositoryChange",
+          "columns": [
+            {
+              "field": "id",
+              "column": "id"
+            },
+            {
+              "field": "version",
+              "column": "json:version"
+            },
+            {
+              "field": "changedAt",
+              "column": "changedAt"
+            },
+            {
+              "field": "details.commitMessage",
+              "column": "json:details.commitMessage"
+            },
+            {
+              "field": "details.author",
+              "column": "json:details.author"
+            },
+            {
+              "field": "details.files.path",
+              "column": "json:details.files.path"
+            },
+            {
+              "field": "details.files.change",
+              "column": "json:details.files.change"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/repositoryAdapter/RepositoryChangeRepository",
+          "type": "repositoryAdapter",
+          "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts",
+            "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/repositoryPort/RepositoryChangeRepository",
+            "102047/repoHost/table/repositoryChange"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/repositoryAdapter.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "table",
+        "artifactId": "repositoryEntry",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts"
+        ],
+        "data": {
+          "tableId": "repositoryEntry",
+          "entityId": "RepositoryEntry",
+          "physicalName": "repoHost_repositoryentry",
+          "primaryKey": [
+            "id"
+          ],
+          "uniqueKeys": [
+            [
+              "path"
+            ]
+          ],
+          "indexes": [
+            {
+              "name": "repoHost_repositoryentry_path",
+              "columns": [
+                "path"
+              ],
+              "unique": true
+            },
+            {
+              "name": "repoHost_repositoryentry_entryType",
+              "columns": [
+                "entryType"
+              ],
+              "unique": false
+            },
+            {
+              "name": "repoHost_repositoryentry_parentEntryId",
+              "columns": [
+                "parentEntryId"
+              ],
+              "unique": false
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/table/repositoryEntry",
+          "type": "table",
+          "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/domainEntity/RepositoryEntry"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/table.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryAdapter",
+        "artifactId": "RepositoryEntryRepository",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts",
+          "_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts"
+        ],
+        "data": {
+          "entityId": "RepositoryEntry",
+          "portId": "RepositoryEntryRepository",
+          "tableId": "repositoryEntry",
+          "columns": [
+            {
+              "field": "id",
+              "column": "id"
+            },
+            {
+              "field": "version",
+              "column": "json:version"
+            },
+            {
+              "field": "path",
+              "column": "path"
+            },
+            {
+              "field": "entryType",
+              "column": "entryType"
+            },
+            {
+              "field": "parentEntryId",
+              "column": "parentEntryId"
+            },
+            {
+              "field": "details.name",
+              "column": "json:details.name"
+            },
+            {
+              "field": "details.contentVersion",
+              "column": "json:details.contentVersion"
+            },
+            {
+              "field": "details.sizeBytes",
+              "column": "json:details.sizeBytes"
+            },
+            {
+              "field": "details.mimeType",
+              "column": "json:details.mimeType"
+            },
+            {
+              "field": "details.lastSyncedAt",
+              "column": "json:details.lastSyncedAt"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/repositoryAdapter/RepositoryEntryRepository",
+          "type": "repositoryAdapter",
+          "defPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts",
+            "_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/repositoryPort/RepositoryEntryRepository",
+            "102047/repoHost/table/repositoryEntry"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/repositoryAdapter.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryPort",
+        "artifactId": "RepositoryChangeRepository",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts"
+        ],
+        "data": {
+          "entityId": "RepositoryChange",
+          "interfaceName": "RepositoryChangeRepository",
+          "methods": [
+            {
+              "name": "create",
+              "params": [
+                "RepositoryChange"
+              ],
+              "returns": "RepositoryChange"
+            },
+            {
+              "name": "list",
+              "params": [
+                "RepositoryChangeFilter"
+              ],
+              "returns": "RepositoryChange[]"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/repositoryPort/RepositoryChangeRepository",
+          "type": "repositoryPort",
+          "defPath": "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/domainEntity/RepositoryChange"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/repositoryPort.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryPort",
+        "artifactId": "RepositoryEntryRepository",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts"
+        ],
+        "data": {
+          "entityId": "RepositoryEntry",
+          "interfaceName": "RepositoryEntryRepository",
+          "methods": [
+            {
+              "name": "list",
+              "params": [
+                "RepositoryEntryFilter"
+              ],
+              "returns": "RepositoryEntry[]"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/repositoryPort/RepositoryEntryRepository",
+          "type": "repositoryPort",
+          "defPath": "_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/domainEntity/RepositoryEntry"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/repositoryPort.md"
+          ]
+        }
+      ]
+    }
+  ]
+}

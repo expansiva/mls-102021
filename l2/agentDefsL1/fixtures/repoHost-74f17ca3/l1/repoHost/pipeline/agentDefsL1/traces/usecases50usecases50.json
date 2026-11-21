@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "step": "usecases50",
+  "unitId": "usecases50",
+  "runId": "sha256:7f1f7c7c7f34a89b8b20171f4c149115fc9bd32cf0c6fcbbf073be8a99ccdf4d",
+  "snapshotHash": "sha256:7f1f7c7c7f34a89b8b20171f4c149115fc9bd32cf0c6fcbbf073be8a99ccdf4d",
+  "draftHash": "sha256:b86c08ae8fc6e31d2d5b3e007e2cc756b148dba903b8336267c929791bab3f51",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.ts",
+    "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryChange.ts",
+    "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryEntry.ts",
+    "l1/repoHost/layer_2_application/usecases/createRepositoryChange.ts",
+    "l1/repoHost/layer_2_application/usecases/listRepositoryChange.ts",
+    "l1/repoHost/layer_2_application/usecases/listRepositoryEntry.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:04f699763809f456aa3c3609dcebb28cb48a604ce2cd28c9dfe9839817d16488",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.ts",
+        "l1/repoHost/layer_2_application/usecases/createRepositoryChange.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/usecases/listRepositoryChange.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:bb7d209504eab97fb3653e5e64d8d0bac5f6ac04a3e550e5329c99f6acb9ba02",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryChange.ts",
+        "l1/repoHost/layer_2_application/usecases/listRepositoryChange.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/usecases/listRepositoryEntry.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:b6f230b82f25c8b9639713f80ae2b3b59821ea098fe345991d92da315f6e3dce",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryEntry.ts",
+        "l1/repoHost/layer_2_application/usecases/listRepositoryEntry.ts"
+      ]
+    }
+  ],
+  "issues": []
+}

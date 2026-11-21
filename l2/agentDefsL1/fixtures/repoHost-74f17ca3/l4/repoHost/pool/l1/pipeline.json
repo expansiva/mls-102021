@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "2026-09-20-p1-pipeline-v1",
+  "flowId": "agentPlannerL1",
+  "moduleName": "repoHost",
+  "status": "complete",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-11-19T23:58:04.285Z",
+      "artifactPaths": [
+        "l4/repoHost/pool/l1/pipeline.json"
+      ]
+    },
+    "plan20": {
+      "status": "approved",
+      "updatedAt": "2026-11-19T23:58:04.503Z",
+      "artifactPaths": [
+        "l4/repoHost/pool/l2/web/backend.json",
+        "l4/repoHost/pool/l2/20261119235804_repoHost-20261119235752_1.json"
+      ]
+    }
+  },
+  "thread": "repoHost-20261119235752",
+  "round": 1,
+  "messageFile": "l4/repoHost/pool/l1/20261119235803_repoHost-20261119235752_1.json",
+  "sourceMessages": [
+    "20261119235803_repoHost-20261119235752_1.json"
+  ],
+  "needsFile": "l4/repoHost/pool/l1/web/needs.json",
+  "inventory": {
+    "routes": [],
+    "usecases": [],
+    "ports": [],
+    "tables": [],
+    "present": false
+  },
+  "updatedAt": "2026-11-19T23:58:04.503Z",
+  "pool": [
+    {
+      "at": "2026-11-19T23:58:04.503Z",
+      "file": "l4/repoHost/pool/l2/20261119235804_repoHost-20261119235752_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "repoHost-20261119235752",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-19T23:58:04.503Z",
+      "file": "l4/repoHost/pool/l1/20261119235803_repoHost-20261119235752_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "repoHost-20261119235752",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryPort",
+  "artifactId": "RepositoryEntryRepository",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts"
+  ],
+  "data": {
+    "entityId": "RepositoryEntry",
+    "interfaceName": "RepositoryEntryRepository",
+    "methods": [
+      {
+        "name": "list",
+        "params": [
+          "RepositoryEntryFilter"
+        ],
+        "returns": "RepositoryEntry[]"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

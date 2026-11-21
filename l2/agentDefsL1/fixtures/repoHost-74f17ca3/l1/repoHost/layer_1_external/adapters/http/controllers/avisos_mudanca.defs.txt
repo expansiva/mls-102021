@@ -1,0 +1,41 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "avisos_mudanca",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/repoHost/layer_2_application/requests/avisos_mudanca.defs.ts",
+    "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "avisos_mudanca",
+    "handlers": [
+      {
+        "route": "repoHost.avisos_mudanca.listarAvisos",
+        "kind": "query",
+        "grantIds": [
+          "administradorAcompanhaAvisos"
+        ],
+        "serviceFunction": "repoHost.avisos_mudanca.listarAvisos",
+        "contractPath": "l2/repoHost/web/contracts/avisos_mudanca.defs.ts",
+        "contractInterface": "Avisos_mudancaContracts"
+      },
+      {
+        "route": "repoHost.avisos_mudanca.obterAviso",
+        "kind": "query",
+        "grantIds": [
+          "administradorAcompanhaAvisos"
+        ],
+        "serviceFunction": "repoHost.avisos_mudanca.obterAviso",
+        "contractPath": "l2/repoHost/web/contracts/avisos_mudanca.defs.ts",
+        "contractInterface": "Avisos_mudancaContracts"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

@@ -1,0 +1,486 @@
+{
+  "schemaVersion": "2026-09-21-d1-domain-v1",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "llmCalls": 0,
+  "ok": true,
+  "entities": [
+    {
+      "entityId": "RepositoryChange",
+      "action": "create",
+      "defPath": "l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts",
+      "storageTarget": "moduleDatabase",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [],
+      "enumerations": [
+        {
+          "path": "details.files.change",
+          "values": [
+            "added",
+            "modified",
+            "removed"
+          ]
+        }
+      ],
+      "rules": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "RepositoryChange",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "RepositoryChange",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "changedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.commitMessage",
+              "type": "text"
+            },
+            {
+              "name": "details.author",
+              "type": "string"
+            },
+            {
+              "name": "details.files",
+              "type": "object"
+            },
+            {
+              "name": "details.files.path",
+              "type": "string"
+            },
+            {
+              "name": "details.files.change",
+              "type": "enum"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "RepositoryEntry",
+      "action": "create",
+      "defPath": "l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts",
+      "storageTarget": "moduleDatabase",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [
+        [
+          "path"
+        ]
+      ],
+      "enumerations": [
+        {
+          "path": "entryType",
+          "values": [
+            "folder",
+            "file"
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "ruleId": "repoHostUniquePath",
+          "owner": "module",
+          "source": "l4/repoHost/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "repoHostFolderHasNoContent",
+          "owner": "module",
+          "source": "l4/repoHost/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "repoHostParentMustBeFolder",
+          "owner": "module",
+          "source": "l4/repoHost/rules.defs.ts",
+          "placement": "invariant"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "RepositoryEntry",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "RepositoryEntry",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "path",
+              "type": "string"
+            },
+            {
+              "name": "entryType",
+              "type": "enum"
+            },
+            {
+              "name": "parentEntryId",
+              "type": "record",
+              "ref": "RepositoryEntry"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.name",
+              "type": "string"
+            },
+            {
+              "name": "details.contentVersion",
+              "type": "string"
+            },
+            {
+              "name": "details.sizeBytes",
+              "type": "integer"
+            },
+            {
+              "name": "details.mimeType",
+              "type": "string"
+            },
+            {
+              "name": "details.lastSyncedAt",
+              "type": "timestamp"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "repoHostUniquePath",
+            "repoHostFolderHasNoContent",
+            "repoHostParentMustBeFolder"
+          ],
+          "imports": []
+        }
+      }
+    }
+  ],
+  "valueObjects": [],
+  "problems": [],
+  "normalizations": [
+    {
+      "code": "NESTED_KEPT",
+      "path": "repoHost",
+      "detail": "No nested object is the target of a record reference. Nested fields stay on the entity."
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryChange.record.fields.changedAt",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryChange.record.fields.details.author",
+      "detail": "description,maxLength,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryChange.record.fields.details.commitMessage",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryChange.record.fields.details.files.change",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryChange.record.fields.details.files.path",
+      "detail": "description,maxLength,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryChange.record.fields.details.files",
+      "detail": "collection,description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryChange.record.fields.details",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryChange.record.fields.id",
+      "detail": "indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryChange.record.fields.version",
+      "detail": "required"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "RepositoryChange",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryEntry.record.fields.details.contentVersion",
+      "detail": "description,maxLength,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryEntry.record.fields.details.lastSyncedAt",
+      "detail": "description,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryEntry.record.fields.details.mimeType",
+      "detail": "description,maxLength,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryEntry.record.fields.details.name",
+      "detail": "description,maxLength,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryEntry.record.fields.details.sizeBytes",
+      "detail": "description,min,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryEntry.record.fields.details",
+      "detail": "description,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryEntry.record.fields.entryType",
+      "detail": "description,indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryEntry.record.fields.id",
+      "detail": "indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryEntry.record.fields.parentEntryId",
+      "detail": "description,indexed,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryEntry.record.fields.path",
+      "detail": "description,indexed,maxLength,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "RepositoryEntry.record.fields.version",
+      "detail": "required"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "RepositoryEntry",
+      "detail": "no lifecycleStates and no transitions"
+    }
+  ],
+  "preserved": [],
+  "removed": [],
+  "emit": [
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "RepositoryChange",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "RepositoryChange",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "changedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.commitMessage",
+              "type": "text"
+            },
+            {
+              "name": "details.author",
+              "type": "string"
+            },
+            {
+              "name": "details.files",
+              "type": "object"
+            },
+            {
+              "name": "details.files.path",
+              "type": "string"
+            },
+            {
+              "name": "details.files.change",
+              "type": "enum"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/domainEntity/RepositoryChange",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [],
+          "dependsOn": [],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "RepositoryEntry",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "RepositoryEntry",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "path",
+              "type": "string"
+            },
+            {
+              "name": "entryType",
+              "type": "enum"
+            },
+            {
+              "name": "parentEntryId",
+              "type": "record",
+              "ref": "RepositoryEntry"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.name",
+              "type": "string"
+            },
+            {
+              "name": "details.contentVersion",
+              "type": "string"
+            },
+            {
+              "name": "details.sizeBytes",
+              "type": "integer"
+            },
+            {
+              "name": "details.mimeType",
+              "type": "string"
+            },
+            {
+              "name": "details.lastSyncedAt",
+              "type": "timestamp"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [
+            "repoHostUniquePath",
+            "repoHostFolderHasNoContent",
+            "repoHostParentMustBeFolder"
+          ],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/domainEntity/RepositoryEntry",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [],
+          "dependsOn": [],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    }
+  ]
+}

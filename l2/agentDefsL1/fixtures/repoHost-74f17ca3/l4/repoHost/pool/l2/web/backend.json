@@ -1,0 +1,179 @@
+{
+  "schemaVersion": "2026-09-21-p1-backend-v1.2",
+  "moduleName": "repoHost",
+  "device": "web",
+  "sourceNeeds": "pool/l1/web/needs.json",
+  "inventoryPresent": false,
+  "endpoints": [
+    {
+      "route": "repoHost.avisos_mudanca.qryListRepositoryChange",
+      "page": "avisos_mudanca",
+      "kind": "qry",
+      "usecaseRef": "listRepositoryChange",
+      "status": "toCreate",
+      "tableRefs": [
+        "repositoryChange"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "repoHost.conteudo_repositorio.qryListRepositoryEntry",
+      "page": "conteudo_repositorio",
+      "kind": "qry",
+      "usecaseRef": "listRepositoryEntry",
+      "status": "toCreate",
+      "tableRefs": [
+        "repositoryEntry"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "listRepositoryChange",
+      "entity": "RepositoryChange",
+      "operation": "list",
+      "ports": [
+        "RepositoryChange"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for RepositoryChange.list",
+      "tableRefs": [
+        "repositoryChange"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listRepositoryEntry",
+      "entity": "RepositoryEntry",
+      "operation": "list",
+      "ports": [
+        "RepositoryEntry"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for RepositoryEntry.list",
+      "tableRefs": [
+        "repositoryEntry"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "RepositoryChangeRepository",
+      "entity": "RepositoryChange",
+      "status": "toCreate",
+      "tableRefs": [
+        "repositoryChange"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "portId": "RepositoryEntryRepository",
+      "entity": "RepositoryEntry",
+      "status": "toCreate",
+      "tableRefs": [
+        "repositoryEntry"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "repositoryChange",
+      "entity": "RepositoryChange",
+      "status": "toCreate",
+      "tableRefs": [
+        "repositoryChange"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "tableId": "repositoryEntry",
+      "entity": "RepositoryEntry",
+      "status": "toCreate",
+      "tableRefs": [
+        "repositoryEntry"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "removed": [],
+  "changes": [],
+  "testSupport": [
+    {
+      "id": "data:RepositoryChange",
+      "actorRefs": [
+        "administrador"
+      ],
+      "entityRefs": [
+        "RepositoryChange"
+      ],
+      "sourceRefs": [
+        "grant:administradorAcompanhaAvisos",
+        "journey:acompanharAvisosMudanca/listarAvisos",
+        "journey:acompanharAvisosMudanca/verAviso"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes repositoryChange rows by execution id"
+    },
+    {
+      "id": "data:RepositoryEntry",
+      "actorRefs": [
+        "administrador"
+      ],
+      "entityRefs": [
+        "RepositoryEntry"
+      ],
+      "sourceRefs": [
+        "grant:administradorConsultaRepositorio",
+        "journey:consultarConteudoRepositorio/lerArquivo",
+        "journey:consultarConteudoRepositorio/listarPastasArquivos"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes repositoryEntry rows by execution id"
+    },
+    {
+      "id": "identity:administrador",
+      "actorRefs": [
+        "administrador"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/administrador",
+        "grant:administradorAcompanhaAvisos",
+        "grant:administradorConsultaRepositorio",
+        "journey:acompanharAvisosMudanca/listarAvisos",
+        "journey:acompanharAvisosMudanca/verAviso",
+        "journey:consultarConteudoRepositorio/lerArquivo",
+        "journey:consultarConteudoRepositorio/listarPastasArquivos"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor administrador declares no personEntity; the test identity cannot be bound"
+    }
+  ],
+  "meta": {
+    "pages": {
+      "conteudo_repositorio": [
+        "repoHost.conteudo_repositorio.qryListRepositoryEntry"
+      ],
+      "avisos_mudanca": [
+        "repoHost.avisos_mudanca.qryListRepositoryChange"
+      ]
+    },
+    "generatedAt": "2026-11-19T23:58:04.501Z",
+    "llmCalled": false,
+    "unmappedChanges": []
+  }
+}

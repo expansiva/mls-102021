@@ -205,8 +205,8 @@ export interface D1ExternalSplit {
  * takes the operation its call's `effect` names (`list`, `read`→`get`), the first of an operation keeps the planned id,
  * the others are named by the `operationId` (and by the entity when that id is taken). The planned ids stay as they are.
  */
-export function splitExternalUsecases(args: D1ExternalCallsInput & { taken: ReadonlySet<string> }): { usecases: D1SelectedUsecase[]; splits: D1ExternalSplit[] } {
-  const matches = new Map(externalCallsOf(args).map(match => [match.usecaseId, match]));
+export function splitExternalUsecases(args: D1ExternalCallsInput & { taken: ReadonlySet<string>; splitStored?: boolean }): { usecases: D1SelectedUsecase[]; splits: D1ExternalSplit[] } {
+  const matches = new Map(externalCallsOf({ ...args, allEntities: args.allEntities || args.splitStored === true }).map(match => [match.usecaseId, match]));
   const effects = new Map<string, string>();
   for (const row of args.connections.map(rec).filter(item => text(item.direction) === 'call')) {
     effects.set(`${text(row.connectionId)}.${text(row.operationId)}`, text(row.effect));
@@ -216,7 +216,11 @@ export function splitExternalUsecases(args: D1ExternalCallsInput & { taken: Read
   const splits: D1ExternalSplit[] = [];
   for (const usecase of args.usecases) {
     const match = matches.get(usecase.usecaseId);
-    if (!match || match.calls.length === 0 || usecase.call) {
+    // d1_269: an entity the module stores is split too when more than one call serves its usecase (RepositoryEntry: `listarConteudo` lists, `lerArquivo` reads, and
+    // the one `list` usecase was the consumer of both). With one call, or none, a stored entity's usecase is left as it is: no `call` is put on it.
+    const kind = args.entityKind.get(usecase.entity);
+    const storedSplit = args.splitStored === true && !!kind && kind !== 'external' && kind !== 'role' && (match?.calls.length ?? 0) > 1;
+    if (!match || match.calls.length === 0 || usecase.call || (kind !== 'external' && !storedSplit)) {
       usecases.push(usecase);
       continue;
     }

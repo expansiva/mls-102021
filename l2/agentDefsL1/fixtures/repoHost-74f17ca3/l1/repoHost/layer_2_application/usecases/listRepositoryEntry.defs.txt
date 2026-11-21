@@ -1,0 +1,22 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryEntry.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "listRepositoryEntry",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts",
+    "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "listRepositoryEntry",
+    "entityId": "RepositoryEntry",
+    "operation": "list",
+    "rulesApplied": [],
+    "effects": []
+  }
+} as const;
+
+export default definition;

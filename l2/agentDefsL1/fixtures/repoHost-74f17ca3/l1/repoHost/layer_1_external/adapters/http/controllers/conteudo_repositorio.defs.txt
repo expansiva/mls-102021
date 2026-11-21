@@ -1,0 +1,41 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "conteudo_repositorio",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/repoHost/layer_2_application/requests/conteudo_repositorio.defs.ts",
+    "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "conteudo_repositorio",
+    "handlers": [
+      {
+        "route": "repoHost.conteudo_repositorio.lerArquivo",
+        "kind": "query",
+        "grantIds": [
+          "administradorConsultaRepositorio"
+        ],
+        "serviceFunction": "repoHost.conteudo_repositorio.lerArquivo",
+        "contractPath": "l2/repoHost/web/contracts/conteudo_repositorio.defs.ts",
+        "contractInterface": "Conteudo_repositorioContracts"
+      },
+      {
+        "route": "repoHost.conteudo_repositorio.listarItensRepositorio",
+        "kind": "query",
+        "grantIds": [
+          "administradorConsultaRepositorio"
+        ],
+        "serviceFunction": "repoHost.conteudo_repositorio.listarItensRepositorio",
+        "contractPath": "l2/repoHost/web/contracts/conteudo_repositorio.defs.ts",
+        "contractInterface": "Conteudo_repositorioContracts"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

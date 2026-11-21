@@ -1,0 +1,33 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/adapters/persistence/registerRepositories.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryRegistration",
+  "artifactId": "registerRepositories",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_1_external/adapters/integration/outbound.defs.ts",
+    "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.defs.ts",
+    "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.defs.ts"
+  ],
+  "data": {
+    "registrationId": "registerRepositories",
+    "adapters": [
+      {
+        "portId": "GithubGateway",
+        "adapterArtifactId": "outbound"
+      },
+      {
+        "portId": "RepositoryChangeRepository",
+        "adapterArtifactId": "RepositoryChangeRepository"
+      },
+      {
+        "portId": "RepositoryEntryRepository",
+        "adapterArtifactId": "RepositoryEntryRepository"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "step": "domain30",
+  "unitId": "domain30",
+  "runId": "sha256:7f1f7c7c7f34a89b8b20171f4c149115fc9bd32cf0c6fcbbf073be8a99ccdf4d",
+  "snapshotHash": "sha256:7f1f7c7c7f34a89b8b20171f4c149115fc9bd32cf0c6fcbbf073be8a99ccdf4d",
+  "draftHash": "sha256:aa4f15cf1c7135855be705bd77da8d364667fbc58a06c45fc22201e7040be075",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.ts",
+    "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.ts",
+    "l1/repoHost/layer_3_domain/entities/repositoryChange.ts",
+    "l1/repoHost/layer_3_domain/entities/repositoryEntry.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:d2de2c05923b5bf95689c60fb1df833d6e8f147efaae24e665015252b9132830",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.ts",
+        "l1/repoHost/layer_3_domain/entities/repositoryChange.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:3792f168057e518a3ee803cc61409659c13b69a88028fc0a6014f12dd3dbb823",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.ts",
+        "l1/repoHost/layer_3_domain/entities/repositoryEntry.ts"
+      ]
+    }
+  ],
+  "issues": []
+}

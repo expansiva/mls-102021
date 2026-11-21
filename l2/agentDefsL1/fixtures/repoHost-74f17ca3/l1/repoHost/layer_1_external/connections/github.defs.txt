@@ -1,0 +1,61 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/connections/github.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "externalConnection",
+  "artifactId": "github",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l4/repoHost/integration.defs.ts"
+  ],
+  "data": {
+    "systemId": "github",
+    "title": "GitHub",
+    "description": "Serviço que hospeda o repositório de conteúdo da empresa. O módulo lista pastas e arquivos, lê arquivos, grava arquivos novos ou alterados com mensagem de registro e recebe o aviso quando o repositório muda.",
+    "settings": [
+      {
+        "id": "repositorio",
+        "title": "Repositório",
+        "description": "Qual é o repositório de conteúdo da empresa no GitHub (dono e nome do repositório).",
+        "secret": false
+      },
+      {
+        "id": "chaveAcesso",
+        "title": "Chave de acesso",
+        "description": "Chave que dá ao módulo acesso de leitura e gravação ao repositório.",
+        "secret": true
+      },
+      {
+        "id": "segredoAviso",
+        "title": "Segredo dos avisos",
+        "description": "Segredo combinado com o GitHub para conferir que os avisos de mudança vêm realmente dele.",
+        "secret": true
+      }
+    ],
+    "operations": [
+      {
+        "operationId": "listarConteudo",
+        "direction": "call",
+        "description": "Pede a lista de pastas e arquivos de um caminho do repositório."
+      },
+      {
+        "operationId": "lerArquivo",
+        "direction": "call",
+        "description": "Pede o conteúdo de um arquivo do repositório."
+      },
+      {
+        "operationId": "gravarArquivo",
+        "direction": "call",
+        "description": "Grava um arquivo novo ou alterado no repositório, com a mensagem de registro."
+      },
+      {
+        "operationId": "repositorioMudou",
+        "direction": "serve",
+        "description": "O GitHub avisa que o repositório mudou, informando o registro da mudança e os arquivos afetados."
+      }
+    ]
+  }
+} as const;
+
+export default definition;

@@ -1,0 +1,168 @@
+{
+  "schemaVersion": "2026-09-21-p2-effort-v1.2",
+  "moduleName": "repoHost",
+  "device": "web",
+  "totals": {
+    "screens": {
+      "toCreate": 2,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "endpoints": {
+      "toCreate": 2,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "usecases": {
+      "toCreate": 2,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "tables": {
+      "toCreate": 2,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    }
+  },
+  "screens": [
+    {
+      "pageId": "conteudo_repositorio",
+      "label": "Conteúdo do repositório",
+      "actors": [
+        "administrador"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "repoHost.conteudo_repositorio.qryListRepositoryEntry"
+      ]
+    },
+    {
+      "pageId": "avisos_mudanca",
+      "label": "Avisos de mudança",
+      "actors": [
+        "administrador"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "repoHost.avisos_mudanca.qryListRepositoryChange"
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "route": "repoHost.avisos_mudanca.qryListRepositoryChange",
+      "page": "avisos_mudanca",
+      "kind": "qry",
+      "usecaseRef": "listRepositoryChange",
+      "status": "toCreate"
+    },
+    {
+      "route": "repoHost.conteudo_repositorio.qryListRepositoryEntry",
+      "page": "conteudo_repositorio",
+      "kind": "qry",
+      "usecaseRef": "listRepositoryEntry",
+      "status": "toCreate"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "listRepositoryChange",
+      "entity": "RepositoryChange",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listRepositoryEntry",
+      "entity": "RepositoryEntry",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "repositoryChange",
+      "entity": "RepositoryChange",
+      "status": "toCreate"
+    },
+    {
+      "tableId": "repositoryEntry",
+      "entity": "RepositoryEntry",
+      "status": "toCreate"
+    }
+  ],
+  "removed": [],
+  "testSupport": [
+    {
+      "id": "data:RepositoryChange",
+      "actorRefs": [
+        "administrador"
+      ],
+      "entityRefs": [
+        "RepositoryChange"
+      ],
+      "sourceRefs": [
+        "grant:administradorAcompanhaAvisos",
+        "journey:acompanharAvisosMudanca/listarAvisos",
+        "journey:acompanharAvisosMudanca/verAviso"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes repositoryChange rows by execution id"
+    },
+    {
+      "id": "data:RepositoryEntry",
+      "actorRefs": [
+        "administrador"
+      ],
+      "entityRefs": [
+        "RepositoryEntry"
+      ],
+      "sourceRefs": [
+        "grant:administradorConsultaRepositorio",
+        "journey:consultarConteudoRepositorio/lerArquivo",
+        "journey:consultarConteudoRepositorio/listarPastasArquivos"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes repositoryEntry rows by execution id"
+    },
+    {
+      "id": "identity:administrador",
+      "actorRefs": [
+        "administrador"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/administrador",
+        "grant:administradorAcompanhaAvisos",
+        "grant:administradorConsultaRepositorio",
+        "journey:acompanharAvisosMudanca/listarAvisos",
+        "journey:acompanharAvisosMudanca/verAviso",
+        "journey:consultarConteudoRepositorio/lerArquivo",
+        "journey:consultarConteudoRepositorio/listarPastasArquivos"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor administrador declares no personEntity; the test identity cannot be bound"
+    }
+  ],
+  "unattributed": [],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "sourceBackend": "pool/l2/web/backend.json",
+    "sourceVersion": "2026-09-21-p1-backend-v1.2",
+    "generatedAt": "2026-11-19T23:58:05.123Z"
+  }
+}

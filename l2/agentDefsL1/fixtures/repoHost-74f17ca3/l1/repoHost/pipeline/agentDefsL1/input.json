@@ -1,0 +1,745 @@
+{
+  "schemaVersion": "2026-10-01-d1-input-v2",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "device": "web",
+  "plannerRun": {
+    "flowId": "agentPlannerL1",
+    "thread": "repoHost-20261119235752",
+    "round": 1,
+    "schemaVersion": "2026-09-20-p1-pipeline-v1"
+  },
+  "sources": [
+    {
+      "path": "l2/repoHost/web/contracts/avisos_mudanca.defs.ts",
+      "sha256": "sha256:b9a1df1af0028a6fd1a136b89d46006474b5c35e4ad18d6038810190ea323e08",
+      "bytes": 2750,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l2/repoHost/web/contracts/conteudo_repositorio.defs.ts",
+      "sha256": "sha256:a94f0dd76ff901d51a7ee07a6b8595cd608bd24a9904e97685e1dff0adcde5d8",
+      "bytes": 3501,
+      "schemaVersion": "",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/access.defs.ts",
+      "sha256": "sha256:b4a2ba37fe00cc962626f0ea3f655b4b25eea75fea8051dae8e18699c91ec460",
+      "bytes": 2233,
+      "schemaVersion": "2026-09-12-ns5-access-v3",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/integration.defs.ts",
+      "sha256": "sha256:1043afd4a79f2288b27fc94edb8f42240b4534d188c6f21fca8aa3eea8a29440",
+      "bytes": 4466,
+      "schemaVersion": "2026-11-19-ns5-integration-v4",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/journeys/acompanharAvisosMudanca.defs.ts",
+      "sha256": "sha256:d47e6058cb8b6d7753aef9eedd84f75e3324438d77b40af5e99ce2e2afe4c2b2",
+      "bytes": 1834,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/journeys/consultarConteudoRepositorio.defs.ts",
+      "sha256": "sha256:5c18bf10ed1ee3b7b107bcc350305d4087f2a10cc228ff6d64e1c0940b2d9feb",
+      "bytes": 1865,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/journeys/index.defs.ts",
+      "sha256": "sha256:06b7536ce65fd641d61a25f38155248868bcedd09706db99e02713ece7702cab",
+      "bytes": 803,
+      "schemaVersion": "2026-09-10-ns5-journey-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/module.defs.ts",
+      "sha256": "sha256:91a1e30f58e5c41c550c23dd66b2b74f59716d4f094fc3f98b37f7fd351f9845",
+      "bytes": 1070,
+      "schemaVersion": "2026-09-10-ns5-module-v2",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/ontology/index.defs.ts",
+      "sha256": "sha256:9b31c747791a7d02234f1007299b212bbb2e9d62fe4af1e6a4a0bc1435243ff8",
+      "bytes": 1555,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/ontology/RepositoryChange.defs.ts",
+      "sha256": "sha256:3f560f70fa174eb4d558b6b703deac76e0256fcaa480f6e5d0af2196f4288614",
+      "bytes": 4224,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/ontology/RepositoryEntry.defs.ts",
+      "sha256": "sha256:00e98925d0bbbfd16d125abbc5010378206417772b69b5e73711f7f85988d7a9",
+      "bytes": 5930,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/pool/l1/pipeline.json",
+      "sha256": "sha256:555f0cc7fd9f11ab3a88da439af9f4d58efab1eeea19104d024c466445310989",
+      "bytes": 1607,
+      "schemaVersion": "2026-09-20-p1-pipeline-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/pool/l1/web/needs.json",
+      "sha256": "sha256:ea01853c958c74d20e5349f2ddbdcec4019caa3b8b06658c9eedd05fac043ec2",
+      "bytes": 1264,
+      "schemaVersion": "2026-09-21-p2-needs-v1",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/pool/l2/web/backend.json",
+      "sha256": "sha256:c8a434b13b33d99f911d6ca2a2beb94e70da68aff6a9fdff7f3d1d503e0cac3d",
+      "bytes": 4627,
+      "schemaVersion": "2026-09-21-p1-backend-v1.2",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/pool/l2/web/effort.json",
+      "sha256": "sha256:3e38a22c3c350ea9abf9f3e7e53fa7b88850dfdccb8ecc3bf41ffd0d472a76b0",
+      "bytes": 4285,
+      "schemaVersion": "2026-09-21-p2-effort-v1.2",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/pool/l2/web/menu.json",
+      "sha256": "sha256:b92e3dc6ad5b14c2944441c26da10a04f2410244a4490735f4bde46b4e40c176",
+      "bytes": 2399,
+      "schemaVersion": "2026-09-20-p2-menu-v2.2",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/rules.defs.ts",
+      "sha256": "sha256:7a8bd244852dad7da5e18f23dbde185a11d2c5eec209c4cd19bc5e8c3187e0ac",
+      "bytes": 1624,
+      "schemaVersion": "2026-09-16-ns5-rules-v2",
+      "state": "present"
+    },
+    {
+      "path": "l4/repoHost/workflows.defs.ts",
+      "sha256": "sha256:9a8bb1c794d3519b14aabbfa659747fc14a01b91785ae15f018cd833bb3e9e5c",
+      "bytes": 664,
+      "schemaVersion": "2026-09-17-ns5-workflows-v3",
+      "state": "present"
+    }
+  ],
+  "selection": {
+    "pages": [
+      {
+        "pageId": "avisos_mudanca",
+        "routes": [
+          "repoHost.avisos_mudanca.listarAvisos",
+          "repoHost.avisos_mudanca.obterAviso"
+        ]
+      },
+      {
+        "pageId": "conteudo_repositorio",
+        "routes": [
+          "repoHost.conteudo_repositorio.lerArquivo",
+          "repoHost.conteudo_repositorio.listarItensRepositorio"
+        ]
+      },
+      {
+        "pageId": "github",
+        "routes": [
+          "repoHost.github.repositorioMudou"
+        ]
+      }
+    ],
+    "requests": [
+      {
+        "route": "repoHost.avisos_mudanca.listarAvisos",
+        "pageId": "avisos_mudanca",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "avisos",
+            "entity": "RepositoryChange",
+            "many": true,
+            "page": "page",
+            "pageSize": "pageSize",
+            "hasMore": "hasMore"
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "avisos",
+            "pages": "avisos"
+          },
+          {
+            "name": "pageSize",
+            "target": "avisos",
+            "pages": "avisos"
+          }
+        ],
+        "uses": [
+          "listRepositoryChange"
+        ]
+      },
+      {
+        "route": "repoHost.avisos_mudanca.obterAviso",
+        "pageId": "avisos_mudanca",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "aviso",
+            "entity": "RepositoryChange",
+            "many": false
+          }
+        ],
+        "params": [
+          {
+            "name": "id",
+            "target": "aviso",
+            "field": "id"
+          }
+        ],
+        "uses": [
+          "listRepositoryChange"
+        ],
+        "unresolved": [
+          {
+            "path": "output.aviso.details.files",
+            "reason": "Interface ArquivoAfetado: fields path, details.files.change are not all fields of one entity or of one entity linked to it by an N:1 relationship.",
+            "kind": "entity",
+            "candidates": [
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "repoHost.conteudo_repositorio.lerArquivo",
+        "pageId": "conteudo_repositorio",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "arquivo",
+            "entity": "RepositoryEntry",
+            "many": false,
+            "computed": [
+              "conteudo"
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "id",
+            "target": "arquivo",
+            "field": "id"
+          }
+        ],
+        "uses": [
+          "listRepositoryEntry"
+        ],
+        "unresolved": [
+          {
+            "path": "output.arquivo.conteudo",
+            "reason": "Interface ArquivoRepositorio: field conteudo is not a field of any entity.",
+            "kind": "fieldPath",
+            "candidates": [
+              "none"
+            ]
+          }
+        ]
+      },
+      {
+        "route": "repoHost.conteudo_repositorio.listarItensRepositorio",
+        "pageId": "conteudo_repositorio",
+        "kind": "qry",
+        "writes": "",
+        "outputs": [
+          {
+            "key": "itens",
+            "entity": "RepositoryEntry",
+            "many": true,
+            "page": "page",
+            "pageSize": "pageSize",
+            "hasMore": "hasMore"
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "itens",
+            "pages": "itens"
+          },
+          {
+            "name": "pageSize",
+            "target": "itens",
+            "pages": "itens"
+          },
+          {
+            "name": "parentEntryId",
+            "target": "itens",
+            "field": "parentEntryId",
+            "optional": true
+          },
+          {
+            "name": "busca",
+            "target": "itens",
+            "field": "path",
+            "optional": true
+          }
+        ],
+        "uses": [
+          "listRepositoryEntry"
+        ]
+      },
+      {
+        "route": "repoHost.github.repositorioMudou",
+        "pageId": "github",
+        "kind": "cmd",
+        "writes": "RepositoryChange.create",
+        "outputs": [],
+        "params": [],
+        "uses": [
+          "createRepositoryChange"
+        ],
+        "serves": "github.repositorioMudou"
+      }
+    ],
+    "usecases": [
+      {
+        "usecaseId": "createRepositoryChange",
+        "entity": "RepositoryChange",
+        "operation": "create",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "createRepositoryChange",
+        "routes": [
+          "repoHost.github.repositorioMudou"
+        ]
+      },
+      {
+        "usecaseId": "listRepositoryChange",
+        "entity": "RepositoryChange",
+        "operation": "list",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "listRepositoryChange",
+        "routes": [
+          "repoHost.avisos_mudanca.listarAvisos",
+          "repoHost.avisos_mudanca.obterAviso"
+        ]
+      },
+      {
+        "usecaseId": "listRepositoryEntry",
+        "entity": "RepositoryEntry",
+        "operation": "list",
+        "status": "toCreate",
+        "existing": "",
+        "identity": "listRepositoryEntry",
+        "routes": [
+          "repoHost.conteudo_repositorio.lerArquivo",
+          "repoHost.conteudo_repositorio.listarItensRepositorio"
+        ]
+      }
+    ],
+    "ports": [
+      {
+        "portId": "RepositoryChangeRepository",
+        "entity": "RepositoryChange",
+        "status": "toCreate"
+      },
+      {
+        "portId": "RepositoryEntryRepository",
+        "entity": "RepositoryEntry",
+        "status": "toCreate"
+      }
+    ],
+    "tables": [
+      {
+        "tableId": "repositoryChange",
+        "entity": "RepositoryChange",
+        "status": "toCreate"
+      },
+      {
+        "tableId": "repositoryEntry",
+        "entity": "RepositoryEntry",
+        "status": "toCreate"
+      }
+    ],
+    "entities": [
+      "RepositoryChange",
+      "RepositoryEntry"
+    ],
+    "outbound": [
+      "repositorioAlterado"
+    ]
+  },
+  "files": [
+    {
+      "id": "controller:avisos_mudanca",
+      "artifactType": "httpController",
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.defs.ts",
+      "action": "create",
+      "identity": "avisos_mudanca",
+      "ownerRefs": [
+        "endpoint:repoHost.avisos_mudanca.listarAvisos",
+        "endpoint:repoHost.avisos_mudanca.obterAviso"
+      ],
+      "dependsOn": [
+        "requestService:avisos_mudanca",
+        "usecase:listRepositoryChange",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:conteudo_repositorio",
+      "artifactType": "httpController",
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.defs.ts",
+      "action": "create",
+      "identity": "conteudo_repositorio",
+      "ownerRefs": [
+        "endpoint:repoHost.conteudo_repositorio.lerArquivo",
+        "endpoint:repoHost.conteudo_repositorio.listarItensRepositorio"
+      ],
+      "dependsOn": [
+        "requestService:conteudo_repositorio",
+        "usecase:listRepositoryEntry",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "controller:github",
+      "artifactType": "httpController",
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/github.defs.ts",
+      "action": "create",
+      "identity": "github",
+      "ownerRefs": [
+        "endpoint:repoHost.github.repositorioMudou"
+      ],
+      "dependsOn": [
+        "requestService:github",
+        "usecase:createRepositoryChange",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "integration:outbound",
+      "artifactType": "integrationOutbound",
+      "defPath": "l1/repoHost/layer_1_external/adapters/integration/outbound.defs.ts",
+      "action": "create",
+      "identity": "outbound",
+      "ownerRefs": [
+        "event:repositorioAlterado"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "registration:repositories",
+      "artifactType": "repositoryRegistration",
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+      "action": "create",
+      "identity": "registerRepositories",
+      "ownerRefs": [
+        "adapter:RepositoryChangeRepository",
+        "adapter:RepositoryEntryRepository"
+      ],
+      "dependsOn": [
+        "adapter:RepositoryChangeRepository",
+        "adapter:RepositoryEntryRepository"
+      ]
+    },
+    {
+      "id": "table:repositoryChange",
+      "artifactType": "table",
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryChange.defs.ts",
+      "action": "create",
+      "identity": "repositoryChange",
+      "ownerRefs": [
+        "table:repositoryChange"
+      ],
+      "dependsOn": [
+        "entity:RepositoryChange"
+      ]
+    },
+    {
+      "id": "adapter:RepositoryChangeRepository",
+      "artifactType": "repositoryAdapter",
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryChangeRepositoryAdapter.defs.ts",
+      "action": "create",
+      "identity": "RepositoryChangeRepository",
+      "ownerRefs": [
+        "port:RepositoryChangeRepository",
+        "table:repositoryChange"
+      ],
+      "dependsOn": [
+        "port:RepositoryChangeRepository",
+        "table:repositoryChange"
+      ]
+    },
+    {
+      "id": "table:repositoryEntry",
+      "artifactType": "table",
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts",
+      "action": "create",
+      "identity": "repositoryEntry",
+      "ownerRefs": [
+        "table:repositoryEntry"
+      ],
+      "dependsOn": [
+        "entity:RepositoryEntry"
+      ]
+    },
+    {
+      "id": "adapter:RepositoryEntryRepository",
+      "artifactType": "repositoryAdapter",
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.defs.ts",
+      "action": "create",
+      "identity": "RepositoryEntryRepository",
+      "ownerRefs": [
+        "port:RepositoryEntryRepository",
+        "table:repositoryEntry"
+      ],
+      "dependsOn": [
+        "port:RepositoryEntryRepository",
+        "table:repositoryEntry"
+      ]
+    },
+    {
+      "id": "seeds:persistence",
+      "artifactType": "persistenceSeeds",
+      "defPath": "l1/repoHost/layer_1_external/adapters/persistence/seeds.defs.ts",
+      "action": "create",
+      "identity": "seeds",
+      "ownerRefs": [
+        "table:repositoryChange",
+        "table:repositoryEntry"
+      ],
+      "dependsOn": [
+        "table:repositoryChange",
+        "table:repositoryEntry"
+      ]
+    },
+    {
+      "id": "auth:authorityMap",
+      "artifactType": "authorityMap",
+      "defPath": "l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+      "action": "create",
+      "identity": "authorityMap",
+      "ownerRefs": [
+        "grant:administradorAcompanhaAvisos",
+        "grant:administradorConsultaRepositorio"
+      ],
+      "dependsOn": [
+        "scope:access"
+      ]
+    },
+    {
+      "id": "external:github",
+      "artifactType": "externalConnection",
+      "defPath": "l1/repoHost/layer_1_external/connections/github.defs.ts",
+      "action": "create",
+      "identity": "github",
+      "ownerRefs": [
+        "external:github"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "port:RepositoryChangeRepository",
+      "artifactType": "repositoryPort",
+      "defPath": "l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts",
+      "action": "create",
+      "identity": "RepositoryChangeRepository",
+      "ownerRefs": [
+        "port:RepositoryChangeRepository"
+      ],
+      "dependsOn": [
+        "entity:RepositoryChange"
+      ]
+    },
+    {
+      "id": "port:RepositoryEntryRepository",
+      "artifactType": "repositoryPort",
+      "defPath": "l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts",
+      "action": "create",
+      "identity": "RepositoryEntryRepository",
+      "ownerRefs": [
+        "port:RepositoryEntryRepository"
+      ],
+      "dependsOn": [
+        "entity:RepositoryEntry"
+      ]
+    },
+    {
+      "id": "requestService:avisos_mudanca",
+      "artifactType": "requestService",
+      "defPath": "l1/repoHost/layer_2_application/requests/avisos_mudanca.defs.ts",
+      "action": "create",
+      "identity": "avisos_mudanca",
+      "ownerRefs": [
+        "endpoint:repoHost.avisos_mudanca.listarAvisos",
+        "endpoint:repoHost.avisos_mudanca.obterAviso"
+      ],
+      "dependsOn": [
+        "usecase:listRepositoryChange"
+      ]
+    },
+    {
+      "id": "requestService:conteudo_repositorio",
+      "artifactType": "requestService",
+      "defPath": "l1/repoHost/layer_2_application/requests/conteudo_repositorio.defs.ts",
+      "action": "create",
+      "identity": "conteudo_repositorio",
+      "ownerRefs": [
+        "endpoint:repoHost.conteudo_repositorio.lerArquivo",
+        "endpoint:repoHost.conteudo_repositorio.listarItensRepositorio"
+      ],
+      "dependsOn": [
+        "usecase:listRepositoryEntry"
+      ]
+    },
+    {
+      "id": "requestService:github",
+      "artifactType": "requestService",
+      "defPath": "l1/repoHost/layer_2_application/requests/github.defs.ts",
+      "action": "create",
+      "identity": "github",
+      "ownerRefs": [
+        "endpoint:repoHost.github.repositorioMudou"
+      ],
+      "dependsOn": [
+        "usecase:createRepositoryChange"
+      ]
+    },
+    {
+      "id": "scope:access",
+      "artifactType": "accessScope",
+      "defPath": "l1/repoHost/layer_2_application/scope/accessScope.defs.ts",
+      "action": "create",
+      "identity": "accessScope",
+      "ownerRefs": [
+        "grant:administradorAcompanhaAvisos",
+        "grant:administradorConsultaRepositorio"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "usecase:createRepositoryChange",
+      "artifactType": "usecase",
+      "defPath": "l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts",
+      "action": "create",
+      "identity": "createRepositoryChange",
+      "ownerRefs": [
+        "usecase:createRepositoryChange",
+        "endpoint:repoHost.github.repositorioMudou"
+      ],
+      "dependsOn": [
+        "entity:RepositoryChange",
+        "port:RepositoryChangeRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:listRepositoryChange",
+      "artifactType": "usecase",
+      "defPath": "l1/repoHost/layer_2_application/usecases/listRepositoryChange.defs.ts",
+      "action": "create",
+      "identity": "listRepositoryChange",
+      "ownerRefs": [
+        "usecase:listRepositoryChange",
+        "endpoint:repoHost.avisos_mudanca.listarAvisos",
+        "endpoint:repoHost.avisos_mudanca.obterAviso"
+      ],
+      "dependsOn": [
+        "entity:RepositoryChange",
+        "port:RepositoryChangeRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "usecase:listRepositoryEntry",
+      "artifactType": "usecase",
+      "defPath": "l1/repoHost/layer_2_application/usecases/listRepositoryEntry.defs.ts",
+      "action": "create",
+      "identity": "listRepositoryEntry",
+      "ownerRefs": [
+        "usecase:listRepositoryEntry",
+        "endpoint:repoHost.conteudo_repositorio.lerArquivo",
+        "endpoint:repoHost.conteudo_repositorio.listarItensRepositorio"
+      ],
+      "dependsOn": [
+        "entity:RepositoryEntry",
+        "port:RepositoryEntryRepository",
+        "scope:access"
+      ]
+    },
+    {
+      "id": "entity:RepositoryChange",
+      "artifactType": "domainEntity",
+      "defPath": "l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts",
+      "action": "create",
+      "identity": "RepositoryChange",
+      "ownerRefs": [
+        "usecase:createRepositoryChange",
+        "usecase:listRepositoryChange"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "entity:RepositoryEntry",
+      "artifactType": "domainEntity",
+      "defPath": "l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts",
+      "action": "create",
+      "identity": "RepositoryEntry",
+      "ownerRefs": [
+        "usecase:listRepositoryEntry"
+      ],
+      "dependsOn": []
+    }
+  ],
+  "removed": [],
+  "problems": [
+    {
+      "severity": "review",
+      "code": "INTEGRATION_UNBOUND",
+      "path": "l4/repoHost/integration.defs.ts",
+      "message": "Outbound repositorioAlterado is preserved. No runtime mechanism is named on the integration artifact.",
+      "ownerRef": "repositorioAlterado"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/repoHost/web/contracts/avisos_mudanca.defs.ts",
+      "message": "Route repoHost.avisos_mudanca.obterAviso output.aviso.details.files is not derived: Interface ArquivoAfetado: fields path, details.files.change are not all fields of one entity or of one entity linked to it by an N:1 relationship.",
+      "ownerRef": "repoHost.avisos_mudanca.obterAviso"
+    },
+    {
+      "severity": "review",
+      "code": "OUTPUT_UNRESOLVED",
+      "path": "l2/repoHost/web/contracts/conteudo_repositorio.defs.ts",
+      "message": "Route repoHost.conteudo_repositorio.lerArquivo output.arquivo.conteudo is not derived: Interface ArquivoRepositorio: field conteudo is not a field of any entity.",
+      "ownerRef": "repoHost.conteudo_repositorio.lerArquivo"
+    },
+    {
+      "severity": "review",
+      "code": "USECASE_FROM_CONTRACT",
+      "path": "l2/repoHost/web/contracts/github.defs.ts",
+      "message": "Route repoHost.github.repositorioMudou needs RepositoryChange.create, which is not in the planned pool. Usecase createRepositoryChange was created from the contract.",
+      "ownerRef": "createRepositoryChange"
+    }
+  ],
+  "consumersReleased": true,
+  "snapshotHash": "sha256:7f1f7c7c7f34a89b8b20171f4c149115fc9bd32cf0c6fcbbf073be8a99ccdf4d"
+}

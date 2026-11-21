@@ -1,0 +1,62 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntryRepositoryAdapter.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryAdapter",
+  "artifactId": "RepositoryEntryRepository",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts",
+    "_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts"
+  ],
+  "data": {
+    "entityId": "RepositoryEntry",
+    "portId": "RepositoryEntryRepository",
+    "tableId": "repositoryEntry",
+    "columns": [
+      {
+        "field": "id",
+        "column": "id"
+      },
+      {
+        "field": "version",
+        "column": "json:version"
+      },
+      {
+        "field": "path",
+        "column": "path"
+      },
+      {
+        "field": "entryType",
+        "column": "entryType"
+      },
+      {
+        "field": "parentEntryId",
+        "column": "parentEntryId"
+      },
+      {
+        "field": "details.name",
+        "column": "json:details.name"
+      },
+      {
+        "field": "details.contentVersion",
+        "column": "json:details.contentVersion"
+      },
+      {
+        "field": "details.sizeBytes",
+        "column": "json:details.sizeBytes"
+      },
+      {
+        "field": "details.mimeType",
+        "column": "json:details.mimeType"
+      },
+      {
+        "field": "details.lastSyncedAt",
+        "column": "json:details.lastSyncedAt"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

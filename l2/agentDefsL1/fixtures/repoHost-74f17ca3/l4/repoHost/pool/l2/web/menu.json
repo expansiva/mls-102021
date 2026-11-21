@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "repoHost",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "conteudo_repositorio",
+      "kind": "page",
+      "label": "Conteúdo do repositório",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Navego pelas pastas e arquivos do repositório para conferir se a integração está funcionando."
+        },
+        {
+          "kind": "detail",
+          "text": "Abro um arquivo e leio o conteúdo dele como está no repositório."
+        }
+      ],
+      "icon": "folder-tree",
+      "action": "new"
+    },
+    {
+      "id": "avisos_mudanca",
+      "kind": "page",
+      "label": "Avisos de mudança",
+      "organisms": [
+        {
+          "kind": "timeline",
+          "text": "Vejo, em ordem de chegada, os avisos que o GitHub enviou quando o repositório mudou."
+        },
+        {
+          "kind": "detail",
+          "text": "Abro um aviso e vejo a mensagem de registro e os detalhes da mudança."
+        }
+      ],
+      "icon": "git-commit-horizontal",
+      "action": "new"
+    },
+    {
+      "id": "external_systems",
+      "kind": "group",
+      "label": "Sistemas externos",
+      "text": "Aqui o administrador informa qual é o repositório no GitHub e a chave de acesso usada pelo módulo.",
+      "children": [],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:administrador": [
+      "conteudo_repositorio",
+      "avisos_mudanca"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "consultarConteudoRepositorio": [
+        "conteudo_repositorio"
+      ],
+      "acompanharAvisosMudanca": [
+        "avisos_mudanca"
+      ]
+    },
+    "processes": {},
+    "records": {},
+    "placements": [
+      {
+        "journeyId": "consultarConteudoRepositorio",
+        "actorRef": "administrador",
+        "placement": "menuItem",
+        "pageId": "conteudo_repositorio",
+        "reason": "O administrador só consulta o conteúdo para conferir a integração, então a consulta é um item próprio do menu."
+      },
+      {
+        "journeyId": "acompanharAvisosMudanca",
+        "actorRef": "administrador",
+        "placement": "menuItem",
+        "pageId": "avisos_mudanca",
+        "reason": "Os avisos chegam do GitHub e o administrador apenas os acompanha, por isso ficam em um item próprio do menu."
+      }
+    ],
+    "removed": []
+  }
+}

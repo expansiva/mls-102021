@@ -1,0 +1,158 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_2_application/requests/conteudo_repositorio.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "conteudo_repositorio",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryEntry.defs.ts"
+  ],
+  "data": {
+    "pageId": "conteudo_repositorio",
+    "requests": [
+      {
+        "route": "repoHost.conteudo_repositorio.listarItensRepositorio",
+        "kind": "qry",
+        "uses": [
+          "listRepositoryEntry"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "list",
+            "path": "itens",
+            "entity": "RepositoryEntry",
+            "items": "items",
+            "page": "itens.page",
+            "pageSize": "itens.pageSize",
+            "hasMore": "itens.hasMore",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "path",
+                "path": "path"
+              },
+              {
+                "field": "entryType",
+                "path": "entryType"
+              },
+              {
+                "field": "parentEntryId",
+                "path": "parentEntryId"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "itens",
+            "pages": "itens"
+          },
+          {
+            "name": "pageSize",
+            "target": "itens",
+            "pages": "itens"
+          },
+          {
+            "name": "parentEntryId",
+            "target": "itens",
+            "field": "parentEntryId",
+            "optional": true
+          },
+          {
+            "name": "busca",
+            "target": "itens",
+            "field": "path",
+            "optional": true
+          }
+        ],
+        "rules": [
+          "repoHostParentMustBeFolder",
+          "repoHostNameFromPath"
+        ],
+        "doc": {
+          "raw": "Finalidade: Lista as pastas e arquivos do repositório de uma pasta (ou da raiz) ou os que correspondem a uma busca pelo caminho, para navegação.\nEntrada: parentEntryId: id da pasta cujo conteúdo é listado; ausente lista os itens da raiz. busca: texto contido no caminho; quando informado, busca em todo o repositório ignorando a pasta. page e pageSize: página solicitada e tamanho da página.\nProcessamento: Sem busca, usa listByForeignKey/locate.byColumn filtrando por parentEntryId (itens sem pasta pai quando ausente); a pasta informada deve ser do tipo folder (repoHostParentMustBeFolder). Com busca, usa locate.byText sobre o caminho. Ordena pastas antes de arquivos e depois por nome; o nome é o último trecho do caminho (repoHostNameFromPath). Escopo da organização do administrador.\nSaída: Página de itens { items, page, pageSize, hasMore } com id, caminho, tipo, pasta pai, nome e tamanho (tamanho só para arquivos).",
+          "purpose": "Lista as pastas e arquivos do repositório de uma pasta (ou da raiz) ou os que correspondem a uma busca pelo caminho, para navegação.",
+          "input": "parentEntryId: id da pasta cujo conteúdo é listado; ausente lista os itens da raiz. busca: texto contido no caminho; quando informado, busca em todo o repositório ignorando a pasta. page e pageSize: página solicitada e tamanho da página.",
+          "processing": "Sem busca, usa listByForeignKey/locate.byColumn filtrando por parentEntryId (itens sem pasta pai quando ausente); a pasta informada deve ser do tipo folder (repoHostParentMustBeFolder). Com busca, usa locate.byText sobre o caminho. Ordena pastas antes de arquivos e depois por nome; o nome é o último trecho do caminho (repoHostNameFromPath). Escopo da organização do administrador.",
+          "output": "Página de itens { items, page, pageSize, hasMore } com id, caminho, tipo, pasta pai, nome e tamanho (tamanho só para arquivos)."
+        }
+      },
+      {
+        "route": "repoHost.conteudo_repositorio.lerArquivo",
+        "kind": "qry",
+        "uses": [
+          "listRepositoryEntry"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "arquivo",
+            "entity": "RepositoryEntry",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "path",
+                "path": "path"
+              },
+              {
+                "field": "entryType",
+                "path": "entryType"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "arquivo.conteudo",
+            "entity": "RepositoryEntry",
+            "rules": [
+              "repoHostFolderHasNoContent"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "arquivo.conteudo",
+            "reason": "Interface ArquivoRepositorio: field conteudo is not a field of any entity."
+          }
+        ],
+        "params": [
+          {
+            "name": "id",
+            "target": "arquivo",
+            "field": "id"
+          }
+        ],
+        "rules": [
+          "repoHostFolderHasNoContent"
+        ],
+        "doc": {
+          "raw": "Finalidade: Abre um arquivo do repositório e traz o conteúdo atual do serviço que o hospeda junto com os dados de versão e sincronização.\nEntrada: id: id do item do repositório escolhido.\nProcessamento: Lê o item por read.byId; se for uma pasta, recusa a leitura, pois pasta não tem conteúdo, tamanho nem tipo de mídia (repoHostFolderHasNoContent). Chama repoHost.readFileContent para obter o conteúdo atual pelo caminho; o conteúdo não é guardado.\nSaída: O arquivo com id, caminho, tipo, nome, versão do conteúdo, tamanho, tipo de mídia, última sincronização e o conteúdo como está no repositório.",
+          "purpose": "Abre um arquivo do repositório e traz o conteúdo atual do serviço que o hospeda junto com os dados de versão e sincronização.",
+          "input": "id: id do item do repositório escolhido.",
+          "processing": "Lê o item por read.byId; se for uma pasta, recusa a leitura, pois pasta não tem conteúdo, tamanho nem tipo de mídia (repoHostFolderHasNoContent). Chama repoHost.readFileContent para obter o conteúdo atual pelo caminho; o conteúdo não é guardado.",
+          "output": "O arquivo com id, caminho, tipo, nome, versão do conteúdo, tamanho, tipo de mídia, última sincronização e o conteúdo como está no repositório."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

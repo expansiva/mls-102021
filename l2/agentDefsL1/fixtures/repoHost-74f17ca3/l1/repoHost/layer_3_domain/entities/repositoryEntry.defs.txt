@@ -1,0 +1,75 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "RepositoryEntry",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [],
+  "data": {
+    "entityId": "RepositoryEntry",
+    "storageTarget": "moduleDatabase",
+    "fields": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "derived": true
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "path",
+        "type": "string"
+      },
+      {
+        "name": "entryType",
+        "type": "enum"
+      },
+      {
+        "name": "parentEntryId",
+        "type": "record",
+        "ref": "RepositoryEntry"
+      },
+      {
+        "name": "details",
+        "type": "object"
+      },
+      {
+        "name": "details.name",
+        "type": "string"
+      },
+      {
+        "name": "details.contentVersion",
+        "type": "string"
+      },
+      {
+        "name": "details.sizeBytes",
+        "type": "integer"
+      },
+      {
+        "name": "details.mimeType",
+        "type": "string"
+      },
+      {
+        "name": "details.lastSyncedAt",
+        "type": "timestamp"
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [
+      "repoHostUniquePath",
+      "repoHostFolderHasNoContent",
+      "repoHostParentMustBeFolder"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

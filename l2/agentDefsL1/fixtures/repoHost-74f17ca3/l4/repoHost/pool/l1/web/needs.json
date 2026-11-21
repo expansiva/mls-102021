@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "repoHost",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "conteudo_repositorio",
+      "actors": [
+        "administrador"
+      ],
+      "reads": [
+        {
+          "entity": "RepositoryEntry",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:administradorConsultaRepositorio",
+            "journey:consultarConteudoRepositorio/lerArquivo",
+            "journey:consultarConteudoRepositorio/listarPastasArquivos"
+          ]
+        }
+      ],
+      "writes": []
+    },
+    {
+      "pageId": "avisos_mudanca",
+      "actors": [
+        "administrador"
+      ],
+      "reads": [
+        {
+          "entity": "RepositoryChange",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:administradorAcompanhaAvisos",
+            "journey:acompanharAvisosMudanca/listarAvisos",
+            "journey:acompanharAvisosMudanca/verAviso"
+          ]
+        }
+      ],
+      "writes": []
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "generatedAt": "2026-11-19T23:58:03.852Z"
+  }
+}

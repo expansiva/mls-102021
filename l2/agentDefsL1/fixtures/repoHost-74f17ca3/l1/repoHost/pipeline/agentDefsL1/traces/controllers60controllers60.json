@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "step": "controllers60",
+  "unitId": "controllers60",
+  "runId": "sha256:7f1f7c7c7f34a89b8b20171f4c149115fc9bd32cf0c6fcbbf073be8a99ccdf4d",
+  "snapshotHash": "sha256:7f1f7c7c7f34a89b8b20171f4c149115fc9bd32cf0c6fcbbf073be8a99ccdf4d",
+  "draftHash": "sha256:0cfd7aceb2b4f873e2bbe1c74d835e7725a3a5efbe44863c4ce989fe1e8c35d1",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.ts",
+    "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.ts",
+    "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/github.ts",
+    "_102047_/l1/repoHost/layer_2_application/requests/avisos_mudanca.ts",
+    "_102047_/l1/repoHost/layer_2_application/requests/conteudo_repositorio.ts",
+    "_102047_/l1/repoHost/layer_2_application/requests/github.ts",
+    "l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.ts",
+    "l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.ts",
+    "l1/repoHost/layer_1_external/adapters/http/controllers/github.ts",
+    "l1/repoHost/layer_2_application/requests/avisos_mudanca.ts",
+    "l1/repoHost/layer_2_application/requests/conteudo_repositorio.ts",
+    "l1/repoHost/layer_2_application/requests/github.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:6191f5254a192852f560c5bfe8a39c734b99c7b40024e12862dcbddbd93e41c0",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.ts",
+        "l1/repoHost/layer_1_external/adapters/http/controllers/avisos_mudanca.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:922e5bc6b8f609f12c2fc5151d4d0bae3569510ad644a9de7a38403b32318010",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.ts",
+        "l1/repoHost/layer_1_external/adapters/http/controllers/conteudo_repositorio.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_1_external/adapters/http/controllers/github.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:942d61a693950986657cfade3b209271a9a88d47d3c535722ba936436cb8210d",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/github.ts",
+        "l1/repoHost/layer_1_external/adapters/http/controllers/github.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/requests/avisos_mudanca.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:78e18ed02fa313d635c66813ae73ec6277cfcdb76e1c3c24f17d4921ef2b06a2",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_2_application/requests/avisos_mudanca.ts",
+        "l1/repoHost/layer_2_application/requests/avisos_mudanca.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/requests/conteudo_repositorio.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:1574d973e7025efb7a10b9c231d6cef22203c9ce0cd37dc77870cb5aa647f6b8",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_2_application/requests/conteudo_repositorio.ts",
+        "l1/repoHost/layer_2_application/requests/conteudo_repositorio.ts"
+      ]
+    },
+    {
+      "defPath": "l1/repoHost/layer_2_application/requests/github.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:3ee0e228b8a179ee37942ef2cdb566f1a245cb4482890871f738ba5f9626c697",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/repoHost/layer_2_application/requests/github.ts",
+        "l1/repoHost/layer_2_application/requests/github.ts"
+      ]
+    }
+  ],
+  "issues": []
+}

@@ -1,0 +1,50 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/adapters/persistence/repositoryEntry.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "table",
+  "artifactId": "repositoryEntry",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts"
+  ],
+  "data": {
+    "tableId": "repositoryEntry",
+    "entityId": "RepositoryEntry",
+    "physicalName": "repoHost_repositoryentry",
+    "primaryKey": [
+      "id"
+    ],
+    "uniqueKeys": [
+      [
+        "path"
+      ]
+    ],
+    "indexes": [
+      {
+        "name": "repoHost_repositoryentry_path",
+        "columns": [
+          "path"
+        ],
+        "unique": true
+      },
+      {
+        "name": "repoHost_repositoryentry_entryType",
+        "columns": [
+          "entryType"
+        ],
+        "unique": false
+      },
+      {
+        "name": "repoHost_repositoryentry_parentEntryId",
+        "columns": [
+          "parentEntryId"
+        ],
+        "unique": false
+      }
+    ]
+  }
+} as const;
+
+export default definition;

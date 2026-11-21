@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "2026-09-21-d1-pipeline-v1",
+  "flowId": "agentDefsL1",
+  "flowVersion": "2026-09-21-d1-flow-v1",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "status": "complete",
+  "command": "run",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-11-19T23:59:39.680Z",
+      "artifactPaths": [
+        "_102047_/l1/repoHost/pipeline/agentDefsL1/pipeline.json"
+      ]
+    },
+    "input20": {
+      "status": "approved",
+      "updatedAt": "2026-11-19T23:59:39.901Z",
+      "artifactPaths": [
+        "_102047_/l1/repoHost/pipeline/agentDefsL1/input20.json"
+      ]
+    },
+    "resolve25": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T00:00:02.958Z",
+      "artifactPaths": [
+        "_102047_/l1/repoHost/pipeline/agentDefsL1/resolve25.json"
+      ]
+    },
+    "domain30": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T00:00:03.154Z",
+      "artifactPaths": [
+        "_102047_/l1/repoHost/pipeline/agentDefsL1/drafts/domain30.json"
+      ]
+    },
+    "persistence40": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T00:00:03.386Z",
+      "artifactPaths": [
+        "_102047_/l1/repoHost/pipeline/agentDefsL1/drafts/persistence40.json"
+      ]
+    },
+    "usecases50": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T00:00:03.585Z",
+      "artifactPaths": [
+        "_102047_/l1/repoHost/pipeline/agentDefsL1/drafts/usecases50.json"
+      ]
+    },
+    "controllers60": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T00:00:04.118Z",
+      "artifactPaths": [
+        "_102047_/l1/repoHost/pipeline/agentDefsL1/drafts/controllers60.json"
+      ]
+    },
+    "support70": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T00:00:04.348Z",
+      "artifactPaths": [
+        "_102047_/l1/repoHost/pipeline/agentDefsL1/drafts/support70.json"
+      ]
+    },
+    "finalize80": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T00:00:05.365Z",
+      "artifactPaths": [
+        "_102047_/l1/repoHost/pipeline/agentDefsL1/report.json"
+      ]
+    }
+  },
+  "updatedAt": "2026-11-20T00:00:05.365Z"
+}

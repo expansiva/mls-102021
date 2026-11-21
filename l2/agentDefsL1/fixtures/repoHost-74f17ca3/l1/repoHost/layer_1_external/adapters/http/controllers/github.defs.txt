@@ -1,0 +1,29 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/adapters/http/controllers/github.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "github",
+  "moduleName": "repoHost",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/repoHost/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/repoHost/layer_2_application/requests/github.defs.ts",
+    "_102047_/l1/repoHost/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "github",
+    "handlers": [
+      {
+        "route": "repoHost.github.repositorioMudou",
+        "kind": "command",
+        "grantIds": [
+          "connection_github"
+        ],
+        "serviceFunction": "repoHost.github.repositorioMudou"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

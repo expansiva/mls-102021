@@ -1,0 +1,259 @@
+{
+  "schemaVersion": "2026-10-01-d1-usecases-v2",
+  "project": 102047,
+  "moduleName": "repoHost",
+  "llmCalls": 0,
+  "ok": true,
+  "enumerations": [
+    {
+      "entityId": "RepositoryChange",
+      "path": "details.files.change",
+      "values": [
+        "added",
+        "modified",
+        "removed"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "RepositoryEntry",
+      "path": "entryType",
+      "values": [
+        "folder",
+        "file"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "createRepositoryChange",
+      "entityId": "RepositoryChange",
+      "operation": "create",
+      "defPath": "l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts",
+      "routes": [
+        "repoHost.github.repositorioMudou"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createRepositoryChange",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts",
+          "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createRepositoryChange",
+          "entityId": "RepositoryChange",
+          "operation": "create",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "listRepositoryChange",
+      "entityId": "RepositoryChange",
+      "operation": "list",
+      "defPath": "l1/repoHost/layer_2_application/usecases/listRepositoryChange.defs.ts",
+      "routes": [
+        "repoHost.avisos_mudanca.listarAvisos",
+        "repoHost.avisos_mudanca.obterAviso"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listRepositoryChange",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts",
+          "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listRepositoryChange",
+          "entityId": "RepositoryChange",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "usecaseId": "listRepositoryEntry",
+      "entityId": "RepositoryEntry",
+      "operation": "list",
+      "defPath": "l1/repoHost/layer_2_application/usecases/listRepositoryEntry.defs.ts",
+      "routes": [
+        "repoHost.conteudo_repositorio.lerArquivo",
+        "repoHost.conteudo_repositorio.listarItensRepositorio"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listRepositoryEntry",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts",
+          "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listRepositoryEntry",
+          "entityId": "RepositoryEntry",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      }
+    }
+  ],
+  "problems": [],
+  "normalizations": [
+    {
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "domain30.enumerations",
+      "detail": "2 enum values stay on the domain draft. usecases50 does not copy them."
+    }
+  ],
+  "emit": [
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createRepositoryChange",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts",
+          "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createRepositoryChange",
+          "entityId": "RepositoryChange",
+          "operation": "create",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/usecase/createRepositoryChange",
+          "type": "usecase",
+          "defPath": "_102047_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_2_application/usecases/createRepositoryChange.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts",
+            "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/domainEntity/RepositoryChange",
+            "102047/repoHost/repositoryPort/RepositoryChangeRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listRepositoryChange",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts",
+          "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listRepositoryChange",
+          "entityId": "RepositoryChange",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/usecase/listRepositoryChange",
+          "type": "usecase",
+          "defPath": "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryChange.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryChange.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_3_domain/entities/repositoryChange.defs.ts",
+            "_102047_/l1/repoHost/layer_2_application/ports/repositoryChangeRepository.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/domainEntity/RepositoryChange",
+            "102047/repoHost/repositoryPort/RepositoryChangeRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listRepositoryEntry",
+        "moduleName": "repoHost",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts",
+          "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listRepositoryEntry",
+          "entityId": "RepositoryEntry",
+          "operation": "list",
+          "rulesApplied": [],
+          "effects": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/repoHost/usecase/listRepositoryEntry",
+          "type": "usecase",
+          "defPath": "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryEntry.defs.ts",
+          "outputPath": "_102047_/l1/repoHost/layer_2_application/usecases/listRepositoryEntry.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/repoHost/layer_3_domain/entities/repositoryEntry.defs.ts",
+            "_102047_/l1/repoHost/layer_2_application/ports/repositoryEntryRepository.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/repoHost/domainEntity/RepositoryEntry",
+            "102047/repoHost/repositoryPort/RepositoryEntryRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md"
+          ]
+        }
+      ]
+    }
+  ]
+}
