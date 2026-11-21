@@ -8,6 +8,7 @@ You write one TypeScript file: the declaration of a system the module talks to o
 ## What you receive
 - The L4 text of the system and of the lines that use it: intent, in the language of the user. It says what is asked of the system and what the system tells the module. It does not say address, method, format or type.
 - The part code already wrote: copy it as it is.
+- When the file of the system already exists, its types are given as fixed: other files import them. Do not write them again or change them; use their names in the declaration.
 - The type `ExternalSystemDeclaration` and its validator, from the platform: they are the rule of the file.
 
 ## What you decide, from what the system is

@@ -17,6 +17,7 @@ import {
   externalFacts,
   fixedPart,
 } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
+import { fixedTypeProblems, fixedTypesOf, fixedTypesSection } from '/_102021_/l2/agentMaterializeL1/steps/external15/fixedTypes.js';
 
 export const M12_EXTERNAL_TOOL = 'writeExternalDeclaration' as const;
 export const M12_EXTERNAL_TOOL_DESCRIPTION = 'Return the whole declaration TypeScript file of the system';
@@ -54,6 +55,9 @@ export async function loadExternalContext(ctx: M12Context, unit: M12Unit, repair
     'These fields are derived from the L4. The declaration must carry exactly them. You add `hosts`, and for each operation what is below.',
     fence('json', JSON.stringify(fixedPart(facts), null, 2)),
   ].join('\n\n')));
+  // d1_257: the types the file already has stay as they are (other files import them).
+  const fixed = fixedTypesSection(fixedTypesOf(await ctx.read(unit.outputRef), facts));
+  if (fixed) parts.push(section('Types already written (fixed)', fixed));
   parts.push(section('The type and the validator of the runtime (source)', typeSource ? fence('ts', declarationTypeShown(typeSource)) : '(the type file of the runtime was not read)'));
   if (repair) {
     parts.push(section('Repair', [
@@ -65,7 +69,8 @@ export async function loadExternalContext(ctx: M12Context, unit: M12Unit, repair
   return parts.join('\n');
 }
 
-export async function externalAnswerProblems(_ctx: M12Context, unit: M12Unit, code: string): Promise<string[]> {
+export async function externalAnswerProblems(ctx: M12Context, unit: M12Unit, code: string): Promise<string[]> {
   const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
-  return declarationProblems(code, externalFacts(unit.definition.data), header);
+  const facts = externalFacts(unit.definition.data);
+  return [...declarationProblems(code, facts, header), ...fixedTypeProblems(code, fixedTypesOf(await ctx.read(unit.outputRef), facts))];
 }
