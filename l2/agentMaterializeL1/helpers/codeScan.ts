@@ -2,35 +2,24 @@
 
 // d1_202: a gate that reads generated code by structure, not by the first match of a text. The agent graph does not import
 // the TypeScript compiler, so this is a small scanner: it masks comments and string contents (offsets kept) and walks the
-// braces. Used to find the value of `export const requests = { … }` and the property of each route.
+// braces (d1_258: the spans of strings, comments and regex literals come from `codeTokens.ts`). Used to find the value of `export const requests = { … }` and the property of each route.
 
-/** `code` with comments blanked and string/template contents replaced by `_`: same length, quotes and structure kept. */
+import { scanCode } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
+
+/**
+ * `code` with comments blanked and string/template/regex contents replaced by `_`: same length, quotes and structure kept. The spans come
+ * from the one reader of generated code (`codeTokens.ts`, d1_258), which knows a regex literal from a comment.
+ */
 export function maskCode(code: string): string {
   const out = code.split('');
-  let index = 0;
-  while (index < code.length) {
-    const char = code[index];
-    if (code.startsWith('//', index)) {
-      while (index < code.length && code[index] !== '\n') { out[index] = ' '; index += 1; }
-      continue;
+  for (const span of scanCode(code)) {
+    const closes = span.kind === 'string' && code[span.end - 1] === code[span.start] && span.end - span.start > 1 ? 1
+      : span.kind === 'template' ? (code[span.end - 1] === '`' ? 1 : code.startsWith('${', span.end - 2) ? 2 : 0) : 0;
+    for (let at = span.start; at < span.end; at += 1) {
+      if (code[at] === '\n' || code[at] === '\r') continue;
+      if (span.kind === 'comment') out[at] = ' ';
+      else if (at !== span.start && at < span.end - closes) out[at] = '_';
     }
-    if (code.startsWith('/*', index)) {
-      const end = code.indexOf('*/', index + 2);
-      const stop = end < 0 ? code.length : end + 2;
-      for (; index < stop; index += 1) if (code[index] !== '\n') out[index] = ' ';
-      continue;
-    }
-    if (char === '\'' || char === '"' || char === '`') {
-      index += 1;
-      while (index < code.length && code[index] !== char) {
-        if (code[index] === '\\') { out[index] = '_'; index += 1; }
-        if (index < code.length && code[index] !== '\n') out[index] = '_';
-        index += 1;
-      }
-      index += 1;
-      continue;
-    }
-    index += 1;
   }
   return out.join('');
 }

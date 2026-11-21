@@ -6,6 +6,7 @@
 // use), byte by byte, and the gate refuses an answer that changes one. The model writes the rest: hosts, methods and the types of a new
 // operation. No file before (first generation): nothing is fixed and nothing changes.
 
+import { codeOnly } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
 import { declarationLiteral, type ExternalFacts } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
 
 export interface TypeBlock {
@@ -35,38 +36,30 @@ function text(value: unknown): string {
 }
 
 /**
- * The end of the exported type or interface that starts at `from`: the `;` at depth 0 (a type) or the closing `}` and its `;` (an
- * interface). Comments and quotes are skipped.
+ * The end of the exported type or interface that starts at `from`, read on the structure of the file (`codeOnly`: comments, strings,
+ * template text and regex literals blanked, d1_258): the `;` at depth 0 (a type) or the closing `}` and its `;` (an interface).
  */
-function blockEnd(code: string, from: number, isInterface: boolean): number {
+function blockEnd(structure: string, from: number, isInterface: boolean): number {
   let depth = 0;
-  let quote = '';
-  for (let at = from; at < code.length; at += 1) {
-    const char = code[at];
-    if (quote) {
-      if (char === '\\') at += 1;
-      else if (char === quote) quote = '';
-      continue;
-    }
-    if (char === '/' && code[at + 1] === '/') { at = code.indexOf('\n', at); if (at < 0) return code.length; continue; }
-    if (char === '/' && code[at + 1] === '*') { const close = code.indexOf('*/', at + 2); if (close < 0) return code.length; at = close + 1; continue; }
-    if (char === '"' || char === "'" || char === '`') quote = char;
-    else if (char === '{' || char === '(' || char === '[') depth += 1;
+  for (let at = from; at < structure.length; at += 1) {
+    const char = structure[at];
+    if (char === '{' || char === '(' || char === '[') depth += 1;
     else if (char === '}' || char === ')' || char === ']') {
       depth -= 1;
-      if (isInterface && depth === 0 && char === '}') return code[at + 1] === ';' ? at + 2 : at + 1;
+      if (isInterface && depth === 0 && char === '}') return structure[at + 1] === ';' ? at + 2 : at + 1;
     } else if (char === ';' && depth === 0) return at + 1;
   }
-  return code.length;
+  return structure.length;
 }
 
 /** The exported `type` and `interface` declarations of the file, as they are written (the part of the file that is data is not one). */
 export function exportedTypeBlocks(code: string): TypeBlock[] {
   const blocks: TypeBlock[] = [];
-  for (const match of code.matchAll(/^export\s+(?:declare\s+)?(?:interface|type)\s+([A-Za-z_$][\w$]*)/gmu)) {
+  const structure = codeOnly(code);
+  for (const match of structure.matchAll(/^export\s+(?:declare\s+)?(?:interface|type)\s+([A-Za-z_$][\w$]*)/gmu)) {
     const start = match.index ?? 0;
     if (blocks.length && start < blocks[blocks.length - 1].end) continue;
-    const end = blockEnd(code, start, /^export\s+(?:declare\s+)?interface\b/u.test(code.slice(start, start + 40)));
+    const end = blockEnd(structure, start, /^export\s+(?:declare\s+)?interface\b/u.test(structure.slice(start, start + 40)));
     blocks.push({ name: match[1], text: code.slice(start, end).trimEnd(), start, end });
   }
   return blocks;

@@ -6,6 +6,7 @@
 
 import { validateExternalSystemAdapter, type ExternalSystemDeclaration } from '/_102034_/l2/shared/contracts/connections/externalSystem.js';
 import { DECLARATION_TYPES_IMPORT } from '/_102021_/l2/helpers/connections/catalogResolve.js';
+import { codeOnly, withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
 import { declarationLiteral, defaultObjectStart } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
 
 /** The part of the runtime type file the adapter is written against: the request, the response, the context and the adapter. */
@@ -24,43 +25,32 @@ export function resultTypeShown(source: string): string {
   return start < 0 ? '' : source.slice(start, end < 0 ? undefined : end).trim();
 }
 
-/** Code with its comments blanked (strings stay): a word in a comment is not a call. */
-export function withoutComments(code: string): string {
-  return code.replace(/\/\*[\s\S]*?\*\//gu, ' ').replace(/(^|[^:\\])\/\/[^\n]*/gu, '$1 ');
-}
+export { withoutComments };
 
-/** The names of the top-level members of the default-exported object: what the adapter implements. */
+/**
+ * The names of the top-level members of the default-exported object: what the adapter implements. Read on the structure of the file
+ * (comments, strings, templates and regex literals blanked, d1_258), so a `)` or a `}` inside a regex or a string moves no depth.
+ */
 export function adapterKeys(code: string): string[] | null {
-  const start = defaultObjectStart(code);
+  const text = withoutComments(code);
+  const start = defaultObjectStart(text);
   if (start < 0) return null;
+  const structure = codeOnly(code);
   const keys: string[] = [];
   let depth = 0;
-  let quote = '';
-  let segment = '';
-  const take = () => {
-    const match = /^\s*(?:async\s+)?(?:'([^']+)'|"([^"]+)"|([A-Za-z_$][\w$]*))\s*(?::|\()/u.exec(segment);
+  let from = start + 1;
+  const take = (to: number) => {
+    const match = /^\s*(?:async\s+)?(?:'([^']+)'|"([^"]+)"|([A-Za-z_$][\w$]*))\s*(?::|\()/u.exec(text.slice(from, to));
     const name = match ? match[1] ?? match[2] ?? match[3] : '';
     if (name) keys.push(name);
-    segment = '';
   };
-  for (let at = start + 1; at < code.length; at += 1) {
-    const char = code[at];
-    if (quote) {
-      if (depth === 0) segment += char;
-      if (char === '\\') { at += 1; if (depth === 0) segment += code[at] ?? ''; }
-      else if (char === quote) quote = '';
-      continue;
-    }
-    if (char === '/' && code[at + 1] === '/') { at = code.indexOf('\n', at); if (at < 0) break; continue; }
-    if (char === '/' && code[at + 1] === '*') { const end = code.indexOf('*/', at + 2); if (end < 0) break; at = end + 1; continue; }
-    if (char === '"' || char === "'" || char === '`') { quote = char; if (depth === 0) segment += char; continue; }
-    if (char === '{' || char === '(' || char === '[') { depth += 1; if (depth === 1 && char === '{') { segment += char; continue; } }
-    if (char === '}' || char === ')' || char === ']') {
-      if (depth === 0 && char === '}') { take(); return keys; }
+  for (let at = start + 1; at < structure.length; at += 1) {
+    const char = structure[at];
+    if (char === '{' || char === '(' || char === '[') depth += 1;
+    else if (char === '}' || char === ')' || char === ']') {
+      if (depth === 0 && char === '}') { take(at); return keys; }
       depth -= 1;
-    }
-    if (depth === 0 && char === ',') { take(); continue; }
-    if (depth <= 1) segment += char;
+    } else if (depth === 0 && char === ',') { take(at); from = at + 1; }
   }
   return null;
 }

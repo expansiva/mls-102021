@@ -1,0 +1,130 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/connections/githubAdapter.ts" enhancement="_blank"/>
+import type { ExternalSystemAdapter, ExternalAdapterContext } from '/_102034_/l2/shared/contracts/connections/externalSystem.js';
+import type { ListarConteudoInput, ListarConteudoOutput, LerArquivoInput, LerArquivoOutput, GravarArquivoInput, GravarArquivoOutput } from '/_102047_/l1/repoHost/layer_1_external/connections/github.js';
+const headers = {
+Accept: 'application/vnd.github+json',
+Authorization: 'Bearer {{secret:chaveAcesso}}',
+'X-GitHub-Api-Version': '2022-11-28',
+};
+function record(value: unknown): value is Record<string, unknown> {
+return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+function pathFor(repository: string, path: string): string | null {
+const repo = repository.trim().split('/');
+if (repo.length !== 2 || repo.some(part => !part || part === '.' || part === '..' || part.includes('\\'))) return null;
+if (path.includes('\\')) return null;
+const parts = path.split('/');
+if (parts.some(part => part === '.' || part === '..')) return null;
+try {
+const suffix = parts.filter(Boolean).map(encodeURIComponent).join('/');
+return `/repos/${repo.map(encodeURIComponent).join('/')}/contents${suffix ? `/${suffix}` : ''}`;
+} catch {
+return null;
+}
+}
+function utf8Base64(text: string): string {
+const bytes: number[] = [];
+for (let i = 0; i < text.length; i++) {
+let cp = text.charCodeAt(i);
+if (cp >= 0xd800 && cp <= 0xdbff) {
+const next = text.charCodeAt(i + 1);
+if (next >= 0xdc00 && next <= 0xdfff) {
+cp = 0x10000 + ((cp - 0xd800) << 10) + (next - 0xdc00);
+i++;
+} else cp = 0xfffd;
+} else if (cp >= 0xdc00 && cp <= 0xdfff) cp = 0xfffd;
+if (cp < 0x80) bytes.push(cp);
+else if (cp < 0x800) bytes.push(0xc0 | (cp >> 6), 0x80 | (cp & 63));
+else if (cp < 0x10000) bytes.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+else bytes.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+}
+const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+let result = '';
+for (let i = 0; i < bytes.length; i += 3) {
+const a = bytes[i], b = bytes[i + 1], c = bytes[i + 2];
+result += alphabet[a >> 2] + alphabet[((a & 3) << 4) | ((b ?? 0) >> 4)];
+result += b === undefined ? '=' : alphabet[((b & 15) << 2) | ((c ?? 0) >> 6)];
+result += c === undefined ? '=' : alphabet[c & 63];
+}
+return result;
+}
+const adapter: ExternalSystemAdapter = {
+async listarConteudo(input: unknown, ctx: ExternalAdapterContext) {
+const repositorio = ctx.setting('repositorio');
+if (!repositorio || !repositorio.trim()) return { ok: false, code: 'disabled', message: 'repositorio is not configured', missing: ['repositorio'] };
+const dados = input as ListarConteudoInput;
+if (!dados || typeof dados.caminho !== 'string' || (dados.ramo !== undefined && typeof dados.ramo !== 'string')) {
+return { ok: false, code: 'invalid', message: 'Entrada inválida para listar conteúdo' };
+}
+const path = pathFor(repositorio, dados.caminho);
+if (path === null) return { ok: false, code: 'invalid', message: 'Repositório ou caminho inválido' };
+const response = await ctx.send('listarConteudo', { method: 'GET', path, headers, ...(dados.ramo !== undefined ? { query: { ref: dados.ramo } } : {}) });
+if (!response.ok) return response;
+let body: unknown;
+try { body = JSON.parse(response.output.body) as unknown; } catch { return { ok: false, code: 'invalid', message: 'Resposta do GitHub não é JSON válido' }; }
+if (!Array.isArray(body)) return { ok: false, code: 'invalid', message: 'Resposta do GitHub não é uma lista de diretório' };
+const itens: ListarConteudoOutput['itens'] = [];
+for (const item of body as unknown[]) {
+if (!record(item) || typeof item.name !== 'string' || typeof item.path !== 'string' || (item.type !== 'file' && item.type !== 'dir') ||
+(item.size !== undefined && (typeof item.size !== 'number' || !Number.isSafeInteger(item.size) || item.size < 0)) ||
+(item.sha !== undefined && typeof item.sha !== 'string')) {
+return { ok: false, code: 'invalid', message: 'Item de diretório inválido ou não suportado na resposta do GitHub' };
+}
+itens.push({ nome: item.name, caminho: item.path, tipo: item.type === 'file' ? 'arquivo' : 'pasta',
+...(typeof item.size === 'number' ? { tamanho: item.size } : {}),
+...(typeof item.sha === 'string' ? { identificador: item.sha } : {}) });
+}
+const output: ListarConteudoOutput = { itens };
+return { ok: true, output };
+},
+async lerArquivo(input: unknown, ctx: ExternalAdapterContext) {
+const repositorio = ctx.setting('repositorio');
+if (!repositorio || !repositorio.trim()) return { ok: false, code: 'disabled', message: 'repositorio is not configured', missing: ['repositorio'] };
+const dados = input as LerArquivoInput;
+if (!dados || typeof dados.caminho !== 'string' || !dados.caminho.replace(/\//g, '') || (dados.ramo !== undefined && typeof dados.ramo !== 'string')) {
+return { ok: false, code: 'invalid', message: 'Entrada inválida para ler arquivo' };
+}
+const path = pathFor(repositorio, dados.caminho);
+if (path === null) return { ok: false, code: 'invalid', message: 'Repositório ou caminho inválido' };
+const response = await ctx.send('lerArquivo', { method: 'GET', path, headers, ...(dados.ramo !== undefined ? { query: { ref: dados.ramo } } : {}) });
+if (!response.ok) return response;
+let body: unknown;
+try { body = JSON.parse(response.output.body) as unknown; } catch { return { ok: false, code: 'invalid', message: 'Resposta do GitHub não é JSON válido' }; }
+if (!record(body) || body.type !== 'file' || typeof body.path !== 'string' || typeof body.name !== 'string' ||
+typeof body.content !== 'string' || (body.encoding !== 'base64' && body.encoding !== 'utf-8') ||
+typeof body.size !== 'number' || !Number.isSafeInteger(body.size) || body.size < 0 || typeof body.sha !== 'string') {
+return { ok: false, code: 'invalid', message: 'Resposta do GitHub não contém um arquivo válido com conteúdo' };
+}
+const output: LerArquivoOutput = { caminho: body.path, nome: body.name, conteudo: body.content, codificacao: body.encoding, tamanho: body.size, identificador: body.sha };
+return { ok: true, output };
+},
+async gravarArquivo(input: unknown, ctx: ExternalAdapterContext) {
+const repositorio = ctx.setting('repositorio');
+if (!repositorio || !repositorio.trim()) return { ok: false, code: 'disabled', message: 'repositorio is not configured', missing: ['repositorio'] };
+const dados = input as GravarArquivoInput;
+if (!dados || typeof dados.caminho !== 'string' || !dados.caminho.replace(/\//g, '') || typeof dados.conteudo !== 'string' ||
+typeof dados.mensagemRegistro !== 'string' || (dados.ramo !== undefined && typeof dados.ramo !== 'string') ||
+(dados.identificadorAnterior !== undefined && typeof dados.identificadorAnterior !== 'string')) {
+return { ok: false, code: 'invalid', message: 'Entrada inválida para gravar arquivo' };
+}
+const path = pathFor(repositorio, dados.caminho);
+if (path === null) return { ok: false, code: 'invalid', message: 'Repositório ou caminho inválido' };
+const requestBody = {
+message: dados.mensagemRegistro,
+content: utf8Base64(dados.conteudo),
+...(dados.ramo !== undefined ? { branch: dados.ramo } : {}),
+...(dados.identificadorAnterior !== undefined ? { sha: dados.identificadorAnterior } : {}),
+};
+const response = await ctx.send('gravarArquivo', { method: 'PUT', path, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) });
+if (!response.ok) return response;
+let body: unknown;
+try { body = JSON.parse(response.output.body) as unknown; } catch { return { ok: false, code: 'invalid', message: 'Resposta do GitHub não é JSON válido' }; }
+if (!record(body) || !record(body.content) || typeof body.content.path !== 'string' || typeof body.content.sha !== 'string' ||
+!record(body.commit) || typeof body.commit.sha !== 'string') {
+return { ok: false, code: 'invalid', message: 'Resposta do GitHub não contém o arquivo e o registro gravados' };
+}
+const output: GravarArquivoOutput = { caminho: body.content.path, identificador: body.content.sha, registro: body.commit.sha };
+return { ok: true, output };
+},
+};
+export default adapter;

@@ -5,6 +5,7 @@
 
 import { isCatalogImport } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { maskCode } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
+import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
 import { MDM_LIST_USERS_PAGE_SIZE_MAX } from '/_102021_/l2/agentMaterializeL1/helpers/mdmPlatformLimits.js';
 import type { M12InputField } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
 
@@ -240,10 +241,6 @@ export function consumerCallProblems(code: string, calls: readonly M12ConsumerCa
 export interface M12EventPublisher {
   eventId: string;
   fn: string;
-}
-
-function withoutComments(code: string): string {
-  return code.replace(/\/\*[\s\S]*?\*\//gu, ' ').replace(/(^|[^:\\])\/\/[^\n]*/gu, '$1 ');
 }
 
 /** The arguments of the call whose `(` is at `open`, split at the top level, and the index after its `)`. */
