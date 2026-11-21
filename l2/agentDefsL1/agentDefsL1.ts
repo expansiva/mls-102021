@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/agentDefsL1.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
+import { adoptDefs, adoptReport } from '/_102021_/l2/agentDefsL1/helpers/d1Adopt.js';
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   D1_AGENT_NAME,
@@ -84,6 +85,11 @@ async function beforePromptImplicit(
       project: String(project),
       command: 'declarations',
     });
+  }
+
+  if (invocation.command === 'adopt') {
+    const done = await adoptDefs(project, invocation.module);
+    return statusTask(agent, context, adoptReport(invocation.module, done), { moduleName: invocation.module, project: String(project), command: 'adopt' });
   }
 
   if (invocation.command === 'rederive') {

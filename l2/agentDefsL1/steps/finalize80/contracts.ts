@@ -86,6 +86,8 @@ export interface D1FinalizeRequest {
   children: D1FinalizeChild[];
   /** Observations usecases50 recorded. Null when that folder was not written. */
   callLog: D1CallLog | null;
+  /** d1_270: the logical def paths whose receipt is the manager's `/adopt` and that no unit has written since. */
+  adopted?: readonly string[];
 }
 
 export interface D1FinalizePhase {

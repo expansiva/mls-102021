@@ -75,15 +75,15 @@ const AGENT_PREFIXES = [
   /@@\s*agentDefsL1/gi,
 ];
 
-const COMMANDS = ['run', 'resume', 'help', 'declarations', 'rederive'] as const;
+const COMMANDS = ['run', 'resume', 'help', 'declarations', 'rederive', 'adopt'] as const;
 export type D1Command = typeof COMMANDS[number];
 
 export const MSG_PATH = "Path must not contain '..'.";
 export const MSG_CANDIDATE_DOTDOT = "Candidate path must not contain '..'.";
 export const MSG_CANDIDATE = 'Candidate runs are refused. Nothing was changed.';
 export const MSG_REBUILD = 'Rebuild all is refused. Nothing was deleted.';
-export const MSG_ONE_COMMAND = 'Pass one command: /run, /resume, /declarations, /rederive <step> or /help.';
-export const MSG_USAGE = 'Pass @@agentDefsL1 <lowerCamel> /run, /resume, /declarations, /rederive <step> or /help.';
+export const MSG_ONE_COMMAND = 'Pass one command: /run, /resume, /declarations, /rederive <step>, /adopt or /help.';
+export const MSG_USAGE = 'Pass @@agentDefsL1 <lowerCamel> /run, /resume, /declarations, /rederive <step>, /adopt or /help.';
 export const MSG_MODULE = 'Module name must be lowerCamel (example: stockControl).';
 export const MSG_PROJECT = 'Project identity is missing.';
 export const MSG_PROJECT_MISMATCH = 'Project identity does not match this task.';
@@ -342,10 +342,11 @@ export function helpText(moduleName: string, project: number): string {
   const pending = D1_FLOW_STEP_IDS.filter(id => !(D1_IMPLEMENTED_STEP_IDS as readonly string[]).includes(id));
   return [
     `agentDefsL1 ${moduleName} in project ${project}.`,
-    'Commands: /run, /resume, /declarations, /rederive <step>, /help.',
+    'Commands: /run, /resume, /declarations, /rederive <step>, /adopt, /help.',
     '/run records the checkpoint and runs the implemented steps. A step that is only declared stops the run.',
     '/resume continues an intact checkpoint and does not rewrite it.',
     '/rederive <step> redoes the defs of the module from a step (domain30, persistence40, usecases50, controllers60, support70 or finalize80) when the generator changed and the L4 and the L2 did not: the defs that step and the later ones wrote are replaced, and the @@agentMaterializeL1 target of each def that changed is printed at the end.',
+    '/adopt records a receipt, with the hash of the disk, for each product def of the module that no receipt names or that the disk no longer matches. Only when every product file of l1/<module> is the git HEAD; a dirty file refuses it and is listed. For a module generated before the receipts. It runs no model.',
     '/declarations writes the defs of the external systems this module declares in its L4, from the L4 alone, before the L2. It needs no checkpoint and no other step. Then run @@agentMaterializeL1 with a target for each system to generate the declaration.',
     '/candidate and /rebuild all are refused. Nothing is deleted.',
     `State file: ${displayPath(pipelineFile(project, moduleName))}.`,

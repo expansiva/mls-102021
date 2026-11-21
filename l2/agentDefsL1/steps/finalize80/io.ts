@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/finalize80/io.ts" enhancement="_blank"/>
 
+import { readAdoptedReceipts } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import {
   draftFile,
@@ -75,6 +76,7 @@ export async function assembleD1Finalize(project: number, moduleName: string): P
       futurePresent,
       children: [],
       callLog: await readCallLog(project, moduleName),
+    adopted: [...(await readAdoptedReceipts(project, moduleName)).keys()].sort(),
     },
   };
 }

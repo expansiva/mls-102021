@@ -62,6 +62,10 @@ export function buildD1Finalize(request: D1FinalizeRequest): D1FinalizeReport {
   const chainApproved = CHAIN_STEP_IDS.every(id => request.pipeline.steps[id]?.status === 'approved');
   const heldEarlier = earlierHold(request.pipeline);
   copyKnownProblems(request, findings, chainApproved);
+  // d1_270: a def whose receipt is the manager's adoption, and that no unit has written since, is marked: the D1 did not write these bytes.
+  for (const defPath of request.adopted ?? []) {
+    findings.push({ severity: 'review', code: 'ADOPTED', path: defPath, message: `The receipt of ${defPath} is the manager's /adopt: its bytes are the ones the git HEAD had, not bytes this generator wrote.`, ownerRef: '' });
+  }
 
   const parsed = parseObserved(request, findings);
   const files = classifyFiles(request, chainApproved);

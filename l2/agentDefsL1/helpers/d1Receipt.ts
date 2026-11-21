@@ -28,6 +28,9 @@ const WRITER_STEPS = ['domain30', 'persistence40', 'usecases50', 'controllers60'
  */
 export const D1_EXTERNAL_TRACE = { step: 'support70', unitId: 'external' } as const;
 
+/** d1_270: the receipts `/adopt` records (the bytes a manager accepted on a clean tree). Not a writer step: `readWriterReceipts` reads it last and it wins for its paths. */
+export const D1_ADOPT_TRACE = { step: 'adopt', unitId: 'adopt' } as const;
+
 export interface D1WriterReceipt {
   defPath: string;
   desiredHash: string;
@@ -51,6 +54,8 @@ export interface D1FileProgress {
   desiredHash: string;
   /** d1_249: the hash this unit last wrote (or found equal) at this path. Carried over when a later run is refused, so the receipt is not lost with it. */
   written?: string;
+  /** d1_270: this row is the manager's `/adopt` of the bytes that were on a clean tree, not a write of this unit. */
+  adopted?: boolean;
   status: 'pending' | 'done' | 'conflict';
   outputTs: string[];
 }
@@ -197,6 +202,7 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
   // stays refused too.
   const sourceKey = (await readD1Derivation(input.project, input.moduleName))?.sourceKey ?? '';
   const writerHash = new Map<string, string | null>();
+  const adoptedHash = await readAdoptedReceipts(input.project, input.moduleName);
   const earlier = await readProgress(input.project, input.moduleName, input.step, input.unitId);
   if (earlier?.sourceKey && sourceKey && earlier.sourceKey !== sourceKey) {
     for (const receipt of await readWriterReceipts(input.project, input.moduleName)) {
@@ -222,7 +228,7 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
       file,
       action,
       source: part.source,
-      receiptHash: part.receiptHash ?? (receiptHashOf(live, logical) || writerHash.get(logical) || ''),
+      receiptHash: adoptedHash.get(logical) ?? part.receiptHash ?? (receiptHashOf(live, logical) || writerHash.get(logical) || ''),
       outputTs,
       previousHash: '',
       desiredHash: action === 'remove' ? '' : await sourceIdentityHash(part.source),
@@ -352,6 +358,7 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
   progress.finalized = progress.issues.length === 0 && progress.files.every(file => file.status === 'done');
   progress.invalidated = false;
   await saveProgress(input, progress);
+  if (written.length || removed.length) await dropAdoptedReceipts(input.project, input.moduleName, [...written, ...removed]);
   return {
     written,
     removed,
@@ -637,6 +644,7 @@ async function writeBlockReceipt(project: number, part: PlannedFile): Promise<vo
 
 export async function readWriterReceipts(project: number, moduleName: string): Promise<D1WriterReceipt[]> {
   const out: D1WriterReceipt[] = [];
+  const adopted = await readAdoptedReceipts(project, moduleName);
   const traces = [...WRITER_STEPS.map(step => ({ step: step as string, unitId: step as string })), D1_EXTERNAL_TRACE];
   for (const { step, unitId } of traces) {
     const progress = await readProgress(project, moduleName, step, unitId);
@@ -644,12 +652,46 @@ export async function readWriterReceipts(project: number, moduleName: string): P
     const whole = progress.finalized && !progress.invalidated;
     for (const file of progress.files) {
       if (file.action !== 'write') continue;
+      // d1_270: a path the manager adopted has the adopted hash as its receipt: the receipt it replaces named bytes that are no longer on the disk, or none.
+      if (adopted.has(logicalDefPath(file.defPath))) continue;
       // A row's `written` is a fact about the bytes this unit put at the path: it stays when the unit is later refused. A done row of a finished unit is the same fact.
       const hash = file.written || (whole && file.status === 'done' ? file.desiredHash : '');
       if (hash) out.push({ defPath: logicalDefPath(file.defPath), desiredHash: hash });
     }
   }
+  for (const [defPath, desiredHash] of adopted) out.push({ defPath, desiredHash });
   return out;
+}
+
+/** The hash `/adopt` recorded for each logical def path (d1_270). Empty when nothing was adopted. */
+export async function readAdoptedReceipts(project: number, moduleName: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const progress = await readProgress(project, moduleName, D1_ADOPT_TRACE.step, D1_ADOPT_TRACE.unitId);
+  for (const file of progress?.files ?? []) {
+    if (file.adopted && file.written) out.set(logicalDefPath(file.defPath), file.written);
+  }
+  return out;
+}
+
+/** Replaces the adopted receipts of the module with `rows` (logical def path → disk hash). */
+export async function saveAdoptedReceipts(project: number, moduleName: string, rows: ReadonlyMap<string, string>): Promise<void> {
+  const files: D1FileProgress[] = [...rows].sort(([left], [right]) => left.localeCompare(right)).map(([defPath, hash]) => ({
+    defPath, action: 'write', previousHash: '', desiredHash: hash, written: hash, adopted: true, status: 'done', outputTs: [],
+  }));
+  const progress: D1UnitProgress = {
+    schemaVersion: D1_PROGRESS_SCHEMA, project, moduleName, step: D1_ADOPT_TRACE.step, unitId: D1_ADOPT_TRACE.unitId, runId: 'adopt', snapshotHash: '', draftHash: '',
+    transaction: false, finalized: true, invalidated: false, reported: files.map(file => file.defPath), files, issues: [],
+  };
+  await writeJson(progressFile(project, moduleName, D1_ADOPT_TRACE.step, D1_ADOPT_TRACE.unitId), progress);
+}
+
+/** A def a unit wrote after it was adopted has a receipt of its own: the adopted one is dropped (d1_270). */
+async function dropAdoptedReceipts(project: number, moduleName: string, displayPaths: readonly string[]): Promise<void> {
+  const adopted = await readAdoptedReceipts(project, moduleName);
+  if (adopted.size === 0) return;
+  let changed = false;
+  for (const path of displayPaths) changed = adopted.delete(logicalDefPath(path)) || changed;
+  if (changed) await saveAdoptedReceipts(project, moduleName, adopted);
 }
 
 async function readProgress(project: number, moduleName: string, step: string, unitId: string): Promise<D1UnitProgress | null> {
