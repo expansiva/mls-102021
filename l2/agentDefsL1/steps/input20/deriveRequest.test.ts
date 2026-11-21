@@ -465,3 +465,47 @@ void test('items of a page that are a record of entity members: two paged contai
   for (const gap of gaps) assert.deepEqual(gap.candidates, ['agents', 'requests', D1_GAP_NONE], gap.path);
   assert.equal(first.params.some(param => param.pages), false, JSON.stringify(first.params));
 });
+
+/** d1_263: the output key of a list is a collection field of one entity, with the items' fields as its subfields. */
+function collectionContract(): string {
+  return `/// <mls fileReference="_102099_/l2/hub/web/contracts/behavior.defs.ts" enhancement="_blank"/>
+
+export interface BehaviorChange {
+  changeRef: string;
+  summary: string;
+  undone: boolean;
+}
+
+export interface BehaviorContracts {
+  'hub.behavior.listChanges': {
+    kind: 'qry';
+    input: { page?: number; pageSize?: number };
+    output: { changes: { items: BehaviorChange[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: [];
+    access: { actors: ['dev']; grants: ['devGrant']; scope: 'organization' };
+  };
+}
+`;
+}
+
+function collectionEntities(owners: string[]): Record<string, unknown> {
+  const fields = { id: { type: 'uuid', derived: true }, changes: { type: 'object', collection: true }, 'changes.changeRef': { type: 'string' }, 'changes.summary': { type: 'string' }, 'changes.undone': { type: 'boolean' } };
+  return Object.fromEntries(owners.map(id => [id, { entityId: id, record: { fields } }]));
+}
+
+void test('a list whose output key is a collection field of one entity matches the entity by prefix, with no gap (d1_263)', () => {
+  const definition = parseD2ContractV2(collectionContract());
+  const route = definition.routes[0];
+  const derived = deriveRequest(route, definition, collectionEntities(['Behavior']));
+  assert.deepEqual(derived.unresolved, []);
+  assert.deepEqual(derived.outputs.map(output => [output.key, output.entity, output.many]), [['changes', 'Behavior', true]]);
+  assert.deepEqual(derived.outputs[0].mapped?.map(item => item.path).sort(), ['changes.changeRef', 'changes.summary', 'changes.undone']);
+  assert.deepEqual(derived.params.filter(param => param.pages).map(param => param.target), ['changes', 'changes']);
+});
+
+void test('a collection field two entities share is not matched by prefix (d1_263)', () => {
+  const definition = parseD2ContractV2(collectionContract());
+  const derived = deriveRequest(definition.routes[0], definition, collectionEntities(['Behavior', 'Other']));
+  assert.equal(derived.outputs.some(output => output.key === 'changes' && output.entity === 'Behavior'), false);
+  assert.equal(derived.unresolved.length > 0, true);
+});

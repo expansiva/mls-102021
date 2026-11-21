@@ -39,7 +39,7 @@ import { assembleD1Input, d1SourceKey, persistD1Input, readD1Derivation, readD1I
 import { readContractV2 } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import { D1_RESOLVE_VERSION, type D1ResolveAttempt, type D1ResolveReceipt, type D1ResolveUnit, type D1ResolveWork } from '/_102021_/l2/agentDefsL1/steps/resolve25/contracts.js';
 import { recordHeldReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/heldReport.js';
-import { answersByRoute, buildResolveReceipt, checkResolveReply, keptRoutes, receiptAnswersDerived, resolveUnits, settledGapAnswers, sourcesDrift, unaskedGaps } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
+import { answersByRoute, buildResolveReceipt, checkResolveReply, KEPT_TRACE, keptRoutes, receiptAnswersDerived, resolveUnits, settledGapAnswers, sourcesDrift, unaskedGaps, withKeptAnswers } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
 import {
   readResolveAttempt,
   readResolveReceipt,
@@ -125,7 +125,7 @@ export async function beforeD1ResolvePromptStep(
       const attempt: D1ResolveAttempt = {
         unitId: unit.unitId,
         status: 'parsed',
-        trace: 'Kept from the previous resolve25 receipt. No model was called.',
+        trace: KEPT_TRACE,
         unitAttempts: 0,
         planId,
         calls: 0,
@@ -148,7 +148,7 @@ export async function beforeD1ResolvePromptStep(
   }
   const pending = units.filter(unit => !reused.has(unit.unitId));
   if (!pending.length) {
-    const receipt = buildResolveReceipt(work, keptAttempts);
+    const receipt = withKeptAnswers(buildResolveReceipt(work, keptAttempts), kept, new Set(work.units.map(unit => unit.route)));
     await writeResolveReceipt(receipt);
     return finish(context, parentStep, step, hookSequential, pipeline, receipt, `resolve25 kept the answered routes for ${moduleName} from the previous receipt. No model was called.`, 0);
   }
@@ -352,7 +352,8 @@ async function barrier(
   }
   if (fresh.length) await writeResolveWork(work);
   // After the one repair of this round, a gap without an accepted choice is none. It stays a gap downstream, not a stop.
-  const receipt = buildResolveReceipt(work, attempts);
+  const keptRouteNames = new Set(work.units.filter(unit => attempts.find(item => item.unitId === unit.unitId)?.trace === KEPT_TRACE).map(unit => unit.route));
+  const receipt = withKeptAnswers(buildResolveReceipt(work, attempts), await readResolveReceipt(prompt.project, prompt.moduleName), keptRouteNames);
   await writeResolveReceipt(receipt);
   const open = receipt.routes.reduce((sum, row) => sum + row.answers.filter(item => !item.call).length, 0);
   const exhausted = decision.identified.map(item => `${item.unitId} ${item.code}: ${item.trace}`).join('; ');

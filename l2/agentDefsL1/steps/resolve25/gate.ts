@@ -149,6 +149,25 @@ export function keptRoutes(receipt: D1ResolveReceipt, units: readonly D1ResolveU
   return kept;
 }
 
+/** The trace of an attempt a route got from the previous receipt (no worker ran). */
+export const KEPT_TRACE = 'Kept from the previous resolve25 receipt. No model was called.';
+
+/**
+ * d1_263: a route kept from the previous receipt keeps every answer it had. The kept attempt carries the first-round gaps only; the paths the choices
+ * opened after them (the second round of the run that asked) are on the previous receipt, and dropping them made the next run on the same sources
+ * ask the whole module again.
+ */
+export function withKeptAnswers(built: D1ResolveReceipt, previous: D1ResolveReceipt | null, keptRouteNames: ReadonlySet<string>): D1ResolveReceipt {
+  if (!previous || !keptRouteNames.size) return built;
+  const routes = built.routes.map(row => {
+    const before = keptRouteNames.has(row.route) ? previous.routes.find(item => item.route === row.route) : undefined;
+    if (!before) return row;
+    const have = new Set(row.answers.map(item => item.path));
+    return { ...row, answers: [...row.answers, ...before.answers.filter(item => !have.has(item.path))] };
+  });
+  return { ...built, routes };
+}
+
 /** Identity of one gap. Synchronous, not a hash. */
 function resolveGapKey(route: string, gap: Pick<D1ResolveGap, 'path' | 'kind' | 'reason' | 'candidates'>): string {
   return JSON.stringify([route, gap.path, gap.kind, gap.reason, [...gap.candidates].sort()]);

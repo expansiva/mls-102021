@@ -821,7 +821,10 @@ function indexWriterReceipts(rows: ReadonlyArray<{ defPath: string; desiredHash:
  * the bytes the receipt names, the D1 wrote them and the stale inventory does not count against them. A def edited since has a disk that is not the receipt.
  */
 function receiptView(previous: D1InputSnapshot | null, defPath: string, receipts: WriterIndex, disk = ''): ReceiptView {
-  const plan = previous?.files.find(file => file.defPath === defPath);
+  // d1_263: a def the previous inventory carried as removed or unplanned and that the plan carries again (a route now derives its usecase) is
+  // vouched for by that inventory: same path, same hash.
+  const wasRemoved = previous?.removed.find(item => item.defPath === defPath && !!item.contentHash);
+  const plan = previous?.files.find(file => file.defPath === defPath) ?? (wasRemoved ? ({ defPath, contentHash: wasRemoved.contentHash } as D1PlannedFile) : undefined);
   const inventoried = plan?.contentHash || '';
   const conflict = receipts.conflict.get(defPath);
   const written = conflict ? '' : (receipts.hash.get(defPath) || '');
@@ -904,7 +907,11 @@ function collectRemoved(
 
 /** The file of the previous snapshot a removed item was written to. */
 export function previousFileOfRemoved(previous: D1InputSnapshot | null, item: Pick<D1RemovedItem, 'kind' | 'id'>): D1InputSnapshot['files'][number] | undefined {
-  return previous?.files.find(file => file.identity === item.id || file.ownerRefs.includes(`${item.kind}:${item.id}`) || file.ownerRefs.includes(`endpoint:${item.id}`));
+  const file = previous?.files.find(entry => entry.identity === item.id || entry.ownerRefs.includes(`${item.kind}:${item.id}`) || entry.ownerRefs.includes(`endpoint:${item.id}`));
+  if (file) return file;
+  // d1_263: the previous inventory carried it as removed (a run after the one that removed it): its path and hash are the receipt, as for a def it carried as unplanned.
+  const was = previous?.removed.find(entry => entry.kind === item.kind && entry.id === item.id && !!entry.defPath && !!entry.contentHash);
+  return was ? ({ defPath: was.defPath, contentHash: was.contentHash } as D1InputSnapshot['files'][number]) : undefined;
 }
 
 /**

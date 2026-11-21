@@ -175,6 +175,27 @@ function classify(ctx: Context, key: string, body: string, many: boolean, parent
     if (rule) ctx.computedBy.push({ path: key, rule });
     return;
   }
+  // d1_263: the output key of a list is a collection-object field of one entity and the leaves of the item are fields of it (`changes: { items: Entry[] }`
+  // with `changes.changedAt…` in the entity): the items are that field, by prefix, without asking.
+  const collection = many ? collectionOwner(ctx, key, leaves) : null;
+  if (collection) {
+    const output: D1RequestOutput = { key, entity: collection, many };
+    ctx.outputs.push(output);
+    if (parent && !ctx.shadow) {
+      const ids = relationshipIds(ctx, parent.entity, collection);
+      output.parent = parent.key;
+      const relationship = ids.length === 1
+        ? ids[0]
+        : ask(ctx, `output.${key}`, 'relationship', `${collection} inside ${parent.entity} needs one L4 relationship between them; found ${ids.length}.`, ids);
+      if (relationship) output.relationship = relationship;
+    }
+    const readonly = readonlyFields(ctx, key, typeName, computed, collection);
+    const mappedByPrefix: D1RequestMappedField[] = [...leaves.map(leaf => ({ field: leaf, path: `${key}.${leaf}` })), ...readonly.mapped];
+    if (readonly.calculated.length) output.computed = readonly.calculated;
+    output.mapped = mappedByPrefix;
+    for (const item of nested) visit(ctx, `${key}.${item.path}`, item.type, output);
+    return;
+  }
   // A field that is in no entity may be a flattened ontology path: the candidates are the paths with the same last segment.
   // A field answered `none` is a server value, like a readonly one, and stays out of the match (d1_91 s2a). No answer still opens the interface.
   const mapped: D1RequestMappedField[] = [];
@@ -385,6 +406,13 @@ function canonicalList(ctx: Context, list: readonly Member[]): boolean {
   const names = new Set(list.map(member => member.name));
   const items = list.find(member => member.name === LIST_ITEMS);
   return Boolean(items && interfaceRef(ctx, items.type)?.many && names.has('page') && names.has('pageSize') && names.has('hasMore'));
+}
+
+/** The one entity whose field `key` holds all the leaves as `key.<leaf>` (a collection-object field), or null. */
+function collectionOwner(ctx: Context, key: string, leaves: readonly string[]): string | null {
+  if (!leaves.length || key.includes('.')) return null;
+  const owners = [...ctx.fields.entries()].filter(([, fields]) => fields.has(key) && leaves.every(leaf => fields.has(`${key}.${leaf}`))).map(([entityId]) => entityId);
+  return owners.length === 1 ? owners[0] : null;
 }
 
 interface EntityMatch {

@@ -22,6 +22,7 @@ import {
   inputFile,
   pipelineFile,
   reportFile,
+  resolveFile,
   type D1StepId,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { fileKey, installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
@@ -39,9 +40,13 @@ import { holdPipeline } from '/_102021_/l2/agentDefsL1/helpers/d1Hold.js';
 import { parsePipelineDocument } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 
+import { answersByRoute } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
+import { readResolveReceipt } from '/_102021_/l2/agentDefsL1/steps/resolve25/io.js';
+import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import { assembleD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+
 const PROJECT = 102047;
 const MODULE = 'agents';
-const FIXTURE = 'agents-1be807ab';
 const COMMAND = (step: string): string => `@@agentDefsL1 ${MODULE} /rederive ${step}`;
 
 async function approveUsecases(
@@ -186,120 +191,12 @@ function errorsOf(host: TestHost): string[] {
   return (report?.findings || []).filter(item => item.severity === 'error').map(item => `${item.code} ${item.path}`);
 }
 
-void test('d1_250: agents@1be807ab: /rederive controllers60 ends complete; listPersonalConduct, a def the D1 wrote that no plan carries any more, is inventoried as unplanned, kept, and is not an extra file', async () => {
-  const host = installStudio(PROJECT);
-  seedD1Fixture(host, FIXTURE, PROJECT);
-  const ran = await rederiveRun(host, 'controllers60');
-  assert.deepEqual(ran.filter(item => item.status === 'failed'), []);
-  assert.deepEqual(errorsOf(host), []);
-  assert.equal(parseFinalizeReport(host.files[fileKey(reportFile(PROJECT, MODULE))]?.content || '')?.outcome, 'complete');
-  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
-  const snapshot = JSON.parse(host.files[fileKey(inputFile(PROJECT, MODULE))].content) as D1InputSnapshot;
-  assert.equal(snapshot.removed.some(item => item.kind === 'usecase' && item.id === 'listPersonalConduct' && item.inventoried && item.unplanned === true), true);
-  assert.equal(snapshot.files.some(file => file.identity === 'listPersonalConduct'), false, 'it is not planned');
-  const end = ran.find(item => item.stepId === 'finalize80' && item.status === 'completed')!.trace;
-  assert.match(end, /\nrun summary:\n/u);
-  // d1_250 (reviewed): the def is KEPT with its code: the plan may be behind the contract and a live route may read through it.
-  const left = Object.values(host.files).filter(file => file.extension === '.defs.ts' && file.folder.endsWith('layer_2_application/usecases') && file.status !== 'deleted').map(file => file.shortName);
-  assert.equal(left.includes('listPersonalConduct'), true, 'listPersonalConduct is not deleted');
-  assert.equal(left.length, 27);
-  assert.doesNotMatch(ran.find(item => item.stepId === 'usecases50')!.trace, /removed/u);
-  const report = parseFinalizeReport(host.files[fileKey(reportFile(PROJECT, MODULE))]?.content || '');
-  assert.equal(report?.findings.some(item => item.code === 'UNPLANNED_DEF' && item.severity === 'review'), true, 'it is said, as a review finding');
-});
-
-void test('d1_250: a usecase def nobody wrote (no receipt) is still an extra file', async () => {
-  const host = installStudio(PROJECT);
-  seedD1Fixture(host, FIXTURE, PROJECT);
-  seed(host, fileInfoFromDisplay(PROJECT, STRAY)!, strayDef(host), 'stray');
-  await rederiveRun(host, 'controllers60');
-  assert.deepEqual(errorsOf(host), [`EXTRA_FILE ${STRAY}`]);
-});
-
-void test('d1_250: a def the D1 wrote and someone edited since is still an extra file', async () => {
-  const host = installStudio(PROJECT);
-  seedD1Fixture(host, FIXTURE, PROJECT);
-  const edited = Object.values(host.files).find(file => file.shortName === 'listPersonalConduct' && file.extension === '.defs.ts')!;
-  edited.content = edited.content.replace('"operation": "list"', '"operation": "list", "note": "EDITADO-A-MAO"');
-  assert.equal(edited.content.includes('EDITADO-A-MAO'), true);
-  await rederiveRun(host, 'controllers60');
-  assert.equal(errorsOf(host).includes('EXTRA_FILE l1/agents/layer_2_application/usecases/listPersonalConduct.defs.ts'), true, errorsOf(host).join(' | '));
-});
-
-
 // d1_253: the whole sequence on the state of `agents` at mls-102047@f45e1e26 (git show): the /rederive that the L4 ran, the state that stays, the same
 // command again, a /run, and a def edited by hand between the two commands.
-
-const F45 = 'agents-f45e1e26';
 
 function failedOf(ran: Array<{ stepId: string; status: string; trace: string }>): string[] {
   return ran.filter(item => item.status === 'failed').map(item => `${item.stepId}: ${item.trace.slice(0, 200)}`);
 }
-
-void test('d1_253: agents@f45e1e26: /rederive controllers60, the state stays, /rederive again, /run; a def edited by hand in between is refused', async () => {
-  const host = installStudio(PROJECT);
-  seedD1Fixture(host, F45, PROJECT);
-
-  const usecaseDefs = (): string[] => Object.values(host.files).filter(file => file.extension === '.defs.ts' && file.folder.endsWith('layer_2_application/usecases') && file.status !== 'deleted').map(file => file.shortName).sort();
-  const usecasesBefore = usecaseDefs();
-  // The state the L4 left: the first /rederive wrote 5 defs, their receipts have the new bytes, and the inventory of the last input20 has the old ones.
-  const first = await rederiveRun(host, 'controllers60');
-  assert.deepEqual(failedOf(first), [], '1: /rederive controllers60 ends complete');
-  assert.deepEqual(errorsOf(host), []);
-  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
-
-  // 2: the state stays: nothing is edited. 3: the same command again.
-  const before = Object.fromEntries(Object.values(host.files).filter(file => file.level === 1 && file.extension === '.defs.ts').map(file => [`${file.folder}/${file.shortName}`, file.content]));
-  const second = await rederiveRun(host, 'controllers60');
-  assert.deepEqual(failedOf(second), [], '3: the second /rederive ends complete');
-  assert.equal(second.some(item => /EXISTS_WITHOUT_RECEIPT|EXTRA_FILE/u.test(item.trace)), false);
-  assert.deepEqual(errorsOf(host), []);
-  for (const file of Object.values(host.files).filter(item => item.level === 1 && item.extension === '.defs.ts')) {
-    assert.equal(file.content, before[`${file.folder}/${file.shortName}`], `the second command rewrote nothing: ${file.shortName}`);
-  }
-
-  // 4: a /run after it ends complete and writes nothing.
-  const run = await rederiveRun(host, null);
-  assert.deepEqual(failedOf(run), [], '4: /run ends complete');
-  for (const stepId of ['domain30', 'persistence40', 'controllers60', 'support70']) {
-    assert.match(run.find(item => item.stepId === stepId)!.trace, new RegExp(`^${stepId}: wrote 0, `, 'u'), `/run wrote nothing in ${stepId}`);
-  }
-  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
-
-  assert.deepEqual(usecaseDefs(), usecasesBefore, 'no usecase def disappeared in the whole sequence (listAgent, listAgentBehavior, listAgentDraft, listOrganizationUser stay)');
-
-  // 5: a def edited by hand between the first run and the second command is refused, and the edit stays.
-  const other = installStudio(PROJECT);
-  seedD1Fixture(other, F45, PROJECT);
-  assert.deepEqual(failedOf(await rederiveRun(other, 'controllers60')), []);
-  const request = Object.values(other.files).find(file => file.shortName === 'my_conduct' && file.folder.endsWith('layer_2_application/requests') && file.extension === '.defs.ts')!;
-  request.content = request.content.replace('Purpose', 'EDITADO-A-MAO Purpose');
-  assert.equal(request.content.includes('EDITADO-A-MAO'), true);
-  const refused = await rederiveRun(other, 'controllers60');
-  assert.equal(failedOf(refused).length > 0, true, '5: the hand edit is refused');
-  assert.equal(request.content.includes('EDITADO-A-MAO'), true, 'and the edit stays');
-});
-
-void test('d1_255: agents@f45e1e26: the result the manager reads at the end of the /rederive (finalize80-done) carries the materialize targets and the run summary', async () => {
-  const host = installStudio(PROJECT);
-  seedD1Fixture(host, F45, PROJECT);
-  const ran = await rederiveRun(host, 'controllers60');
-  assert.deepEqual(failedOf(ran), []);
-  const text = ran.find(item => item.stepId === 'result:finalize80-done')?.trace;
-  assert.ok(text, 'the finalize80-done result exists');
-  const result = JSON.parse(text) as { materializeTargets?: string[]; runSummary?: string[]; rederiveChanged?: number };
-  // The five defs the earlier /rederive wrote (controllers, requests and the outbound) are still "changed since the first command".
-  assert.equal(result.rederiveChanged, 5);
-  assert.deepEqual(result.materializeTargets, [
-    '@@agentMaterializeL1 {"target":"_102047_/l1/agents/layer_1_external/adapters/http/controllers/agents.defs.ts"}',
-    '@@agentMaterializeL1 {"target":"_102047_/l1/agents/layer_1_external/adapters/http/controllers/my_conduct.defs.ts"}',
-    '@@agentMaterializeL1 {"target":"_102047_/l1/agents/layer_1_external/adapters/integration/outbound.defs.ts"}',
-    '@@agentMaterializeL1 {"target":"_102047_/l1/agents/layer_2_application/requests/agents.defs.ts"}',
-    '@@agentMaterializeL1 {"target":"_102047_/l1/agents/layer_2_application/requests/my_conduct.defs.ts"}',
-  ]);
-  assert.match((result.runSummary ?? []).join('\n'), /^domain30: wrote 0, kept 10/mu);
-  assert.match((result.runSummary ?? []).join('\n'), /^support70: /mu);
-});
 
 // d1_260: `agents` at mls-102047@30f16c8e (git show) with the 18 answers the s3b of the l4_p4_140 recorded (resolve25.json, byte for byte), no model.
 const A30 = 'agents-30f16c8e';
@@ -323,11 +220,40 @@ function seedEvidenceAnswers(host: TestHost): void {
   host.files[key].content = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'fixtures/resolve25Evidence30f16c8e.recorded.txt'), 'utf8');
 }
 
+/**
+ * The gaps the recorded answers cannot know: a rule added to the derivation after the evidence (d1_263) opens a gap the receipt has no answer for. The
+ * test answers only those, as the resolve25 would (the entity the gap names, the paging list, the first closed path; a filter stays `none`). Every
+ * recorded answer stays byte for byte, so no model is asked.
+ */
+async function answerNewGaps(): Promise<void> {
+  const receipt = await readResolveReceipt(PROJECT, MODULE);
+  assert.ok(receipt);
+  for (let round = 0; round < 8; round += 1) {
+    const snapshot = await assembleD1Input(PROJECT, MODULE, answersByRoute(receipt));
+    let added = 0;
+    for (const request of snapshot.selection.requests) {
+      let row = receipt.routes.find(item => item.route === request.route);
+      for (const gap of request.unresolved ?? []) {
+        const key = JSON.stringify([request.route, gap.path, gap.kind, gap.reason, [...gap.candidates].sort()]);
+        if (row?.answers.some(answer => answer.gapKey === key)) continue;
+        const options = gap.candidates.filter(item => item !== D1_GAP_NONE);
+        const choice = gap.kind === 'entity' ? (options[0] ?? D1_GAP_NONE) : gap.kind === 'pageParam' || gap.kind === 'fieldPath' ? (options[0] ?? D1_GAP_NONE) : D1_GAP_NONE;
+        if (!row) { row = { route: request.route, pageId: request.pageId, answers: [] }; receipt.routes.push(row); }
+        row.answers.push({ path: gap.path, kind: gap.kind, choice, call: choice === D1_GAP_NONE ? '' : 'test', gapKey: key });
+        added += 1;
+      }
+    }
+    if (!added) break;
+  }
+  await writeJson(resolveFile(PROJECT, MODULE), receipt);
+}
+
 void test('d1_260: agents@30f16c8e with the recorded answers: the resolve25 reuses them with no model and releases the consumer phases', async () => {
   const host = installStudio(PROJECT);
   seedD1Fixture(host, A30, PROJECT);
   await replanPool(host);
   seedEvidenceAnswers(host);
+  await answerNewGaps();
   const ran = await rederiveRun(host, 'controllers60', 'resolve25');
   assert.deepEqual(failedOf(ran), []);
   assert.match(ran.find(item => item.stepId === 'resolve25')!.trace, /kept the answered routes for agents from the previous receipt\. No model was called\./u);
@@ -354,6 +280,7 @@ void test('d1_260: a run that holds at resolve25 says why in the step and in the
   seedD1Fixture(host, A30, PROJECT);
   await replanPool(host);
   seedEvidenceAnswers(host);
+  await answerNewGaps();
   await rederiveRun(host, 'controllers60', 'input20');
   // Someone edits the def of the my_conduct controller after input20: the disk is neither the inventory nor the receipt, so it is not recomposed.
   const controller = Object.values(host.files).find(file => file.shortName === 'my_conduct' && file.folder.endsWith('adapters/http/controllers') && file.extension === '.defs.ts')!;
@@ -423,6 +350,7 @@ void test('d1_262: the controllers60 recomposes my_conduct without the route tha
   seedD1Fixture(host, A30, PROJECT);
   await replanPool(host);
   seedEvidenceAnswers(host);
+  await answerNewGaps();
   const before = Object.values(host.files).find(file => file.shortName === 'my_conduct' && file.folder.endsWith('adapters/http/controllers') && file.extension === '.defs.ts')!.content;
   assert.equal(before.includes('listMyConductHistory'), true);
   assert.equal(before.includes('listMyConductChanges'), false);
@@ -445,6 +373,7 @@ void test('d1_262 s0: an input20 that held stays `approved` in the checkpoint, a
   seedD1Fixture(host, A30, PROJECT);
   await replanPool(host);
   seedEvidenceAnswers(host);
+  await answerNewGaps();
   const effortKey = Object.keys(host.files).find(key => key.endsWith('pool/l2/web/effort.json'))!;
   const good = host.files[effortKey].content;
   const effort = JSON.parse(good);
@@ -471,6 +400,7 @@ void test('d1_262 s0: a resolve25 that runs on the checkpoint of an input20 that
   seedD1Fixture(host, A30, PROJECT);
   await replanPool(host);
   seedEvidenceAnswers(host);
+  await answerNewGaps();
   const effortKey = Object.keys(host.files).find(key => key.endsWith('pool/l2/web/effort.json'))!;
   const effort = JSON.parse(host.files[effortKey].content);
   effort.removed.push({ kind: 'usecase', id: 'updatePersonalConduct', status: 'toRemove' });
@@ -484,4 +414,128 @@ void test('d1_262 s0: a resolve25 that runs on the checkpoint of an input20 that
   assert.match(direct.trace, /REMOVE_STILL_REFERENCED/u, direct.trace);
   const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content) as { steps: Record<string, { status: string }> };
   assert.equal(pipeline.steps.resolve25?.status, 'failed');
+});
+
+// d1_263: the five end-to-end tests of d1_250, d1_253 and d1_255 ran on states of `agents` whose L4 still had the history in `PersonalConduct`
+// (1be807ab, f45e1e26). The collection rule makes `listMyConductHistory` resolve to it there, which binds `listPersonalConduct` and changes the defs
+// those fixtures were recorded with. They move to the state the L4 left (30f16c8e) with the recorded answers; each one proves what it proved.
+
+/** The state of `agents` at 30f16c8e, the pool replanned, the 18 recorded answers, and an answer only for the gaps the recorded ones cannot know. */
+async function seedA30Ready(): Promise<TestHost> {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, A30, PROJECT);
+  await replanPool(host);
+  seedEvidenceAnswers(host);
+  await answerNewGaps();
+  return host;
+}
+
+const usecaseDefNames = (host: TestHost): string[] => Object.values(host.files)
+  .filter(file => file.extension === '.defs.ts' && file.folder.endsWith('layer_2_application/usecases') && file.status !== 'deleted')
+  .map(file => file.shortName).sort();
+
+/** `getAgentDraft`: a def the D1 wrote, that no route reads (the plan removed it) and that the plan stops saying so about: carried by no plan. */
+async function orphanGetAgentDraft(): Promise<TestHost> {
+  const host = await seedA30Ready();
+  for (const end of ['pool/l2/web/backend.json', 'pool/l2/web/effort.json']) {
+    const key = Object.keys(host.files).find(item => item.endsWith(end))!;
+    const file = JSON.parse(host.files[key].content);
+    file.removed = file.removed.filter((item: { id: string }) => item.id !== 'getAgentDraft');
+    host.files[key].content = JSON.stringify(file, null, 2);
+  }
+  return host;
+}
+
+void test('d1_250 (on 30f16c8e): /rederive controllers60 ends complete; getAgentDraft, a def the D1 wrote that no plan carries, is inventoried as unplanned, kept, and is not an extra file', async () => {
+  const host = await orphanGetAgentDraft();
+  const before = usecaseDefNames(host);
+  assert.equal(before.includes('getAgentDraft'), true);
+  const ran = await rederiveRun(host, 'controllers60');
+  assert.deepEqual(ran.filter(item => item.status === 'failed'), []);
+  assert.deepEqual(errorsOf(host), []);
+  assert.equal(parseFinalizeReport(host.files[fileKey(reportFile(PROJECT, MODULE))]?.content || '')?.outcome, 'complete');
+  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
+  const snapshot = JSON.parse(host.files[fileKey(inputFile(PROJECT, MODULE))].content) as D1InputSnapshot;
+  assert.equal(snapshot.removed.some(item => item.kind === 'usecase' && item.id === 'getAgentDraft' && item.inventoried && item.unplanned === true), true);
+  assert.equal(snapshot.files.some(file => file.identity === 'getAgentDraft'), false, 'it is not planned');
+  const end = ran.find(item => item.stepId === 'finalize80' && item.status === 'completed')!.trace;
+  assert.match(end, /\nrun summary:\n/u);
+  // The def is KEPT with its code: the plan may be behind the contract and a live route may read through it. None disappears.
+  const left = usecaseDefNames(host);
+  assert.equal(left.includes('getAgentDraft'), true, 'getAgentDraft is not deleted');
+  assert.deepEqual(before.filter(name => !left.includes(name)), []);
+  assert.doesNotMatch(ran.find(item => item.stepId === 'usecases50')!.trace, /removed/u);
+  const report = parseFinalizeReport(host.files[fileKey(reportFile(PROJECT, MODULE))]?.content || '');
+  assert.equal(report?.findings.some(item => item.code === 'UNPLANNED_DEF' && item.severity === 'review'), true, 'it is said, as a review finding');
+});
+
+void test('d1_250 (on 30f16c8e): a usecase def nobody wrote (no receipt) is still an extra file', async () => {
+  const host = await seedA30Ready();
+  seed(host, fileInfoFromDisplay(PROJECT, STRAY)!, strayDef(host), 'stray');
+  await rederiveRun(host, 'controllers60');
+  assert.deepEqual(errorsOf(host), [`EXTRA_FILE ${STRAY}`]);
+});
+
+void test('d1_250 (on 30f16c8e): a def the D1 wrote, carried by no plan, and edited since is still an extra file', async () => {
+  const host = await orphanGetAgentDraft();
+  const edited = Object.values(host.files).find(file => file.shortName === 'getAgentDraft' && file.extension === '.defs.ts')!;
+  edited.content = edited.content.replace('"operation": "get"', '"operation": "get", "note": "EDITADO-A-MAO"');
+  assert.equal(edited.content.includes('EDITADO-A-MAO'), true);
+  await rederiveRun(host, 'controllers60');
+  assert.equal(errorsOf(host).includes('EXTRA_FILE l1/agents/layer_2_application/usecases/getAgentDraft.defs.ts'), true, errorsOf(host).join(' | '));
+});
+
+void test('d1_253 (on 30f16c8e): /rederive controllers60, the state stays, /rederive again, /run; a def edited by hand in between is refused', async () => {
+  const host = await seedA30Ready();
+  const usecasesBefore = usecaseDefNames(host);
+  // The state the L4 left: the first /rederive writes the defs, their receipts have the new bytes, and the inventory of the last input20 has the old ones.
+  const first = await rederiveRun(host, 'controllers60');
+  assert.deepEqual(failedOf(first), [], '1: /rederive controllers60 ends complete');
+  assert.deepEqual(errorsOf(host), []);
+  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
+
+  // 2: the state stays: nothing is edited. 3: the same command again.
+  const before = Object.fromEntries(Object.values(host.files).filter(file => file.level === 1 && file.extension === '.defs.ts').map(file => [`${file.folder}/${file.shortName}`, file.content]));
+  const second = await rederiveRun(host, 'controllers60');
+  assert.deepEqual(failedOf(second), [], '3: the second /rederive ends complete');
+  assert.equal(second.some(item => /EXISTS_WITHOUT_RECEIPT|EXTRA_FILE/u.test(item.trace)), false);
+  assert.deepEqual(errorsOf(host), []);
+  for (const file of Object.values(host.files).filter(item => item.level === 1 && item.extension === '.defs.ts')) {
+    assert.equal(file.content, before[`${file.folder}/${file.shortName}`], `the second command rewrote nothing: ${file.shortName}`);
+  }
+
+  // 4: a /run after it ends complete and writes nothing.
+  const run = await rederiveRun(host, null);
+  assert.deepEqual(failedOf(run), [], '4: /run ends complete');
+  for (const stepId of ['domain30', 'persistence40', 'controllers60', 'support70']) {
+    assert.match(run.find(item => item.stepId === stepId)!.trace, new RegExp(`^${stepId}: wrote 0, `, 'u'), `/run wrote nothing in ${stepId}`);
+  }
+  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
+
+  // No usecase def disappeared in the whole sequence. The ones the routes now need are added (the first run wrote them).
+  const after = usecaseDefNames(host);
+  assert.deepEqual(usecasesBefore.filter(name => !after.includes(name)), []);
+
+  // 5: a def edited by hand between the first run and the second command is refused, and the edit stays.
+  const other = await seedA30Ready();
+  assert.deepEqual(failedOf(await rederiveRun(other, 'controllers60')), []);
+  const request = Object.values(other.files).find(file => file.shortName === 'my_conduct' && file.folder.endsWith('layer_2_application/requests') && file.extension === '.defs.ts')!;
+  request.content = request.content.replace('Purpose', 'EDITADO-A-MAO Purpose');
+  assert.equal(request.content.includes('EDITADO-A-MAO'), true);
+  const refused = await rederiveRun(other, 'controllers60');
+  assert.equal(failedOf(refused).length > 0, true, '5: the hand edit is refused');
+  assert.equal(request.content.includes('EDITADO-A-MAO'), true, 'and the edit stays');
+});
+
+void test('d1_255 (on 30f16c8e): the result the manager reads at the end of the /rederive (finalize80-done) carries the materialize targets and the run summary', async () => {
+  const host = await seedA30Ready();
+  const ran = await rederiveRun(host, 'controllers60');
+  assert.deepEqual(failedOf(ran), []);
+  const text = ran.find(item => item.stepId === 'result:finalize80-done')?.trace;
+  assert.ok(text, 'the finalize80-done result exists');
+  const result = JSON.parse(text) as { materializeTargets?: string[]; runSummary?: string[]; rederiveChanged?: number };
+  assert.ok((result.rederiveChanged ?? 0) > 0);
+  assert.equal(result.materializeTargets?.length, result.rederiveChanged);
+  assert.match((result.runSummary ?? []).join('\n'), /^domain30: wrote /mu);
+  assert.match((result.runSummary ?? []).join('\n'), /^support70: /mu);
 });

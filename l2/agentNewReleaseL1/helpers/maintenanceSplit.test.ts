@@ -27,6 +27,9 @@ const CLEAN_PLAN_USECASES = [
   'getAgentBehavior|AgentBehavior|get|toCreate|cm.readAgent',
   'getAgentDraft|AgentDraft|get|toCreate|cm.readAgent',
   'getOrganizationUser|OrganizationUser|get|toCreate|',
+  // d1_263: `listBehaviorChanges` outputs `changes`, the collection field of AgentBehavior: it resolves to AgentBehavior and the list usecase that serves
+  // `cm.listAgentHistory` is derived (before, the route had no entity and the call had no consumer).
+  'listAgentBehavior|AgentBehavior|list|toCreate|cm.listAgentHistory',
   'listAgentSimulation|AgentSimulation|list|toCreate|cm.simulateAgent',
   'listAgentTool|AgentTool|list|toCreate|',
   'listExecutionSummary|ExecutionSummary|list|toCreate|',

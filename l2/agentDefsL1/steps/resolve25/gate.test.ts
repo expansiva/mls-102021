@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { D1_RESOLVE_VERSION, type D1ResolveReceipt, type D1ResolveUnit, type D1ResolveWork } from '/_102021_/l2/agentDefsL1/steps/resolve25/contracts.js';
-import { buildResolveReceipt, keptRoutes } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
+import { buildResolveReceipt, keptRoutes, withKeptAnswers } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
 
 function gapKey(route: string, path: string, reason: string, candidates: string[]): string {
   return JSON.stringify([route, path, 'usecase', reason, [...candidates].sort()]);
@@ -69,5 +69,32 @@ describe('keptRoutes', () => {
       gap('campo', 'onde', ['desconto', 'none'], 'g1'),
     ]);
     assert.equal(keptRoutes(receipt, [more]).size, 0);
+  });
+});
+
+describe('withKeptAnswers (d1_263)', () => {
+  const first = unit('r1', [gap('a', 'x', ['e1', 'none'])]);
+  const previous = (() => {
+    const receipt = receiptFrom([first], { r1: { g0: 'e1' } });
+    receipt.routes[0].answers.push({ path: 'a.b', kind: 'usecase', choice: 'e2', call: 'plan-2', gapKey: gapKey('r1', 'a.b', 'y', ['e2', 'none']) });
+    return receipt;
+  })();
+
+  it('a kept route keeps the answers of the paths its choices opened, which the kept attempt does not carry', () => {
+    const built = receiptFrom([first], { r1: { g0: 'e1' } });
+    const merged = withKeptAnswers(built, previous, new Set(['r1']));
+    assert.deepEqual(merged.routes[0].answers.map(item => [item.path, item.choice]), [['a', 'e1'], ['a.b', 'e2']]);
+  });
+
+  it('a route that was asked again does not take the old answers back, and no previous receipt leaves the built one', () => {
+    const built = receiptFrom([first], { r1: { g0: 'none' } });
+    assert.deepEqual(withKeptAnswers(built, previous, new Set()).routes[0].answers.map(item => item.path), ['a']);
+    assert.equal(withKeptAnswers(built, null, new Set(['r1'])), built);
+  });
+
+  it('an answer for a path the built route already has stays as built', () => {
+    const built = receiptFrom([first], { r1: { g0: 'none' } });
+    const merged = withKeptAnswers(built, previous, new Set(['r1']));
+    assert.equal(merged.routes[0].answers.find(item => item.path === 'a')!.choice, 'none');
   });
 });
