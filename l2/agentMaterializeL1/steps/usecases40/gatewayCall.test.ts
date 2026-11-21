@@ -205,3 +205,21 @@ void test('d1_266: the section shows the fields of the catalog types of each cal
   assert.equal(catalogTypeBody(source, 'Missing'), '');
   assert.equal(catalogTypeBody(null, 'CmActivateAgentInput'), '');
 });
+
+void test('d1_268: a cast of the input of a gateway call is refused; a value that already has the type of the operation is not', async () => {
+  const { gatewayInputCastProblems } = await import('/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js');
+  const shipped = "const request: Record<string, unknown> = {};\nif (folderPath) request.path = folderPath;\nconst response = await gateway.listarConteudo(request as GatewayListInput, ctx);";
+  const refused = gatewayInputCastProblems(shipped, ['listarConteudo']);
+  assert.equal(refused.length, 1);
+  assert.match(refused[0], /^GATEWAY_INPUT_CAST: .*gateway\.listarConteudo\(/u);
+  // The casts of the agents usecases (redundant, they compile without) are the same shape.
+  assert.equal(gatewayInputCastProblems('return await gateway.updateAgent(catalogInput as CmUpdateAgentInput, ctx, { expectVersion });', ['updateAgent']).length, 1);
+  assert.equal(gatewayInputCastProblems('await gateway.x({ a: 1 } as unknown as XInput, ctx);', ['x']).length, 1);
+  // Built as the type, passed as is, a cast inside a nested value or in the options, and a comment: not a cast of the input.
+  assert.deepEqual(gatewayInputCastProblems("const request: ListarConteudoInput = { caminho: folderPath };\nconst response = await gateway.listarConteudo(request, ctx);", ['listarConteudo']), []);
+  assert.deepEqual(gatewayInputCastProblems('const result = await gateway.readAgent(input, ctx);', ['readAgent']), []);
+  assert.deepEqual(gatewayInputCastProblems('await gateway.readAgent({ agentId: String(input.id as string) }, ctx);', ['readAgent']), [], 'a cast inside the object is not a cast of the input');
+  assert.deepEqual(gatewayInputCastProblems('await gateway.readAgent(input, ctx, { expectVersion: version as number });', ['readAgent']), [], 'the options are not the input');
+  assert.deepEqual(gatewayInputCastProblems('// gateway.readAgent(input as X, ctx)\nawait gateway.readAgent(input, ctx);', ['readAgent']), []);
+  assert.deepEqual(gatewayInputCastProblems('await gateway.other(input as X, ctx);', ['readAgent']), [], 'only the operations the usecase consumes');
+});

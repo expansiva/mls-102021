@@ -242,6 +242,34 @@ export function consumerCallProblems(code: string, calls: readonly M12ConsumerCa
     .map(call => `GATEWAY_CALL_MISSING: the def names this usecase the consumer of ${call.connectionId}.${call.operationId}: the file must call \`gateway.${call.operationId}(input, ctx)\` on the \`${gatewayNameOf(call.connectionId)}\`. Importing the gateway type is not a call.`);
 }
 
+/**
+ * d1_268: the input of a call to an outside operation is typed by the operation (`<Op>Input` of the declaration), and the compiler checks its fields; a cast
+ * of the argument (`request as GatewayListInput`) switches that check off. listRepositoryEntry built `{}`, set `path` where the operation asks `caminho`, cast it, and
+ * it compiled. A top-level `as` in the first argument of `gateway.<operation>(` is refused: build the input as the type, field by field.
+ */
+export function gatewayInputCastProblems(code: string, operations: readonly string[]): string[] {
+  const clean = withoutComments(code);
+  const problems: string[] = [];
+  for (const operation of operations) {
+    for (const match of clean.matchAll(new RegExp(`\\b(?:gateway|[A-Za-z_$][\\w$]*Gateway)\\s*\\.${operation}\\s*\\(`, 'gu'))) {
+      let depth = 0;
+      let argument = '';
+      for (let at = (match.index ?? 0) + match[0].length; at < clean.length; at += 1) {
+        const char = clean[at];
+        if (char === '(' || char === '{' || char === '[') depth += 1;
+        else if (char === ')' || char === '}' || char === ']') { if (depth === 0) break; depth -= 1; }
+        else if (char === ',' && depth === 0) break;
+        if (depth === 0) argument += char;
+      }
+      if (/(?:^|[\s)\]}])as\s+[A-Za-z_$]/u.test(argument)) {
+        problems.push(`GATEWAY_INPUT_CAST: the input of \`gateway.${operation}(\` is cast (\`as\`): the cast hides a field the operation does not have. Build the input as the type of the operation (\`const request: <Op>Input = { ... }\`, or pass a value that already has it) so the compiler checks every name.`);
+        break;
+      }
+    }
+  }
+  return problems;
+}
+
 /** One event a usecase publishes, and the function of the generated `outbound.ts` that does it. */
 export interface M12EventPublisher {
   eventId: string;
@@ -899,6 +927,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...undeclaredInputProblems(code));
   problems.push(...eventPublishProblems(code, input.publishers ?? []));
   problems.push(...consumerCallProblems(code, input.consumerCalls ?? []));
+  problems.push(...gatewayInputCastProblems(code, (input.consumerCalls ?? []).map(call => call.operationId)));
   problems.push(...childRecordProblems(code, input.childRecords ?? [], (input.consumerCalls ?? []).map(call => call.operationId)));
   problems.push(...emptyCastProblems(code));
   problems.push(...recordCastProblems(code));
