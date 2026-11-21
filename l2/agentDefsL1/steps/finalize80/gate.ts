@@ -240,7 +240,7 @@ function classifyFiles(request: D1FinalizeRequest, chainApproved: boolean): D1Fi
     const ran = chainApproved && !!phase && request.pipeline.steps[phase as D1StepId]?.status === 'approved';
     files.push({
       defPath: removed.defPath || removed.id,
-      action: ran ? 'removed' : 'notGenerated',
+      action: removed.unplanned ? 'preserved' : ran ? 'removed' : 'notGenerated',
       ownerRefs: [removed.id],
       sourceHash: removed.contentHash || '',
       phase,
@@ -281,6 +281,9 @@ function checkChildren(request: D1FinalizeRequest, findings: D1FinalizeFinding[]
 
 function checkExtra(request: D1FinalizeRequest, parsed: ParsedDef[], findings: D1FinalizeFinding[]): void {
   const known = inventoriedPaths(request);
+  for (const item of request.snapshot?.removed || []) {
+    if (item.unplanned && item.defPath) review(findings, 'UNPLANNED_DEF', item.defPath, `Definition ${item.id} was written by the D1 and no plan carries it. It was kept: the plan may be behind the contract.`, item.id);
+  }
   for (const item of parsed) {
     if (known.has(item.logical)) continue;
     error(findings, 'EXTRA_FILE', item.logical, `Definition ${item.definition.artifactId} is not in the inventory.`, item.definition.artifactId);
