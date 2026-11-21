@@ -483,6 +483,7 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
     parts.push(section('Arrival (process transitions, from the def)', [
       `This update is the arrival of a message from outside. It moves the record only through the transitions the def lists (\`arrivalTransitions\`: ${arrival.transitions.map(item => `${item.transitionId}: ${item.from.join(', ')} → ${item.to}`).join('; ')}), which no person makes.`,
       `When the arrival moves the state, take the transition whose from holds the current state of the record and whose to is the state the arrival names; set \`${arrival.stateField || 'the state field'}\` to that literal state (${arrival.transitions.map(item => `'${item.to}'`).join(' or ')}) and refuse the arrival when no listed transition fits. Never read the state from the input and never set a state no transition leads to; apply the rules of the transition you took.`,
+      'The message carries no version of the record: the input declares no `version` and the file never reads `input.version`. Read the record, check that its state allows the transition, and let the repository keep the version.',
     ].join('\n')));
   }
   const entityRef = ontologyRef(unit.definition, unit.outputRef);

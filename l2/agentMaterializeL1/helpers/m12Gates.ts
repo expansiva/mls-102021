@@ -373,6 +373,11 @@ export function arrivalTransitionProblems(
 ): string[] {
   if (!arrival || arrival.transitions.length === 0) return [];
   const problems: string[] = [];
+  // d1_264: a message from outside carries no version of the record: the input has none, and the arrival acts on the record the file reads.
+  const inputBody = /\binterface\s+\w*Input\b[^{]*\{([^}]*)\}/u.exec(codeOnly(code))?.[1] ?? '';
+  if (/\binput\s*\.\s*version\b/u.test(codeOnly(code)) || /(?:^|[;\n{,])\s*version\s*\??\s*:/u.test(inputBody)) {
+    problems.push('ARRIVAL_VERSION_IN_INPUT: the arrival of a message from outside carries no version of the record, so the input declares no `version` and the file never reads `input.version`. Read the record, apply the transition to it and let the repository keep the version.');
+  }
   const targets = [...new Set(arrival.transitions.map(item => item.to))];
   const starts = new Set(arrival.transitions.flatMap(item => item.from ?? []).filter(state => !targets.includes(state)));
   const field = arrival.stateField;

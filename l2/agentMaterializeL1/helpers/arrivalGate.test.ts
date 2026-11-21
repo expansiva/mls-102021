@@ -71,3 +71,13 @@ void test('d1_259 s1c: the usecase unit reads the transitions of its def and the
   const other = { definition: { artifactType: 'domainEntity', artifactId: 'agentDraft', data: { entityId: 'AgentDraft', fields: [{ name: 'situation', type: 'enum' }] } } };
   assert.equal(arrivalOf({ units: [other] } as never, unit({ operation: 'update', entityId: 'AgentDraft', arrivalTransitions: listed }))?.stateField, 'situation');
 });
+
+void test('d1_264: an arrival carries no version: an input that declares it, or a file that reads it, is refused', () => {
+  const withInput = `export interface UpdateAgentDraftInput {\n  id: string;\n  version: number;\n  reason?: string;\n}\n${BY_TRANSITION}`;
+  assert.equal(arrivalTransitionProblems(withInput, ARRIVAL).some(item => item.startsWith('ARRIVAL_VERSION_IN_INPUT')), true);
+  const reads = BY_TRANSITION.replace("const move =", 'if (input.version !== draft.version) throw new Error("stale"); const move =');
+  assert.equal(arrivalTransitionProblems(reads, ARRIVAL).some(item => item.startsWith('ARRIVAL_VERSION_IN_INPUT')), true);
+  // The version of the record the file read is its own business: `draft.version` and a `version` of the stored row are not the input.
+  const own = `export interface UpdateAgentDraftInput {\n  id: string;\n  reason?: string;\n}\n${BY_TRANSITION.replace("const move =", 'const known = draft.version; const move =')}`;
+  assert.deepEqual(arrivalTransitionProblems(own, ARRIVAL), []);
+});
