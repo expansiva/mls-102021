@@ -180,7 +180,7 @@ function errorsOf(host: TestHost): string[] {
   return (report?.findings || []).filter(item => item.severity === 'error').map(item => `${item.code} ${item.path}`);
 }
 
-void test('d1_250: agents@1be807ab: /rederive controllers60 ends complete; listPersonalConduct, a def the D1 wrote that no plan carries any more, is inventoried as removed and is not an extra file', async () => {
+void test('d1_250: agents@1be807ab: /rederive controllers60 ends complete; listPersonalConduct, a def the D1 wrote that no plan carries any more, is inventoried as unplanned, kept, and is not an extra file', async () => {
   const host = installStudio(PROJECT);
   seedD1Fixture(host, FIXTURE, PROJECT);
   const ran = await rederiveRun(host, 'controllers60');
@@ -189,16 +189,17 @@ void test('d1_250: agents@1be807ab: /rederive controllers60 ends complete; listP
   assert.equal(parseFinalizeReport(host.files[fileKey(reportFile(PROJECT, MODULE))]?.content || '')?.outcome, 'complete');
   assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
   const snapshot = JSON.parse(host.files[fileKey(inputFile(PROJECT, MODULE))].content) as D1InputSnapshot;
-  assert.equal(snapshot.removed.some(item => item.kind === 'usecase' && item.id === 'listPersonalConduct' && item.inventoried), true);
+  assert.equal(snapshot.removed.some(item => item.kind === 'usecase' && item.id === 'listPersonalConduct' && item.inventoried && item.unplanned === true), true);
   assert.equal(snapshot.files.some(file => file.identity === 'listPersonalConduct'), false, 'it is not planned');
   const end = ran.find(item => item.stepId === 'finalize80' && item.status === 'completed')!.trace;
   assert.match(end, /\nrun summary:\n/u);
-  // d1_251: the def of the orphan leaves the module with the plan; the usecases the plan carries stay.
+  // d1_250 (reviewed): the def is KEPT with its code: the plan may be behind the contract and a live route may read through it.
   const left = Object.values(host.files).filter(file => file.extension === '.defs.ts' && file.folder.endsWith('layer_2_application/usecases') && file.status !== 'deleted').map(file => file.shortName);
-  assert.equal(left.includes('listPersonalConduct'), false, 'listPersonalConduct is removed');
-  assert.equal(left.includes('updatePersonalConduct'), true);
-  assert.equal(left.length, 26);
-  assert.match(ran.find(item => item.stepId === 'usecases50')!.trace, /removed 1 \(listPersonalConduct\)/u);
+  assert.equal(left.includes('listPersonalConduct'), true, 'listPersonalConduct is not deleted');
+  assert.equal(left.length, 27);
+  assert.doesNotMatch(ran.find(item => item.stepId === 'usecases50')!.trace, /removed/u);
+  const report = parseFinalizeReport(host.files[fileKey(reportFile(PROJECT, MODULE))]?.content || '');
+  assert.equal(report?.findings.some(item => item.code === 'UNPLANNED_DEF' && item.severity === 'review'), true, 'it is said, as a review finding');
 });
 
 void test('d1_250: a usecase def nobody wrote (no receipt) is still an extra file', async () => {

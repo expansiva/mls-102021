@@ -116,22 +116,6 @@ export function requestRepositoryProblems(code: string, ports: readonly string[]
   return problems;
 }
 
-/**
- * d1_251: a request service imports only usecases that are defs of the module. A usecase that left the plan (the def is gone) can still have its code
- * on disk, and a model that saw it imported it (my_conduct → listPersonalConduct). The module's own usecases are the ones in `usecases`; one the def does
- * not link to the route is still fine (many routes call a usecase the def does not name), one with no def is not. A usecase of another module is not looked at.
- */
-export function unknownUsecaseImportProblems(code: string, usecases: readonly string[], ownPrefix: string): string[] {
-  if (!usecases.length) return [];
-  const known = new Set(usecases);
-  const problems: string[] = [];
-  for (const specifier of importSpecifiers(code)) {
-    const match = specifier.startsWith(ownPrefix) ? /\/layer_2_application\/usecases\/([A-Za-z][A-Za-z0-9]*)\.js$/u.exec(specifier) : null;
-    if (match && !known.has(match[1])) problems.push(`USECASE_NOT_IN_MODULE: \`${match[1]}\` is imported from ${specifier}, but the module has no usecase def of that name (its code may be left over from a plan that dropped it). Use a usecase of the module, or build the value from the ones the routes already call.`);
-  }
-  return problems;
-}
-
 const EMPTY_LITERAL = /^(?:''|""|``|\[\s*\]|\{\s*\})$/u;
 
 /**
