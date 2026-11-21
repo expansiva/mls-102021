@@ -1,0 +1,387 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/agent_simulation.ts" enhancement="_blank"/>
+
+import type {
+  Agent_simulationContracts,
+  SimulatedPerson,
+  ToolVerdict,
+  Understanding,
+  UnderstoodAction,
+  WhatItCanResult,
+} from '/_102047_/l2/agents/web/contracts/agent_simulation.defs.js';
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { getAgent } from '/_102047_/l1/agents/layer_2_application/usecases/getAgent.js';
+import { getOrganizationUser } from '/_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.js';
+import { listAgentSimulation } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.js';
+import type {
+  ListAgentSimulationInput,
+  ListAgentSimulationOutput,
+} from '/_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.js';
+import { listOrganizationUser } from '/_102047_/l1/agents/layer_2_application/usecases/listOrganizationUser.js';
+import { listAgentTool } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentTool.js';
+import { listPersonToolRestriction } from '/_102047_/l1/agents/layer_2_application/usecases/listPersonToolRestriction.js';
+import { listTool } from '/_102047_/l1/agents/layer_2_application/usecases/listTool.js';
+import type { ListToolOutput } from '/_102047_/l1/agents/layer_2_application/usecases/listTool.js';
+
+const MAX_PAGE_SIZE = 200;
+
+// Module level values -> catalog (cm) values, sent to cm.simulateAgent.
+const levelToCatalog: Record<WhatItCanResult['level'], ListAgentSimulationInput['level']> = {
+  whatItCan: 'canDo',
+  whatItUnderstands: 'understands',
+};
+
+// Catalog (cm) values -> module level values, returned by cm.simulateAgent.
+const levelFromCatalog: Record<ListAgentSimulationOutput['level'], WhatItCanResult['level']> = {
+  canDo: 'whatItCan',
+  understands: 'whatItUnderstands',
+};
+
+type ToolRecord = ListToolOutput['items'][number];
+
+type SimulationSubject =
+  | { kind: 'person'; personId: string; name: string }
+  | { kind: 'role'; roleName: string };
+
+interface ToolContext {
+  tools: ToolRecord[];
+  onIds: Set<string>;
+  restrictedIds: Set<string>;
+}
+
+function isCompanyAdmin(ctx: RequestContext): boolean {
+  const scope = ctx.sessionContext.actorScope ?? [];
+  return scope.some((item) => item === 'companyAdmin' || item.endsWith(':companyAdmin'));
+}
+
+function callerPersonId(ctx: RequestContext): string {
+  const person = ctx.sessionContext.person;
+  if (person == null || !person.mdmId) {
+    throw new AppError('NOT_FOUND', 'The logged-in person was not found', 404);
+  }
+  return person.mdmId;
+}
+
+async function collectAll<T>(
+  fetchPage: (page: number) => Promise<{ items: T[]; hasMore: boolean }>,
+): Promise<T[]> {
+  const all: T[] = [];
+  let page = 1;
+  for (;;) {
+    const result = await fetchPage(page);
+    all.push(...result.items);
+    if (!result.hasMore || result.items.length === 0) break;
+    page += 1;
+  }
+  return all;
+}
+
+async function loadPersonSubject(
+  ctx: RequestContext,
+  personId: string,
+  requireActive: boolean,
+): Promise<SimulationSubject> {
+  const user = await getOrganizationUser({ id: personId }, ctx);
+  const name = user.details.identification.name;
+  if (requireActive && user.details.identification.status !== 'Active') {
+    // onlyActiveUsersRestricted: only active organization users are offered for simulation.
+    throw new AppError(
+      'VALIDATION_ERROR',
+      `${name} is not an active user and cannot be simulated`,
+      422,
+      { ruleId: 'onlyActiveUsersRestricted', personId },
+    );
+  }
+  return { kind: 'person', personId, name };
+}
+
+async function resolveSubject(
+  ctx: RequestContext,
+  chosen: { subjectKind?: 'person' | 'role'; person?: string; roleName?: string },
+  selfWhenAbsent: boolean,
+): Promise<SimulationSubject> {
+  const selfId = callerPersonId(ctx);
+  // memberSimulatesOnlyAsSelf: a member is always simulated as themselves, whatever is sent.
+  if (!isCompanyAdmin(ctx)) {
+    return loadPersonSubject(ctx, selfId, false);
+  }
+  // adminSimulatesByRole: the admin may choose any active person or any role.
+  if (chosen.subjectKind === 'role') {
+    if (chosen.roleName == null || chosen.roleName.trim() === '') {
+      throw new AppError('VALIDATION_ERROR', 'Choose the role to simulate', 422, {
+        ruleId: 'adminSimulatesByRole',
+      });
+    }
+    return { kind: 'role', roleName: chosen.roleName };
+  }
+  if (chosen.subjectKind === 'person' && (chosen.person == null || chosen.person === '')) {
+    if (!selfWhenAbsent) {
+      throw new AppError('VALIDATION_ERROR', 'Choose the person to simulate', 422, {
+        ruleId: 'adminSimulatesByRole',
+      });
+    }
+  }
+  if (chosen.person != null && chosen.person !== '' && chosen.subjectKind === 'person') {
+    return loadPersonSubject(ctx, chosen.person, chosen.person !== selfId);
+  }
+  if (chosen.subjectKind == null && !selfWhenAbsent) {
+    throw new AppError('VALIDATION_ERROR', 'Choose whether to simulate a person or a role', 422, {
+      ruleId: 'adminSimulatesByRole',
+    });
+  }
+  return loadPersonSubject(ctx, selfId, false);
+}
+
+function subjectFields(subject: SimulationSubject): { asMdmId?: string; as?: string } {
+  if (subject.kind === 'person') return { asMdmId: subject.personId };
+  return { as: subject.roleName };
+}
+
+async function loadToolContext(
+  ctx: RequestContext,
+  agentId: string,
+  subject: SimulationSubject,
+): Promise<ToolContext> {
+  const tools = await collectAll((page) => listTool({ page, pageSize: MAX_PAGE_SIZE }, ctx));
+  const agentTools = await collectAll((page) =>
+    listAgentTool({ agentId, page, pageSize: MAX_PAGE_SIZE }, ctx),
+  );
+  // onlyToolsOnAreConsidered: only the tools that are on for the agent.
+  const onIds = new Set<string>(agentTools.filter((item) => item.enabled).map((item) => item.toolId));
+  const restrictedIds = new Set<string>();
+  if (subject.kind === 'person') {
+    // personRestrictionAppliesInRequest / restrictionAppliesThroughAnyAgent: restrictions of the person, whatever the agent.
+    const restrictions = await collectAll((page) =>
+      listPersonToolRestriction({ personId: subject.personId, page, pageSize: MAX_PAGE_SIZE }, ctx),
+    );
+    for (const restriction of restrictions) restrictedIds.add(restriction.toolId);
+  }
+  return { tools, onIds, restrictedIds };
+}
+
+function reasonText(reason: ToolVerdict['reason'], actionName: string): string {
+  switch (reason) {
+    case 'allowed':
+      return `The agent can use "${actionName}" for this request.`;
+    case 'restrictedForPerson':
+      return `This person may not use "${actionName}" through any agent.`;
+    case 'notPermittedForRole':
+      return `The role does not allow "${actionName}".`;
+    case 'removedFromRelease':
+      return `"${actionName}" was removed from the current release.`;
+  }
+}
+
+function personOf(subject: SimulationSubject): SimulatedPerson | undefined {
+  if (subject.kind !== 'person') return undefined;
+  return { id: subject.personId, details: { identification: { name: subject.name } } };
+}
+
+async function runWhatItCan(
+  ctx: RequestContext,
+  agentId: string,
+  agentName: string,
+  subject: SimulationSubject,
+): Promise<WhatItCanResult> {
+  const simulation = await listAgentSimulation(
+    {
+      agentId,
+      level: levelToCatalog.whatItCan,
+      ...subjectFields(subject),
+    },
+    ctx,
+  );
+  const allowedByCm = new Map<string, boolean>();
+  for (const node of simulation.tree ?? []) allowedByCm.set(node.actionId, node.allowed);
+
+  const toolContext = await loadToolContext(ctx, agentId, subject);
+  const toolVerdicts: ToolVerdict[] = [];
+  for (const tool of toolContext.tools) {
+    if (!toolContext.onIds.has(tool.id)) continue;
+    let reason: ToolVerdict['reason'];
+    if (tool.status === 'removed') {
+      // removedToolNotSent: a removed tool is blocked and never sent to the cm as usable.
+      reason = 'removedFromRelease';
+    } else if (toolContext.restrictedIds.has(tool.id)) {
+      reason = 'restrictedForPerson';
+    } else if (allowedByCm.get(tool.toolKey) === true) {
+      reason = 'allowed';
+    } else {
+      reason = 'notPermittedForRole';
+    }
+    toolVerdicts.push({
+      tool: tool.id,
+      moduleName: tool.details.moduleTitle,
+      subjectName: tool.details.subjectTitle,
+      actionName: tool.name,
+      canUse: reason === 'allowed',
+      reason,
+      reasonText: reasonText(reason, tool.name),
+    });
+  }
+
+  const person = personOf(subject);
+  return {
+    agent: agentName,
+    level: levelFromCatalog[simulation.level],
+    subjectKind: subject.kind,
+    ...(person != null ? { person } : {}),
+    ...(subject.kind === 'role' ? { roleName: subject.roleName } : {}),
+    toolVerdicts,
+  };
+}
+
+function normalizeText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+export const requests: { [K in keyof Agent_simulationContracts]: (input: Agent_simulationContracts[K]['input'], ctx: RequestContext) => Promise<Agent_simulationContracts[K]['output']> } = {
+  'agents.agent_simulation.getSimulationPage': async function (input, ctx) {
+    const agent = await getAgent({ agentId: input.agentId }, ctx);
+    // memberSimulatesOnlyAsSelf: the opening simulation always runs for the logged-in person.
+    const subject = await loadPersonSubject(ctx, callerPersonId(ctx), false);
+    // simulationSavesNothing: only reads.
+    const whatItCan = await runWhatItCan(ctx, input.agentId, agent.name, subject);
+    return { agent: { name: agent.name }, whatItCan };
+  },
+
+  'agents.agent_simulation.simulateWhatItCan': async function (input, ctx) {
+    const agent = await getAgent({ agentId: input.agentId }, ctx);
+    const subject = await resolveSubject(
+      ctx,
+      {
+        subjectKind: input.subjectKind,
+        ...(input.person != null ? { person: input.person } : {}),
+        ...(input.roleName != null ? { roleName: input.roleName } : {}),
+      },
+      false,
+    );
+    const whatItCan = await runWhatItCan(ctx, input.agentId, agent.name, subject);
+    return { whatItCan };
+  },
+
+  'agents.agent_simulation.findPeopleToSimulate': async function (input, ctx) {
+    if (!isCompanyAdmin(ctx)) {
+      throw new AppError('FORBIDDEN', 'Only the company admin can choose people to simulate', 403, {
+        ruleId: 'adminSimulatesByRole',
+      });
+    }
+    const page = input.page >= 1 ? Math.floor(input.page) : 1;
+    const pageSize = input.pageSize >= 1 ? Math.min(Math.floor(input.pageSize), MAX_PAGE_SIZE) : 20;
+    const term = input.search != null ? normalizeText(input.search.trim()) : '';
+
+    const users = await collectAll((p) => listOrganizationUser({ page: p, pageSize: MAX_PAGE_SIZE }, ctx));
+    const kept = users.filter((user) => {
+      // onlyActiveUsersRestricted
+      if (user.details.identification.status !== 'Active') return false;
+      // users with a platform login
+      if (user.details.agents?.loginEmail == null || user.details.agents.loginEmail === '') return false;
+      if (term === '') return true;
+      return normalizeText(user.details.identification.name).includes(term);
+    });
+
+    const start = (page - 1) * pageSize;
+    const slice = kept.slice(start, start + pageSize);
+    // noTechnicalIdsOnScreen: only the reference and the readable name.
+    const items: SimulatedPerson[] = slice.map((user) => ({
+      id: user.id,
+      details: { identification: { name: user.details.identification.name } },
+    }));
+    return {
+      people: {
+        items,
+        page,
+        pageSize,
+        hasMore: start + pageSize < kept.length,
+      },
+    };
+  },
+
+  'agents.agent_simulation.simulateWhatItUnderstands': async function (input, ctx) {
+    const agent = await getAgent({ agentId: input.agentId }, ctx);
+    const subject = await resolveSubject(
+      ctx,
+      {
+        ...(input.subjectKind != null ? { subjectKind: input.subjectKind } : {}),
+        ...(input.person != null ? { person: input.person } : {}),
+        ...(input.roleName != null ? { roleName: input.roleName } : {}),
+      },
+      true,
+    );
+    // simulationSavesNothing: only the cm simulation is asked.
+    const simulation = await listAgentSimulation(
+      {
+        agentId: input.agentId,
+        level: levelToCatalog.whatItUnderstands,
+        message: input.sentence,
+        ...subjectFields(subject),
+      },
+      ctx,
+    );
+
+    const toolContext = await loadToolContext(ctx, input.agentId, subject);
+    const toolByKey = new Map<string, ToolRecord>();
+    for (const tool of toolContext.tools) toolByKey.set(tool.toolKey, tool);
+
+    const actions: UnderstoodAction[] = [];
+    for (const actionId of simulation.actions ?? []) {
+      const tool = toolByKey.get(actionId);
+      if (tool == null) continue;
+      // onlyToolsOnAreConsidered
+      if (!toolContext.onIds.has(tool.id)) continue;
+      // removedToolNotSent
+      if (tool.status === 'removed') continue;
+      // personRestrictionAppliesInRequest: tools the person may not use are left out.
+      if (toolContext.restrictedIds.has(tool.id)) continue;
+      actions.push({ tool: tool.id, actionName: tool.name });
+    }
+
+    const path = simulation.path ?? [];
+    const moduleKey = path.length > 0 ? path[0] : undefined;
+    const subjectKey = path.length > 1 ? path[1] : undefined;
+    const moduleTool =
+      moduleKey != null ? toolContext.tools.find((tool) => tool.moduleName === moduleKey) : undefined;
+    const subjectTool =
+      moduleKey != null && subjectKey != null
+        ? toolContext.tools.find((tool) => tool.moduleName === moduleKey && tool.subject === subjectKey)
+        : undefined;
+    const moduleTitle = moduleTool?.details.moduleTitle;
+    const subjectTitle = subjectTool?.details.subjectTitle;
+
+    const asksForAction = simulation.isActionRequest === true;
+    let explanation: string;
+    if (!asksForAction) {
+      explanation = 'The agent reads this sentence as a question or a comment, not as a request for an action.';
+    } else if (actions.length === 0) {
+      explanation = 'The agent reads this sentence as a request for an action, but none of the tools it leads to can be used here.';
+    } else {
+      const where =
+        moduleTitle != null
+          ? ` in ${moduleTitle}${subjectTitle != null ? ` / ${subjectTitle}` : ''}`
+          : '';
+      explanation = `The agent reads this sentence as a request for an action${where}: ${actions
+        .map((action) => action.actionName)
+        .join(', ')}.`;
+    }
+
+    const understanding: Understanding = {
+      asksForAction,
+      ...(moduleTitle != null ? { moduleName: moduleTitle } : {}),
+      ...(subjectTitle != null ? { subjectName: subjectTitle } : {}),
+      actions,
+      explanation,
+    };
+
+    return {
+      whatItUnderstands: {
+        agent: agent.name,
+        level: levelFromCatalog[simulation.level],
+        sentence: input.sentence,
+        understanding,
+      },
+    };
+  },
+};

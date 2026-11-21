@@ -1,0 +1,121 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/agents.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { AgentsContracts, AgentsCollectionEntry } from '/_102047_/l2/agents/web/contracts/agents.defs.js';
+import { listAgentDraft } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentDraft.js';
+import { getAgentDraft } from '/_102047_/l1/agents/layer_2_application/usecases/getAgentDraft.js';
+import { getOrganizationUser } from '/_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.js';
+import { startVirtualEmployeeRequest } from '/_102047_/l1/agents/layer_2_application/workflows/virtualEmployeeCreation.js';
+
+function isCompanyAdmin(ctx: RequestContext): boolean {
+  return (ctx.sessionContext.actorScope ?? []).some(
+    scope => scope === 'companyAdmin' || scope.endsWith(':companyAdmin')
+  );
+}
+
+function pageValues(page: number, pageSize: number): { page: number; pageSize: number } {
+  return {
+    page: Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1,
+    pageSize: Number.isFinite(pageSize) && pageSize >= 1 ? Math.min(200, Math.floor(pageSize)) : 20
+  };
+}
+
+// The supplied cm list and read operations do not expose the original prompt,
+// request date or requester, and cannot list activated or discarded drafts.
+// Returning an empty or partial history would misrepresent the organization's data.
+function missingDraftHistory(): never {
+  throw new AppError(
+    'SERVICE_UNAVAILABLE',
+    'The draft service does not provide the complete request history or the fields needed for the inbox.',
+    503
+  );
+}
+
+export const requests: { [K in keyof AgentsContracts]: (input: AgentsContracts[K]['input'], ctx: RequestContext) => Promise<AgentsContracts[K]['output']> } = {
+  'agents.agents.loadAgentsPage': async function (input, ctx) {
+    if (isCompanyAdmin(ctx)) {
+      // agentDraftSuggestedToolsOnWhenReady: a complete history is needed to
+      // identify all ready drafts; the supplied cm operations cannot provide it.
+      return missingDraftHistory();
+    }
+    const { pageSize } = pageValues(1, input.pageSize);
+    const collection = await requests['agents.agents.listAgentsCollection']({ page: 1, pageSize }, ctx);
+    return {
+      inbox: [],
+      agents: collection.agents,
+      requests: { items: [], page: 1, pageSize, hasMore: false }
+    };
+  },
+
+  'agents.agents.listAgentsCollection': async function (input, ctx) {
+    const admin = isCompanyAdmin(ctx);
+    const result = await listAgentDraft({ includeDrafts: admin }, ctx);
+    const entries = await Promise.all(result.agents.map(async (record): Promise<AgentsCollectionEntry | undefined> => {
+      if (record.draftStatus != null) {
+        if (!admin) return undefined;
+        return {
+          draft: {
+            name: record.name,
+            situation: record.draftStatus,
+            // refusalReasonShownWhenRefused: only refused drafts carry the reason.
+            ...(record.draftStatus === 'refused' && record.refusedReason != null
+              ? { refusalReason: record.refusedReason } : {}),
+            // noTechnicalIdsOnScreen: this id is for navigation, not display.
+            draftId: record.agentId
+          }
+        };
+      }
+      const responsible = record.responsibleUserId == null
+        ? undefined
+        : await getOrganizationUser({ id: record.responsibleUserId }, ctx);
+      return {
+        agent: {
+          name: record.name,
+          isOn: record.enabled,
+          ...(responsible == null ? {} : { responsibleName: responsible.details.identification.name }),
+          // noTechnicalIdsOnScreen: this id is for navigation, not display.
+          agentId: record.agentId
+        }
+      };
+    }));
+    const present = entries.filter((entry): entry is AgentsCollectionEntry => entry != null);
+    const { page, pageSize } = pageValues(input.page, input.pageSize);
+    const start = (page - 1) * pageSize;
+    return { agents: { items: present.slice(start, start + pageSize), page, pageSize, hasMore: start + pageSize < present.length } };
+  },
+
+  'agents.agents.listRequestHistory': async function (input, ctx) {
+    if (!isCompanyAdmin(ctx)) {
+      throw new AppError('FORBIDDEN', 'Only a company administrator can view agent request history.', 403);
+    }
+    // refusalReasonShownWhenRefused and agentDraftSuggestedToolsOnWhenReady
+    // require the complete draft history, which the supplied cm list does not expose.
+    // noTechnicalIdsOnScreen applies to the screen, not the navigation payload.
+    return missingDraftHistory();
+  },
+
+  'agents.agents.sendNewAgentRequest': async function (input, ctx) {
+    return ctx.data.moduleData.runInTransaction(async tx => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      if (!isCompanyAdmin(bound)) {
+        throw new AppError('FORBIDDEN', 'Only a company administrator can request a new agent.', 403);
+      }
+      const requestedAt = bound.clock.nowIso();
+      const started = await startVirtualEmployeeRequest({ prompt: input.prompt }, bound);
+      const draft = await getAgentDraft({ agentId: started.draftId }, bound);
+      const requestedBy = bound.sessionContext.person?.name;
+      return {
+        request: { name: draft.name, situation: started.situation, requestedAt, draftId: started.draftId },
+        inboxItem: {
+          name: draft.name,
+          situation: started.situation,
+          prompt: input.prompt,
+          requestedAt,
+          ...(requestedBy == null ? {} : { requestedBy }),
+          draftId: started.draftId
+        },
+        collectionEntry: { draft: { name: draft.name, situation: started.situation, draftId: started.draftId } }
+      };
+    });
+  }
+};

@@ -73,16 +73,52 @@ void test('d1_198: a different count of values is EXTERNAL_ENUM_UNPAIRED with th
 const INPUT_PAIR: ExternalEnumPair = { usecaseId: 'listSim', entityId: 'Sim', connectionId: 'cm', operationId: 'simulateAgent', field: 'level', side: 'input', catalogType: 'CmSimulateAgentInput', moduleValues: ['whatItCan', 'whatItUnderstands'], catalogValues: ['canDo', 'understands'] };
 const OUTPUT_PAIR: ExternalEnumPair = { ...INPUT_PAIR, side: 'output', catalogType: 'CmSimulateAgentOutput' };
 
-void test('d1_198: the gate accepts a typed one to one map and refuses a missing, partial or repeated one', () => {
+// d1_256: the code calls the usecase (the input side: the module value goes in) and reads the field of the answer (the output side).
+const SENDS = 'const answer = await listSim({ level: input.level }, ctx);\n';
+const READS = 'const shown = answer.level;\n';
+
+void test('d1_198/d1_256: the gate accepts a typed one to one map and refuses a missing, partial or repeated one, for the direction the code uses', () => {
   const good = "const LEVEL: Record<'whatItCan' | 'whatItUnderstands', ListSimInput['level']> = { whatItCan: 'canDo', whatItUnderstands: 'understands' };\n";
-  assert.deepEqual(enumMapProblems(good, [INPUT_PAIR]), []);
-  assert.match(enumMapProblems('const x = 1;\n', [INPUT_PAIR])[0], /Write the typed map module → catalog/);
-  assert.match(enumMapProblems("const L = { whatItCan: 'canDo', whatItUnderstands: 'canDo' };\n", [INPUT_PAIR])[0], /not one to one/);
-  assert.match(enumMapProblems("const L = { whatItCan: 'canDo', whatItUnderstands: 'other' };\n", [INPUT_PAIR])[0], /'other', which is not one of/);
-  assert.match(enumMapProblems("const L = { whatItCan: 'canDo' };\n", [INPUT_PAIR])[0], /Write the typed map/);
+  assert.deepEqual(enumMapProblems(`${good}${SENDS}`, [INPUT_PAIR]), []);
+  assert.match(enumMapProblems(SENDS, [INPUT_PAIR])[0], /Write the typed map module → catalog/);
+  assert.match(enumMapProblems(`const L = { whatItCan: 'canDo', whatItUnderstands: 'canDo' };\n${SENDS}`, [INPUT_PAIR])[0], /not one to one/);
+  assert.match(enumMapProblems(`const L = { whatItCan: 'canDo', whatItUnderstands: 'other' };\n${SENDS}`, [INPUT_PAIR])[0], /'other', which is not one of/);
+  assert.match(enumMapProblems(`const L = { whatItCan: 'canDo' };\n${SENDS}`, [INPUT_PAIR])[0], /Write the typed map/);
   const back = "const BACK = { canDo: 'whatItCan', understands: 'whatItUnderstands' };\n";
-  assert.deepEqual(enumMapProblems(`${good}${back}`, [INPUT_PAIR, OUTPUT_PAIR]), []);
-  assert.match(enumMapProblems(good, [INPUT_PAIR, OUTPUT_PAIR])[0], /catalog → module/);
+  assert.deepEqual(enumMapProblems(`${good}${back}${SENDS}${READS}`, [INPUT_PAIR, OUTPUT_PAIR]), []);
+  assert.match(enumMapProblems(`${good}${SENDS}${READS}`, [INPUT_PAIR, OUTPUT_PAIR])[0], /catalog → module/);
+});
+
+void test('d1_256: a map is asked only for the usecase the code calls and the direction it uses', () => {
+  const good = "const LEVEL = { whatItCan: 'canDo', whatItUnderstands: 'understands' };\n";
+  const back = "const BACK = { canDo: 'whatItCan', understands: 'whatItUnderstands' };\n";
+  // A request that does not call the usecase asks no map (a type import is not a call).
+  assert.deepEqual(enumMapProblems("import type { ListSimInput } from './x.js';\nconst y = 1;\n", [INPUT_PAIR, OUTPUT_PAIR]), []);
+  // Sends the level only: module → catalog, and nothing is asked of the answer.
+  const sendsOnly = `${good}const answer = await listSim({ level: LEVEL[input.level] }, ctx);\nreturn { items: answer.items };\n`;
+  assert.deepEqual(enumMapProblems(sendsOnly, [INPUT_PAIR, OUTPUT_PAIR]), []);
+  assert.match(enumMapProblems('const answer = await listSim({ level: input.level }, ctx);\n', [INPUT_PAIR, OUTPUT_PAIR])[0], /module → catalog/);
+  // Reads the level of the answer only: catalog → module.
+  const readsOnly = `${back}const answer = await listSim({ id: input.id }, ctx);\nreturn { level: BACK[answer.level] };\n`;
+  assert.deepEqual(enumMapProblems(readsOnly, [INPUT_PAIR, OUTPUT_PAIR]), []);
+  const readsNoMap = 'const answer = await listSim({ id: input.id }, ctx);\nreturn { level: answer.level };\n';
+  const missing = enumMapProblems(readsNoMap, [INPUT_PAIR, OUTPUT_PAIR]);
+  assert.equal(missing.length, 1);
+  assert.match(missing[0], /catalog → module/);
+  // A call that forwards nothing of the field and a code that reads nothing of it need no map.
+  assert.deepEqual(enumMapProblems('const answer = await listSim({ id: input.id }, ctx);\nreturn { total: answer.total };\n', [INPUT_PAIR, OUTPUT_PAIR]), []);
+});
+
+void test('d1_256: the recorded requests of agents: the refused s11 attempt passes (it does not call listAgentSimulation); agent_simulation keeps both maps', () => {
+  const pairs: ExternalEnumPair[] = ['input', 'output'].map(side => ({ usecaseId: 'listAgentSimulation', entityId: 'AgentSimulation', connectionId: 'cm', operationId: 'simulateAgent', field: 'level', side: side as 'input' | 'output', catalogType: side === 'input' ? 'CmSimulateAgentInput' : 'CmSimulateAgentOutput', moduleValues: ['whatItCan', 'whatItUnderstands'], catalogValues: ['canDo', 'understands'] }));
+  const fixtures = fileURLToPath(new URL('../steps/requests50/fixtures/', import.meta.url));
+  const refused = readFileSync(`${fixtures}agentsRequestsS11Refused.recorded.txt`, 'utf8');
+  assert.deepEqual(enumMapProblems(refused, pairs), []);
+  const simulation = readFileSync(`${fixtures}agentSimulationRequestsF45e1e26.recorded.txt`, 'utf8');
+  assert.deepEqual(enumMapProblems(simulation, pairs), []);
+  // Without its maps the same request is refused in both directions.
+  const stripped = simulation.replace(/\bwhatItCan: '[^']*'/gu, 'whatItCan: ""').replace(/\bwhatItUnderstands: '[^']*'/gu, 'whatItUnderstands: ""').replace(/\bcanDo: '[^']*'/gu, 'canDo: ""').replace(/\bunderstands: '[^']*'/gu, 'understands: ""');
+  assert.equal(enumMapProblems(stripped, pairs).length >= 1, true);
 });
 
 void test('d1_198: the request gate runs the map check only when the unit has pairs', () => {
@@ -90,5 +126,5 @@ void test('d1_198: the request gate runs the map check only when the unit has pa
   const base = { header, routes: [], project: 7, moduleName: 'agents', pageId: 'p', waived: new Set<string>() };
   const code = `${header}\nexport const requests = {};\n`;
   assert.equal(requestGate(code, base).some(problem => /typed map/u.test(problem)), false);
-  assert.equal(requestGate(code, { ...base, externalEnums: [INPUT_PAIR] }).some(problem => /typed map/u.test(problem)), true);
+  assert.equal(requestGate(`${code}${SENDS}`, { ...base, externalEnums: [INPUT_PAIR] }).some(problem => /typed map/u.test(problem)), true);
 });

@@ -93,7 +93,7 @@ export function enumMapSection(pairs: readonly ExternalEnumPair[]): string {
     ? `- ${pair.entityId}.${pair.field}, sent to ${pair.connectionId}.${pair.operationId} (${pair.usecaseId}): module values ${quote(pair.moduleValues)} → catalog values ${quote(pair.catalogValues)}.`
     : `- ${pair.entityId}.${pair.field}, returned by ${pair.connectionId}.${pair.operationId} (${pair.usecaseId}): catalog values ${quote(pair.catalogValues)} → module values ${quote(pair.moduleValues)}.`);
   return [
-    'The module and the connection name these values differently. Translate at the call, with a typed map and no cast:',
+    'The module and the connection name these values differently. Translate at the call, with a typed map and no cast. Write a map only for a usecase this file calls, and only the direction the code uses (the value it sends, or the value it reads back): a usecase this file does not call, or a value it does not pass or read, asks for none.',
     ...lines,
     'Write one `const` per pair typed `Record<From, To>` (From and To as the types of the call, for example `ListXInput[\'field\']`), with every value of From as a key and a different value of To for each. Pair the values by meaning. Never `as`, `as unknown as` or `as any`.',
   ].join('\n');
@@ -110,10 +110,46 @@ function literalMaps(code: string): Array<Map<string, string>> {
   return maps;
 }
 
-/** The code has a map for each pair: all From values as keys, each To value once, no value outside the To set. */
-export function enumMapProblems(code: string, pairs: readonly ExternalEnumPair[]): string[] {
+/** The text of each call `fn(…)` in `code`: what is between the parentheses. */
+function callArgumentTexts(code: string, fn: string): string[] {
+  const out: string[] = [];
+  for (const match of code.matchAll(new RegExp(String.raw`(?<![\w$.])${fn}\s*\(`, 'gu'))) {
+    let depth = 1;
+    let at = (match.index ?? 0) + match[0].length;
+    const start = at;
+    while (at < code.length && depth > 0) {
+      if (code[at] === '(') depth += 1;
+      else if (code[at] === ')') depth -= 1;
+      at += 1;
+    }
+    out.push(code.slice(start, at - 1));
+  }
+  return out;
+}
+
+/**
+ * d1_256: the maps a request must write are the ones for the direction its code uses. A request that does not call the usecase writes none (the usecase
+ * of another page does not ask a map of this one). A call that passes the field (`level: …`) needs module → catalog; a code that reads the field of what
+ * comes back (`result.level`, `{ level }`) needs catalog → module. When the field shows in neither place the call forwards nothing of it and no map is asked.
+ */
+function usedPairs(code: string, pairs: readonly ExternalEnumPair[]): ExternalEnumPair[] {
+  const clean = code.replace(/\/\*[\s\S]*?\*\//gu, ' ').replace(/(^|[^:\\])\/\/[^\n]*/gu, '$1');
+  return pairs.filter(pair => {
+    const calls = callArgumentTexts(clean, pair.usecaseId);
+    if (!calls.length) return false;
+    const field = pair.field.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    if (pair.side === 'input') return calls.some(args => new RegExp(String.raw`\b${field}\b`, 'u').test(args));
+    let outside = clean;
+    for (const args of calls) outside = outside.replace(args, ' ');
+    return new RegExp(String.raw`\.${field}\b|\[\s*['"]${field}['"]\s*\]|\{[^{}]*\b${field}\b[^{}]*\}\s*=`, 'u').test(outside);
+  });
+}
+
+/** The code has a map for each pair its code uses: all From values as keys, each To value once, no value outside the To set. */
+export function enumMapProblems(code: string, allPairs: readonly ExternalEnumPair[]): string[] {
   const problems: string[] = [];
   const maps = literalMaps(code);
+  const pairs = usedPairs(code, allPairs);
   for (const pair of pairs) {
     const from = pair.side === 'input' ? pair.moduleValues : pair.catalogValues;
     const to = pair.side === 'input' ? pair.catalogValues : pair.moduleValues;
