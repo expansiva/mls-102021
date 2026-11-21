@@ -198,7 +198,7 @@ export function buildD1InputSnapshot(
     }
     if (!isActive(text(left.status))) continue;
     const existing = text(left.existing);
-    const identityId = resolveIdentity(problems, paths.backend, usecaseId, existing);
+    const identityId = resolveIdentity(problems, paths.backend, usecaseId, existing, moduleName);
     selectedUsecases.push({
       usecaseId,
       entity: text(left.entity),
@@ -830,9 +830,16 @@ function existsMessage(defPath: string, disk: string, view: ReceiptView): string
   return `toCreate file ${defPath} exists without an inventoried path and hash.`;
 }
 
-function resolveIdentity(problems: D1InputProblem[], path: string, usecaseId: string, existing: string): string {
+/**
+ * The id of the usecase a plan row says already exists. An id (or nothing) is taken as it is. The path of the usecase def of this very module,
+ * `l1/<module>/layer_2_application/usecases/<id>.defs.ts`, is how the planner names a def that is `done` (d1_254): the id is the file name.
+ * Any other path (another module, another folder, a prefix) is not ownership and stays `EXISTING_UNRESOLVED`.
+ */
+function resolveIdentity(problems: D1InputProblem[], path: string, usecaseId: string, existing: string, moduleName: string): string {
   if (!existing) return usecaseId;
   if (isSafeToken(existing)) return existing;
+  const own = new RegExp(`^l1/${moduleName.replace(/[^A-Za-z0-9_]/gu, '\\$&')}/layer_2_application/usecases/([A-Za-z][A-Za-z0-9_]*)\\.defs\\.ts$`, 'u').exec(existing);
+  if (own) return own[1];
   error(problems, 'EXISTING_UNRESOLVED', path, `existing '${existing}' is not an id. A path prefix is not ownership.`, usecaseId);
   return usecaseId;
 }

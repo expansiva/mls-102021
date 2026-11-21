@@ -420,6 +420,52 @@ void test('an update keeps existing identity only with an inventoried hash', () 
   assert.equal(snapshot.problems.some(problem => problem.code === 'EXISTING_UNRESOLVED' && problem.ownerRef === `usecase:${usecaseId}`), false);
 });
 
+/** d1_254: the planner names a `done` usecase by the path of its def; only the def of this very module is an owner, any other path is not. */
+function withExisting(existing: string): { snapshot: D1InputSnapshot; usecaseId: string; defPath: string } {
+  const artifacts = clone(loadHead());
+  const head = build(artifacts);
+  const usecaseId = 'createMovimentacaoEstoque';
+  const defPath = fileOf(head, 'usecase', usecaseId)!.defPath;
+  const hash = 'sha256:ab'.padEnd(7 + 64, 'c');
+  const previous = clone(head);
+  previous.files.find(file => file.defPath === defPath)!.contentHash = hash;
+  const backend = artifacts.backend as { usecases: Array<Record<string, string>> };
+  const effort = artifacts.effort as { usecases: Array<Record<string, string>>; totals: { usecases: Record<string, number> } };
+  for (const rows of [backend.usecases, effort.usecases]) {
+    const row = rows.find(item => item.usecaseId === usecaseId)!;
+    row.status = 'toUpdate';
+    row.existing = existing;
+  }
+  effort.totals.usecases.toCreate -= 1;
+  effort.totals.usecases.toUpdate += 1;
+  artifacts.presentDefs = [{ path: defPath, sha256: hash }];
+  return { snapshot: build(artifacts, previous), usecaseId, defPath };
+}
+
+void test('d1_254: existing as the path of the usecase def of this module is the id in the file name', () => {
+  const own = `l1/${MODULE}/layer_2_application/usecases/createMovimentacaoEstoque.defs.ts`;
+  const { snapshot, usecaseId, defPath } = withExisting(own);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EXISTING_UNRESOLVED' && (problem.message.includes('is not an id') || problem.ownerRef === `usecase:${usecaseId}`)), false);
+  const file = fileOf(snapshot, 'usecase', usecaseId);
+  assert.equal(file?.defPath, defPath);
+  assert.equal(file?.action, 'update');
+  assert.equal(snapshot.selection.usecases.find(usecase => usecase.usecaseId === usecaseId)?.identity, 'createMovimentacaoEstoque');
+});
+
+void test('d1_254: existing as another module, another folder or a prefix stays EXISTING_UNRESOLVED', () => {
+  for (const existing of [
+    'l1/outroModulo/layer_2_application/usecases/createMovimentacaoEstoque.defs.ts',
+    `l1/${MODULE}/layer_2_application/requests/createMovimentacaoEstoque.defs.ts`,
+    `l1/${MODULE}/layer_2_application/usecases/`,
+    `l1/${MODULE}/layer_2_application/usecases/createMovimentacaoEstoque.ts`,
+    `l1/${MODULE}/layer_2_application/usecases/sub/createMovimentacaoEstoque.defs.ts`,
+    `l1/${MODULE}`,
+  ]) {
+    const { snapshot } = withExisting(existing);
+    assert.equal(snapshot.problems.some(problem => problem.code === 'EXISTING_UNRESOLVED' && problem.message.includes(`existing '${existing}' is not an id`)), true, existing);
+  }
+});
+
 void test('alias existing keeps the inventoried id and does not mint the candidate', () => {
   const artifacts = clone(loadHead());
   const head = build(artifacts);
