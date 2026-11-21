@@ -439,3 +439,49 @@ void test('d1_262: the controllers60 recomposes my_conduct without the route tha
   assert.equal(service.includes('listMyConductChanges'), true);
   assert.equal(service.includes('listMyConductHistory'), false);
 });
+
+void test('d1_262 s0: an input20 that held stays `approved` in the checkpoint, and it changes no decision: the next run recomputes input20, holds again on the same error, and passes once the plan is fixed', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, A30, PROJECT);
+  await replanPool(host);
+  seedEvidenceAnswers(host);
+  const effortKey = Object.keys(host.files).find(key => key.endsWith('pool/l2/web/effort.json'))!;
+  const good = host.files[effortKey].content;
+  const effort = JSON.parse(good);
+  effort.removed.push({ kind: 'usecase', id: 'updatePersonalConduct', status: 'toRemove' });
+  host.files[effortKey].content = JSON.stringify(effort, null, 2);
+  // The run holds at input20; the checkpoint still says input20 is approved.
+  const held = await rederiveRun(host, 'controllers60', 'input20');
+  assert.equal(held.find(item => item.stepId === 'input20')!.status, 'failed');
+  const pipeline = () => JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content) as { steps: Record<string, { status: string }> };
+  assert.equal(pipeline().steps.input20.status, 'approved');
+  // 1. The same run again holds again (input20 is recomputed, not skipped because it was approved).
+  const again = await rederiveRun(host, null, 'input20');
+  assert.equal(again.find(item => item.stepId === 'input20')!.status, 'failed');
+  // 2. With the plan fixed the next run recomputes input20 and goes through.
+  host.files[effortKey].content = good;
+  const fixed = await rederiveRun(host, 'controllers60', 'resolve25');
+  assert.deepEqual(failedOf(fixed), []);
+  assert.equal(pipeline().steps.input20.status, 'approved');
+  assert.equal(pipeline().steps.resolve25.status, 'approved');
+});
+
+void test('d1_262 s0: a resolve25 that runs on the checkpoint of an input20 that held is not let through', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, A30, PROJECT);
+  await replanPool(host);
+  seedEvidenceAnswers(host);
+  const effortKey = Object.keys(host.files).find(key => key.endsWith('pool/l2/web/effort.json'))!;
+  const effort = JSON.parse(host.files[effortKey].content);
+  effort.removed.push({ kind: 'usecase', id: 'updatePersonalConduct', status: 'toRemove' });
+  host.files[effortKey].content = JSON.stringify(effort, null, 2);
+  await rederiveRun(host, 'controllers60', 'input20');
+  const agent = createAgent();
+  const ctx = contextFor(MODULE);
+  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  const direct = await runStep(agent, ctx, parent, MODULE, 'resolve25', 2);
+  // The final input has the same error: the step holds and says so; it does not approve.
+  assert.match(direct.trace, /REMOVE_STILL_REFERENCED/u, direct.trace);
+  const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content) as { steps: Record<string, { status: string }> };
+  assert.equal(pipeline.steps.resolve25?.status, 'failed');
+});
