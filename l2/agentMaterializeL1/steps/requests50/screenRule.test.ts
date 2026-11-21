@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { staticPlainErrorProblems } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { staticPlainErrorProblems, unknownUsecaseImportProblems, upstreamThrowWithoutReadProblems } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { SCREEN_RULE_NOTE, loadRequestContext, requestGate } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
@@ -70,4 +70,36 @@ test('d1_248: the request context lists the rules of the route and the screen-ru
   } finally {
     (globalThis as { mls: unknown }).mls = previous;
   }
+});
+
+test('d1_251: the recorded my_conduct request of f45e1e26 imports listPersonalConduct, which has no def once the plan dropped it: refused; the bench has no false', () => {
+  const code = readFileSync(path.join(FIXTURES, 'myConductRequestsF45e1e26.recorded.txt'), 'utf8');
+  const own = '/_102047_/l1/agents/';
+  const usecases = ['getOrganizationUser', 'listAgentBehavior', 'listAgentSimulation', 'updatePersonalConduct'];
+  const problems = unknownUsecaseImportProblems(code, usecases, own);
+  assert.equal(problems.length, 1, problems.join('\n'));
+  assert.match(problems[0], /USECASE_NOT_IN_MODULE: `listPersonalConduct`/u);
+  assert.deepEqual(unknownUsecaseImportProblems(code, [...usecases, 'listPersonalConduct'], own), [], 'with the def it passes');
+  assert.deepEqual(unknownUsecaseImportProblems(code, [], own), [], 'no list, no check');
+  // A usecase of another module (wfteste imports tarefas/listParticipante) is not this module's to judge.
+  assert.deepEqual(unknownUsecaseImportProblems("import { listParticipante } from '/_102047_/l1/tarefas/layer_2_application/usecases/listParticipante.js';", ['x'], '/_102047_/l1/wfteste/'), []);
+  assert.equal(requestGate(code, { header: '', routes: [], project: 102047, moduleName: 'agents', pageId: 'my_conduct', waived: new Set(), usecases }).some(item => item.startsWith('USECASE_NOT_IN_MODULE')), true);
+});
+
+test('d1_254: the recorded agents request of f45e1e26 (AppError 502 before any read) is refused; the other recorded requests pass', () => {
+  const problems = upstreamThrowWithoutReadProblems(readFileSync(path.join(FIXTURES, 'agentsRequestsF45e1e26.recorded.txt'), 'utf8'));
+  assert.equal(problems.length, 2, problems.join('\n'));
+  assert.deepEqual(problems.map(item => /line (\d+)/u.exec(item)?.[1]), ['92', '104']);
+  for (const name of ['agentsRequestsD9f71271', 'consultasRequestsD9f71271', 'inicioRequestsD9f71271', 'myConductRequestsF45e1e26', 'agentsCmToday', 'agentsPlatformRequest', 'agentsPlatformRequestRule']) {
+    const file = name.includes('D9f71271') || name.includes('F45e1e26') ? `${name}.recorded.txt` : `${name}.recorded.txt`;
+    assert.deepEqual(upstreamThrowWithoutReadProblems(readFileSync(path.join(FIXTURES, file), 'utf8')), [], name);
+  }
+});
+
+test('d1_254: an AppError 502 after a read, a 500 and a 4xx before a read are not refused', () => {
+  const route = (body: string) => `export const requests = {\n  'm.p.r': async function (input, ctx) {\n${body}\n  },\n};\n`;
+  assert.deepEqual(upstreamThrowWithoutReadProblems(route("    const x = await read(ctx);\n    throw new AppError('UPSTREAM', 'cm answered badly', 502);")), []);
+  assert.deepEqual(upstreamThrowWithoutReadProblems(route("    throw new AppError('INVALID_DATA', 'bad', 500);")), []);
+  assert.deepEqual(upstreamThrowWithoutReadProblems(route("    throw new AppError('FORBIDDEN', 'no', 403);")), []);
+  assert.equal(upstreamThrowWithoutReadProblems(route("    if (x) {\n      throw new AppError('UPSTREAM', 'not exposed', 503);\n    }")).length, 1);
 });

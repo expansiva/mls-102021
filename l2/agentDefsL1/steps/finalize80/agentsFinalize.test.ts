@@ -234,6 +234,8 @@ void test('d1_253: agents@f45e1e26: /rederive controllers60, the state stays, /r
   const host = installStudio(PROJECT);
   seedD1Fixture(host, F45, PROJECT);
 
+  const usecaseDefs = (): string[] => Object.values(host.files).filter(file => file.extension === '.defs.ts' && file.folder.endsWith('layer_2_application/usecases') && file.status !== 'deleted').map(file => file.shortName).sort();
+  const usecasesBefore = usecaseDefs();
   // The state the L4 left: the first /rederive wrote 5 defs, their receipts have the new bytes, and the inventory of the last input20 has the old ones.
   const first = await rederiveRun(host, 'controllers60');
   assert.deepEqual(failedOf(first), [], '1: /rederive controllers60 ends complete');
@@ -257,6 +259,8 @@ void test('d1_253: agents@f45e1e26: /rederive controllers60, the state stays, /r
     assert.match(run.find(item => item.stepId === stepId)!.trace, new RegExp(`^${stepId}: wrote 0, `, 'u'), `/run wrote nothing in ${stepId}`);
   }
   assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
+
+  assert.deepEqual(usecaseDefs(), usecasesBefore, 'no usecase def disappeared in the whole sequence (listAgent, listAgentBehavior, listAgentDraft, listOrganizationUser stay)');
 
   // 5: a def edited by hand between the first run and the second command is refused, and the edit stays.
   const other = installStudio(PROJECT);

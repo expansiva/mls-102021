@@ -173,14 +173,6 @@ export async function readAttempts(project: number, moduleName: string, usecaseI
   return out;
 }
 
-/** The removals alone, for a run that keeps the usecase defs it wrote: the defs that left the plan still go. */
-export async function commitD1UsecaseRemovals(project: number, moduleName: string, snapshot: D1InputSnapshot): Promise<{ removed: string[]; issues: string[] }> {
-  const parts = removalParts(snapshot);
-  if (!parts.length) return { removed: [], issues: [] };
-  const committed = await commitD1Unit({ project, moduleName, step: 'usecases50', unitId: 'usecases50-removed', draftText: `${JSON.stringify(parts.map(part => part.defPath))}\n`, parts });
-  return { removed: committed.removed, issues: committed.issues };
-}
-
 export async function commitD1Usecases(project: number, build: D1UsecaseBuild): Promise<{ written: string[]; run?: D1StepRun; issues: string[] }> {
   const draftInfo = draftFile(project, build.moduleName, 'usecases50');
   const draftText = `${JSON.stringify(build, null, 2)}\n`;
@@ -201,20 +193,16 @@ export async function commitD1Usecases(project: number, build: D1UsecaseBuild): 
     step: 'usecases50',
     unitId: 'usecases50',
     draftText,
-    parts: [...rendered.parts, ...removalParts(snapshot)],
+    parts: rendered.parts,
   });
   return { written: committed.written, run: stepRunOf(committed), issues: committed.issues };
 }
 
 /**
- * d1_251: a usecase def the L4 lists as removed leaves with the plan. One the D1 only found unplanned (d1_250, `unplanned`) stays: the plan may be
- * behind the contract. Only a def whose hash is the one the inventory holds goes: an edited one is refused by the commit like any other.
+ * d1_254 (brake): no usecase def is deleted, neither the L4's `removed` nor an `unplanned` one. The `removed` that input20 reads may still be used by a
+ * contract route (agents: listAgent, listAgentBehavior, listAgentDraft, listOrganizationUser); until the planner says who writes `removed` and why, the D1
+ * only inventories it.
  */
-export function removalParts(snapshot: D1InputSnapshot | null): D1UnitPart[] {
-  return (snapshot?.removed ?? [])
-    .filter(item => item.kind === 'usecase' && item.inventoried && !item.unplanned && !!item.defPath && !!item.contentHash)
-    .map(item => ({ defPath: item.defPath as string, source: '', action: 'remove' as const, receiptHash: item.contentHash, outputTs: [] }));
-}
 
 function renderParts(
   project: number,

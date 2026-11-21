@@ -1,0 +1,143 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/agents.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { AgentsContracts, AgentsCollectionEntry } from '/_102047_/l2/agents/web/contracts/agents.defs.js';
+import { listAgentDraft } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentDraft.js';
+import { getAgentDraft } from '/_102047_/l1/agents/layer_2_application/usecases/getAgentDraft.js';
+import { getOrganizationUser } from '/_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.js';
+import type { ListAgentSimulationInput, ListAgentSimulationOutput } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.js';
+import { startVirtualEmployeeRequest } from '/_102047_/l1/agents/layer_2_application/workflows/virtualEmployeeCreation.js';
+
+type AgentSimulationLevel = 'whatItCan' | 'whatItUnderstands';
+const simulationLevelToCatalog: Record<AgentSimulationLevel, ListAgentSimulationInput['level']> = {
+  whatItCan: 'canDo',
+  whatItUnderstands: 'understands',
+};
+const simulationLevelFromCatalog: Record<ListAgentSimulationOutput['level'], AgentSimulationLevel> = {
+  canDo: 'whatItCan',
+  understands: 'whatItUnderstands',
+};
+void simulationLevelToCatalog;
+void simulationLevelFromCatalog;
+
+/* Incomplete dependency: the supplied cm list/read usecases do not expose draft
+ * prompt, requestedAt, requestedBy, summary, suggestedTools, or activated and
+ * discarded draft statuses. Consequently an administrator's inbox and complete,
+ * chronologically ordered history cannot be constructed from these interfaces.
+ * In particular, agentDraftSuggestedToolsOnWhenReady cannot be implemented for
+ * the history without the cm's suggested-tool data. The affected reads fail
+ * explicitly instead of returning invented or silently incomplete data.
+ */
+function hasRole(ctx: RequestContext, role: string): boolean {
+  return (ctx.sessionContext.actorScope ?? []).some(
+    scope => scope === role || scope.endsWith(`:${role}`),
+  );
+}
+function pagination(page: number, pageSize: number): { page: number; pageSize: number } {
+  return {
+    page: Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1,
+    pageSize: Number.isFinite(pageSize) && pageSize >= 1
+      ? Math.min(Math.floor(pageSize), 200)
+      : 20,
+  };
+}
+async function collection(
+  input: AgentsContracts['agents.agents.listAgentsCollection']['input'],
+  ctx: RequestContext,
+): Promise<AgentsContracts['agents.agents.listAgentsCollection']['output']['agents']> {
+  const admin = hasRole(ctx, 'companyAdmin');
+  const member = hasRole(ctx, 'organizationMember');
+  const { page, pageSize } = pagination(input.page, input.pageSize);
+  if (!admin && !member) {
+    return { items: [], page, pageSize, hasMore: false };
+  }
+  const result = await listAgentDraft({ includeDrafts: admin }, ctx);
+  const agents = result.agents.filter(item => item.draftStatus == null);
+  const drafts = admin ? result.agents.filter(item => item.draftStatus != null) : [];
+  const ordered = [...agents, ...drafts];
+  const start = (page - 1) * pageSize;
+  const selected = ordered.slice(start, start + pageSize);
+  const items: AgentsCollectionEntry[] = await Promise.all(selected.map(async item => {
+    // noTechnicalIdsOnScreen: ids are navigation keys, not display labels.
+    if (item.draftStatus != null) {
+      return {
+        draft: {
+          name: item.name,
+          situation: item.draftStatus,
+          draftId: item.agentId,
+          // refusalReasonShownWhenRefused
+          ...(item.draftStatus === 'refused' && item.refusedReason != null
+            ? { refusalReason: item.refusedReason } : {}),
+        },
+      };
+    }
+    const responsible = item.responsibleUserId == null
+      ? undefined
+      : await getOrganizationUser({ id: item.responsibleUserId }, ctx);
+    return {
+      agent: {
+        name: item.name,
+        isOn: item.enabled,
+        agentId: item.agentId,
+        ...(responsible == null ? {} : { responsibleName: responsible.details.identification.name }),
+        // The cm list exposes an audience code, not the optional talksTo text.
+      },
+    };
+  }));
+  return { items, page, pageSize, hasMore: start + pageSize < ordered.length };
+}
+export const requests: { [K in keyof AgentsContracts]: (input: AgentsContracts[K]['input'], ctx: RequestContext) => Promise<AgentsContracts[K]['output']> } = {
+  'agents.agents.loadAgentsPage': async function (input, ctx) {
+    if (hasRole(ctx, 'companyAdmin')) {
+      throw new AppError('UPSTREAM_DATA_UNAVAILABLE', 'The cm does not expose the draft details needed for the inbox and request history.', 502);
+    }
+    const agents = await collection({ page: 1, pageSize: input.pageSize }, ctx);
+    const { pageSize } = pagination(1, input.pageSize);
+    return { inbox: [], agents, requests: { items: [], page: 1, pageSize, hasMore: false } };
+  },
+  'agents.agents.listAgentsCollection': async function (input, ctx) {
+    return { agents: await collection({ page: input.page, pageSize: input.pageSize }, ctx) };
+  },
+  'agents.agents.listRequestHistory': async function (input, ctx) {
+    const { page, pageSize } = pagination(input.page, input.pageSize);
+    if (hasRole(ctx, 'companyAdmin')) {
+      throw new AppError('UPSTREAM_DATA_UNAVAILABLE', 'The cm does not expose the complete request history or its ordering and suggested tools.', 502);
+    }
+    return { requests: { items: [], page, pageSize, hasMore: false } };
+  },
+  'agents.agents.sendNewAgentRequest': async function (input, ctx) {
+    return ctx.data.moduleData.runInTransaction(async tx => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      if (!hasRole(bound, 'companyAdmin')) {
+        throw new AppError('FORBIDDEN', 'Only a company administrator can request a new agent.', 403);
+      }
+      const requesterId = bound.sessionContext.person?.mdmId ?? bound.sessionContext.actorId;
+      if (requesterId == null) {
+        throw new AppError('FORBIDDEN', 'The requesting administrator is not identified.', 403);
+      }
+      const requester = await getOrganizationUser({ id: requesterId }, bound);
+      const requestedAt = bound.clock.nowIso();
+      const started = await startVirtualEmployeeRequest({ prompt: input.prompt }, bound);
+      const draft = await getAgentDraft({ agentId: started.draftId }, bound);
+      return {
+        request: {
+          name: draft.name,
+          situation: started.situation,
+          requestedAt,
+          draftId: started.draftId,
+        },
+        inboxItem: {
+          name: draft.name,
+          situation: started.situation,
+          prompt: input.prompt,
+          requestedAt,
+          requestedBy: requester.details.identification.name,
+          draftId: started.draftId,
+        },
+        collectionEntry: {
+          draft: { name: draft.name, situation: started.situation, draftId: started.draftId },
+        },
+      };
+    });
+  },
+};

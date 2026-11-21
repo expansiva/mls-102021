@@ -116,6 +116,22 @@ export function requestRepositoryProblems(code: string, ports: readonly string[]
   return problems;
 }
 
+/**
+ * d1_251: a request service imports only usecases that are defs of the module. A usecase that left the plan (the def is gone) can still have its code
+ * on disk, and a model that saw it imported it (my_conduct → listPersonalConduct). The module's own usecases are the ones in `usecases`; one the def does
+ * not link to the route is still fine (many routes call a usecase the def does not name), one with no def is not. A usecase of another module is not looked at.
+ */
+export function unknownUsecaseImportProblems(code: string, usecases: readonly string[], ownPrefix: string): string[] {
+  if (!usecases.length) return [];
+  const known = new Set(usecases);
+  const problems: string[] = [];
+  for (const specifier of importSpecifiers(code)) {
+    const match = specifier.startsWith(ownPrefix) ? /\/layer_2_application\/usecases\/([A-Za-z][A-Za-z0-9]*)\.js$/u.exec(specifier) : null;
+    if (match && !known.has(match[1])) problems.push(`USECASE_NOT_IN_MODULE: \`${match[1]}\` is imported from ${specifier}, but the module has no usecase def of that name (its code may be left over from a plan that dropped it). Use a usecase of the module, or build the value from the ones the routes already call.`);
+  }
+  return problems;
+}
+
 const EMPTY_LITERAL = /^(?:''|""|``|\[\s*\]|\{\s*\})$/u;
 
 /**
@@ -775,6 +791,28 @@ export function staticPlainErrorProblems(code: string): string[] {
     const text = match[1] ?? match[2] ?? match[3] ?? '';
     if (!/^\s*(?:cannot|can't|can not|unable to|not possible|impossible)\b/iu.test(text)) continue;
     problems.push(`PLAIN_ERROR_STATIC: line ${lineOf(clean, match.index ?? 0)} throws \`new Error(${JSON.stringify(text.slice(0, 80))})\`. A request returns what the contract asks, or throws \`AppError\` with a ruleId. A conflict between the definition and the contract is not solved by refusing to run: return every field the contract requires.`);
+  }
+  return problems;
+}
+
+/**
+ * d1_254: a route that throws `AppError` with status 501, 502 or 503 before any `await` declares "the data is not available" without having read anything
+ * (agents: `UPSTREAM_DATA_UNAVAILABLE` 502 in loadAgentsPage and listRequestHistory, for the company admin). Bench of the recorded requests: 2 real, 0 false.
+ * A 5xx after a read (the cm answered badly) and a 500 for invalid data are not this.
+ */
+export function upstreamThrowWithoutReadProblems(code: string): string[] {
+  const clean = blankComments(code);
+  const handlers = [...clean.matchAll(/^ {2}['"][\w.]+['"]\s*:\s*(?:async\s+function|async\s*\(|\()/gmu)].map(match => match.index ?? 0);
+  const problems: string[] = [];
+  for (const match of clean.matchAll(/\bthrow\s+new\s+AppError\s*\(/gu)) {
+    const at = match.index ?? 0;
+    const open = at + match[0].length - 1;
+    const args = callArguments(clean, open).args;
+    const status = (args[2] ?? '').trim();
+    if (!/^50[123]$/u.test(status)) continue;
+    const start = handlers.filter(index => index <= at).pop();
+    if (start === undefined || /\bawait\b/u.test(clean.slice(start, at))) continue;
+    problems.push(`UPSTREAM_THROW_WITHOUT_READ (line ${lineOf(clean, at)}): the route throws AppError ${status} before it reads anything. "The data is not available" is not known without asking: read through a usecase of the module or a gateway, and fail only if that read fails.`);
   }
   return problems;
 }
