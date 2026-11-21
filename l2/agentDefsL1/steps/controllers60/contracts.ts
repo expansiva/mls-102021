@@ -175,6 +175,11 @@ export interface D1ControllerRequest {
   actorsRead: boolean;
   /** Routes selected for removal. Absent means none. */
   removedRoutes?: readonly D1RemovedRoute[];
+  /**
+   * `pageId` → what the plan does with that controller def (d1_262). A controller the D1 owns (`recompose`, `update`: the inventory or the writer receipt
+   * vouches for the bytes on disk) was written from a contract, so a route of it that the current contract of the page no longer has left the contract.
+   */
+  plannedActions?: Readonly<Record<string, string>>;
   /** Contract v2 requests. Absent on a v1 plan. */
   serviceRequests?: readonly D1ServiceRequestSource[];
   /** Ontology entities keyed by entity id. Absent when the plan has no v2 request. */

@@ -519,8 +519,20 @@ function staleOf(
     return [];
   }
   const removed = new Set((request.removedRoutes || []).map(route => route.route));
-  const extra = existing.routes.filter(route => !selected.has(route) && !removed.has(route));
-  for (const route of extra) {
+  // d1_262: a controller the D1 owns was written from a contract. A route of it that the current contract of the page does not have left the
+  // contract (renamed or withdrawn): the controller is recomposed without it. A route the contract still has but nothing selects stays stale, and so
+  // does any route of a controller the D1 does not own (a hand edit has no contract to have left).
+  const owned = ['recompose', 'update'].includes(request.plannedActions?.[pageId] ?? '');
+  const contract = request.contracts.find(item => item.pageId === pageId);
+  const contractRoutes = owned && contract ? readContractV2(contract.source) : null;
+  const inContract = contractRoutes && contractRoutes.pageId === pageId ? new Set(contractRoutes.routes.map(row => row.route)) : null;
+  const extra: string[] = [];
+  for (const route of existing.routes.filter(item => !selected.has(item) && !removed.has(item))) {
+    if (inContract && !inContract.has(route)) {
+      review(problems, 'ROUTE_LEFT_CONTRACT', pageId, `Controller ${pageId} has route ${route}, which the contract of the page no longer has: it is recomposed without it.`);
+      continue;
+    }
+    extra.push(route);
     error(problems, 'STALE_ARTIFACT', pageId, `Controller ${pageId} still has route ${route}, which is not selected.`);
   }
   return extra;

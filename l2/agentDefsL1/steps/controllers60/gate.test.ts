@@ -497,3 +497,41 @@ void test('a page handler without a contract stays INVALID_REF, and a connection
   assert.equal(open.problems.some(item => item.code === 'AUTHORITY_REQUIRED'), true, errors(open));
   assert.equal(open.controllers.find(item => item.pageId === CONNECTION)?.handlers.length || 0, 0);
 });
+
+void test('d1_262: a route the contract of the page no longer has is dropped from a controller the D1 owns; a route the contract still has, or any route of a controller it does not own, stays stale', () => {
+  const ghostOf = (request: ReturnType<typeof seed>) => {
+    const pageId = request.contracts[0].pageId;
+    return { pageId, ghost: `${request.moduleName}.${pageId}.listMyConductHistory` };
+  };
+  // Owned (the plan recomposes it): the route that left the contract is not stale and the controller is written without it.
+  const owned = seed();
+  const { pageId, ghost } = ghostOf(owned);
+  owned.existing = [{ pageId, routes: [ghost], handlers: [], unreadable: false }];
+  owned.plannedActions = { [pageId]: 'recompose' };
+  const built = buildD1Controllers(owned);
+  assert.equal(built.problems.some(item => item.code === 'STALE_ARTIFACT'), false, JSON.stringify(built.problems));
+  assert.equal(built.problems.some(item => item.code === 'ROUTE_LEFT_CONTRACT' && item.severity === 'review' && item.message.includes(ghost)), true);
+  assert.deepEqual(built.controllers.find(item => item.pageId === pageId)?.staleRoutes, []);
+  assert.equal(built.controllers.find(item => item.pageId === pageId)?.handlers.some(handler => handler.route === ghost), false);
+  // `update` is owned too.
+  const updated = seed();
+  updated.existing = [{ pageId, routes: [ghost], handlers: [], unreadable: false }];
+  updated.plannedActions = { [pageId]: 'update' };
+  assert.equal(buildD1Controllers(updated).problems.some(item => item.code === 'STALE_ARTIFACT'), false);
+  // Not owned (no plan, or `create`/`conflict`): nothing says the route had a contract to leave. Still stale.
+  for (const action of [undefined, 'create', 'conflict', 'preserve']) {
+    const other = seed();
+    other.existing = [{ pageId, routes: [ghost], handlers: [], unreadable: false }];
+    if (action) other.plannedActions = { [pageId]: action };
+    const refused = buildD1Controllers(other);
+    assert.equal(refused.problems.some(item => item.code === 'STALE_ARTIFACT' && item.message.includes(ghost)), true, String(action));
+    assert.deepEqual(refused.controllers.find(item => item.pageId === pageId)?.staleRoutes, [ghost]);
+  }
+  // Owned, but the route is one the contract still has and nothing selects: stale, the gate stays.
+  const kept = seed();
+  const route = (kept.serviceRequests || []).find(item => item.pageId === pageId)!.route;
+  kept.serviceRequests = (kept.serviceRequests || []).filter(item => item.route !== route);
+  kept.existing = [{ pageId, routes: [route], handlers: [], unreadable: false }];
+  kept.plannedActions = { [pageId]: 'recompose' };
+  assert.equal(buildD1Controllers(kept).problems.some(item => item.code === 'STALE_ARTIFACT' && item.message.includes(route)), true);
+});

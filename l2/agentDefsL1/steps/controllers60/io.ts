@@ -108,7 +108,7 @@ async function controllerRequest(
       requests?: readonly D1SelectedRequest[];
       usecases: Array<{ usecaseId: string; entity: string; operation: string; status: D1ActiveStatus; identity: string }>;
     };
-    files: Array<{ artifactType: string; identity: string; defPath: string }>;
+    files: Array<{ artifactType: string; identity: string; defPath: string; action: string }>;
     removed: Array<{ kind: string; id: string; defPath: string | null; contentHash?: string }>;
   },
   usecases: Record<string, unknown>,
@@ -174,6 +174,7 @@ async function controllerRequest(
       accessRead: isRecord(access),
       actorsRead: isRecord(needs),
       removedRoutes: removedRoutesOf(snapshot.removed),
+      plannedActions: Object.fromEntries(snapshot.files.filter(file => file.artifactType === 'httpController').map(file => [file.identity, file.action])),
       serviceRequests: selectedRequests.map(serviceSourceOf),
       ontology,
     },

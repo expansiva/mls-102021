@@ -415,3 +415,27 @@ void test('d1_261: holdPipeline, the one hold of domain30, persistence40 and con
     assert.equal(held.steps[step]?.error, reason);
   }
 });
+
+// d1_262: the whole /rederive on agents@30f16c8e, the answers recorded, no model: the controller of my_conduct was written from the contract before the one
+// that renamed `listMyConductHistory` to `listMyConductChanges`.
+void test('d1_262: the controllers60 recomposes my_conduct without the route that left the contract and with the one that replaced it, with no model', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, A30, PROJECT);
+  await replanPool(host);
+  seedEvidenceAnswers(host);
+  const before = Object.values(host.files).find(file => file.shortName === 'my_conduct' && file.folder.endsWith('adapters/http/controllers') && file.extension === '.defs.ts')!.content;
+  assert.equal(before.includes('listMyConductHistory'), true);
+  assert.equal(before.includes('listMyConductChanges'), false);
+  const ran = await rederiveRun(host, 'controllers60');
+  const controllers = ran.filter(item => item.stepId === 'controllers60');
+  assert.equal(controllers.some(item => item.status === 'failed'), false, controllers.map(item => item.trace).join(' | '));
+  assert.match(controllers[controllers.length - 1].trace, /^controllers60: wrote \d+ .*No model was called\./u);
+  assert.equal(ran.some(item => item.stepId === 'controllers60' && /STALE_ARTIFACT|still has route/u.test(item.trace)), false);
+  const after = Object.values(host.files).find(file => file.shortName === 'my_conduct' && file.folder.endsWith('adapters/http/controllers') && file.extension === '.defs.ts')!.content;
+  assert.equal(after.includes('listMyConductChanges'), true);
+  assert.equal(after.includes('listMyConductHistory'), false);
+  // The request service of the page is written from the contract alone: it never had the stale check.
+  const service = Object.values(host.files).find(file => file.shortName === 'my_conduct' && file.folder.endsWith('layer_2_application/requests') && file.extension === '.defs.ts')!.content;
+  assert.equal(service.includes('listMyConductChanges'), true);
+  assert.equal(service.includes('listMyConductHistory'), false);
+});
