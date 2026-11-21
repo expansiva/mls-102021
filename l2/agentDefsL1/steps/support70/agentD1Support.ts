@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/support70/agentD1Support.ts" enhancement="_blank"/>
 
+import { recordHeldReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/heldReport.js';
 import { commitTrace, refusedText, type D1StepRun } from '/_102021_/l2/agentDefsL1/helpers/d1RunSummary.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -57,6 +58,8 @@ export async function beforeD1SupportPromptStep(
     const reason = blockingReason(assembled.build, committed.issues.length);
     const held = withSupportHeld(pipeline, artifact, reason, new Date().toISOString());
     if (JSON.stringify(held) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, held);
+    // d1_261: finalize80 does not run after a hold: the report on disk is written here.
+    await recordHeldReport(prompt.project, prompt.moduleName, held);
     const message = refusedText('support70', committed.issues[0])
       || assembled.build.problems.find(problem => problem.severity === 'error')?.message
       || 'support70 refused the support plan.';

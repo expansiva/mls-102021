@@ -35,6 +35,8 @@ import { readD1UsecaseWork, writeAttempt } from '/_102021_/l2/agentDefsL1/steps/
 import { loadP1PlanSources } from '/_102021_/l2/agentPlannerL1/steps/plan20/agentP1Plan.js';
 import { planP1Backend } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
 import { readL1Inventory } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
+import { holdPipeline } from '/_102021_/l2/agentDefsL1/helpers/d1Hold.js';
+import { parsePipelineDocument } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 
 const PROJECT = 102047;
@@ -370,4 +372,46 @@ void test('d1_260: a run that holds at resolve25 says why in the step and in the
   const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content) as { steps: { resolve25?: { status: string; error?: string } } };
   assert.equal(pipeline.steps.resolve25?.status, 'failed');
   assert.match(pipeline.steps.resolve25?.error ?? '', /EXISTING_UNRESOLVED:1 \(controller:my_conduct\)/u);
+});
+
+// d1_261: a step that holds the run writes the report with it (finalize80 does not run after a hold, so `report.json` stayed the last complete one).
+type HeldReport = { outcome: string; blocking: string; findings: Array<{ code: string; severity: string; ownerRef: string }> };
+
+void test('d1_261: the input20 that holds says the codes in the step and in the report, which is not complete', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, A30, PROJECT);
+  await replanPool(host);
+  const before = JSON.parse(host.files[fileKey(reportFile(PROJECT, MODULE))].content) as HeldReport;
+  assert.equal(before.outcome, 'complete', 'the report on disk is the one of the last complete run');
+  // The plan contradicts itself: a usecase it plans is also removed.
+  const effortKey = Object.keys(host.files).find(key => key.endsWith('pool/l2/web/effort.json'))!;
+  const effort = JSON.parse(host.files[effortKey].content);
+  effort.removed.push({ kind: 'usecase', id: 'updatePersonalConduct', status: 'toRemove' });
+  host.files[effortKey].content = JSON.stringify(effort, null, 2);
+  const ran = await rederiveRun(host, 'controllers60', 'input20');
+  const held = ran.find(item => item.stepId === 'input20')!;
+  assert.equal(held.status, 'failed');
+  assert.match(held.trace, /Consumer phases are not released\. .*REMOVE_STILL_REFERENCED:\d+ \(updatePersonalConduct\)/u);
+  const report = JSON.parse(host.files[fileKey(reportFile(PROJECT, MODULE))].content) as HeldReport;
+  assert.equal(report.outcome, 'held');
+  assert.match(report.blocking, /REMOVE_STILL_REFERENCED/u);
+  assert.equal(report.findings.some(finding => finding.code === 'REMOVE_STILL_REFERENCED' && finding.severity === 'error' && finding.ownerRef === 'updatePersonalConduct'), true);
+  // The checkpoint keeps an already approved input20 approved when a later run holds (`withConsumersHeld`): the reason lives in the report and the step.
+});
+
+void test('d1_261: holdPipeline, the one hold of domain30, persistence40 and controllers60, writes the report with the reason', async () => {
+  for (const step of ['domain30', 'persistence40', 'controllers60'] as const) {
+    const host = installStudio(PROJECT);
+    seedD1Fixture(host, A30, PROJECT);
+    const pipeline = parsePipelineDocument(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content)!;
+    assert.ok(pipeline);
+    const reason = `${step} refused: Entity AgentDraft has 3 states that no transition reaches.`;
+    await holdPipeline(pipeline, step, `_102047_/l1/agents/pipeline/agentDefsL1/drafts/${step}.json`, reason);
+    const report = JSON.parse(host.files[fileKey(reportFile(PROJECT, MODULE))].content) as HeldReport;
+    assert.equal(report.outcome, 'held', step);
+    assert.match(report.blocking, new RegExp(`${step} refused: Entity AgentDraft`, 'u'), step);
+    const held = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content) as { awaitingStep?: string; steps: Record<string, { status: string; error?: string }> };
+    assert.equal(held.awaitingStep, step);
+    assert.equal(held.steps[step]?.error, reason);
+  }
 });

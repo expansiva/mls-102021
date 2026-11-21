@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/agentD1Usecases.ts" enhancement="_blank"/>
 
+import { recordHeldReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/heldReport.js';
 import { commitTrace, refusedText, stepRunOf, type D1StepRun } from '/_102021_/l2/agentDefsL1/helpers/d1RunSummary.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -141,6 +142,8 @@ async function settle(
         if (issues.length > 0) throw new Error(`Checkpoint schema refused: ${issues[0]}`);
         await writeJson(checkpointFile, held);
       }
+      // d1_261: finalize80 does not run after a hold: the report on disk is written here.
+      await recordHeldReport(prompt.project, prompt.moduleName, held);
     }
     return stopStep(context, parentStep, step, hookSequential, message);
   }

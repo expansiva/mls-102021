@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/input20/agentD1Input.ts" enhancement="_blank"/>
 
+import { recordHeldReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/heldReport.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   derivationFile,
@@ -78,6 +79,8 @@ export async function beforeD1InputPromptStep(
       if (issues.length > 0) throw new Error(`Checkpoint schema refused: ${issues[0]}`);
       await writeJson(checkpointFile, heldPipeline);
     }
+    // d1_261: finalize80 does not run after a hold: the report on disk is written here and names each error.
+    await recordHeldReport(prompt.project, prompt.moduleName, heldPipeline, reason, snapshot);
     return stopStep(context, parentStep, step, hookSequential, trace, {
       drainTrace: `stopped: consumer phases are not released.${reason ? ` ${reason}` : ''}`,
     });
