@@ -1,0 +1,34 @@
+/// <mls fileReference="_102021_/l2/agentMaterializeL1/helpers/workflowReach.ts" enhancement="_blank"/>
+
+// d1_272: which routes reach a workflow process. One rule for the two readers that need it: the request context (the handler of such a route calls the
+// function of the process) and the D1 re-derivation (a request that calls a process whose def changed is listed again). It reads def data only.
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * The `Entity.operation` rows of a process (`data.operations`) that a route of a page reaches. d1_264: a process the system starts (an event, a schedule)
+ * reaches an operation only by its own `task:` steps; a route of a page does not start it. Only a step of a journey (`journey:...`), or a trigger a person
+ * starts, puts the route in the process.
+ */
+export function routeReachableOperations(processData: Record<string, unknown>): string[] {
+  const system = isRecord(processData.trigger) && processData.trigger.kind !== 'manual';
+  return Array.isArray(processData.operations)
+    ? processData.operations.filter(isRecord)
+      .filter(row => !system || !Array.isArray(row.steps) || row.steps.length === 0 || row.steps.some(step => !String(step).startsWith('task:')))
+      .map(row => String(row.operation ?? ''))
+    : [];
+}
+
+/** `<connectionId>.<operationId>` of the message that starts a process (`trigger: { kind: 'event', event }`), or ''. */
+export function processStartEvent(processData: Record<string, unknown>): string {
+  const trigger = processData.trigger;
+  return isRecord(trigger) && trigger.kind === 'event' && typeof trigger.event === 'string' ? trigger.event : '';
+}
+
+/** The `Entity.operation` names of a usecase def: its operation, and its transition when it is one. */
+export function usecaseOperationNames(usecaseData: Record<string, unknown>): string[] {
+  const entityId = String(usecaseData.entityId ?? '');
+  return [String(usecaseData.operation ?? ''), String(usecaseData.transitionRef ?? '')].filter(Boolean).map(op => `${entityId}.${op}`);
+}

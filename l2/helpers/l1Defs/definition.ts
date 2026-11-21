@@ -79,7 +79,7 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
   repositoryAdapter: { required: ['entityId', 'portId', 'tableId', 'columns'], optional: [], nonempty: ['columns'] },
   usecase: {
     required: ['usecaseId', 'entityId', 'operation', 'rulesApplied', 'effects'],
-    optional: ['transitionRef', 'mdm', 'derivedRead', 'arrivalTransitions', 'calls'],
+    optional: ['transitionRef', 'mdm', 'derivedRead', 'arrivalTransitions', 'stateFrom', 'calls'],
     nonempty: [],
   },
   httpController: { required: ['pageId', 'handlers'], optional: [], nonempty: ['handlers'] },
@@ -527,6 +527,9 @@ function dependencyListIssues(value: unknown): string[] {
  */
 export function arrivalTransitionsIssues(data: Record<string, unknown>, issues: string[]): void {
   const value = data.arrivalTransitions;
+  // d1_272: `stateFrom` names the field of the message that chooses the transition: it has no meaning without the transitions.
+  if (data.stateFrom !== undefined && (typeof data.stateFrom !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/u.test(data.stateFrom))) issues.push('data.stateFrom must be a field name.');
+  if (data.stateFrom !== undefined && value === undefined) issues.push('data.stateFrom is only valid with data.arrivalTransitions.');
   if (value === undefined) return;
   if (data.operation !== 'update') issues.push('data.arrivalTransitions is only valid on an update.');
   if (!Array.isArray(value) || value.length === 0) {

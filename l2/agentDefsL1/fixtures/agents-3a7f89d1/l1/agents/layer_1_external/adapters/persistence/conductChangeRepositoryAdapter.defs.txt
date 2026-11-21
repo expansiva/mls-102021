@@ -1,0 +1,46 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/conductChangeRepositoryAdapter.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryAdapter",
+  "artifactId": "ConductChangeRepository",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/conductChange.defs.ts",
+    "_102047_/l1/agents/layer_2_application/ports/conductChangeRepository.defs.ts"
+  ],
+  "data": {
+    "entityId": "ConductChange",
+    "portId": "ConductChangeRepository",
+    "tableId": "conductChange",
+    "columns": [
+      {
+        "field": "id",
+        "column": "id"
+      },
+      {
+        "field": "version",
+        "column": "json:version"
+      },
+      {
+        "field": "agentId",
+        "column": "agentId"
+      },
+      {
+        "field": "personId",
+        "column": "personId"
+      },
+      {
+        "field": "changedAt",
+        "column": "changedAt"
+      },
+      {
+        "field": "summary",
+        "column": "json:summary"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

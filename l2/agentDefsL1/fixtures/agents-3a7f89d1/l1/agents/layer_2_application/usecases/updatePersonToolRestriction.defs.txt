@@ -1,0 +1,29 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/updatePersonToolRestriction.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "updatePersonToolRestriction",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/personToolRestriction.defs.ts",
+    "_102047_/l4/agents/rules.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "updatePersonToolRestriction",
+    "entityId": "PersonToolRestriction",
+    "operation": "update",
+    "rulesApplied": [
+      "noTechnicalIdsOnScreen",
+      "onlyCompanyAdminRestrictsTools",
+      "removedToolRestrictionKept",
+      "restrictionAppliesThroughAnyAgent",
+      "restrictionUniquePerPersonTool"
+    ],
+    "effects": []
+  }
+} as const;
+
+export default definition;

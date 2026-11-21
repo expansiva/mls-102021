@@ -522,7 +522,9 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
   if (arrival) {
     parts.push(section('Arrival (process transitions, from the def)', [
       `This update is the arrival of a message from outside. It moves the record only through the transitions the def lists (\`arrivalTransitions\`: ${arrival.transitions.map(item => `${item.transitionId}: ${item.from.join(', ')} → ${item.to}`).join('; ')}), which no person makes.`,
-      `When the arrival moves the state, take the transition whose from holds the current state of the record and whose to is the state the arrival names; set \`${arrival.stateField || 'the state field'}\` to that literal state (${arrival.transitions.map(item => `'${item.to}'`).join(' or ')}) and refuse the arrival when no listed transition fits. Never read the state from the input and never set a state no transition leads to; apply the rules of the transition you took.`,
+      arrival.stateFrom
+        ? `The message names the state in its field \`${arrival.stateFrom}\` (${[...new Set(arrival.transitions.map(item => item.to))].map(state => `'${state}'`).join(' | ')}), and the input of this usecase carries it as \`${arrival.stateFrom}\` with those values. Choose the transition by it and set \`${arrival.stateField || 'the state field'}\` to the literal of that transition, as in \`${arrival.stateField || 'status'}: input.${arrival.stateFrom} === '${arrival.transitions[0].to}' ? '${arrival.transitions[0].to}' : '${arrival.transitions[1]?.to ?? arrival.transitions[0].to}'\`: every state the transitions lead to is written as a literal and the field is never copied as it is (\`${arrival.stateField || 'status'}: input.${arrival.stateFrom}\` is refused). Check that the current state of the record is the from of the transition you took, refuse the arrival when it is not, and apply the rules of that transition.`
+        : `When the arrival moves the state, take the transition whose from holds the current state of the record and whose to is the state the arrival names; set \`${arrival.stateField || 'the state field'}\` to that literal state (${arrival.transitions.map(item => `'${item.to}'`).join(' or ')}) and refuse the arrival when no listed transition fits. Never read the state from the input and never set a state no transition leads to; apply the rules of the transition you took.`,
       'The message carries no version of the record: the input declares no `version` and the file never reads `input.version`. Read the record, check that its state allows the transition, and let the repository keep the version.',
     ].join('\n')));
   }
@@ -667,7 +669,7 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
  * d1_259 s1c: the process transitions a `serve` arrival applies through this `update` (the def lists them with from, to and rules) and the field that
  * holds the state: the enum field `status` of the entity's domain def, or its only enum field. Undefined when the def lists none.
  */
-export function arrivalOf(ctx: M12Context, unit: M12Unit): { transitions: Array<{ transitionId: string; to: string; from: string[] }>; stateField: string } | undefined {
+export function arrivalOf(ctx: M12Context, unit: M12Unit): { transitions: Array<{ transitionId: string; to: string; from: string[] }>; stateField: string; stateFrom?: string } | undefined {
   const listed = unit.definition.data.arrivalTransitions;
   if (String(unit.definition.data.operation ?? '') !== 'update' || !Array.isArray(listed) || listed.length === 0) return undefined;
   const transitions = listed.flatMap(item => {
@@ -681,7 +683,8 @@ export function arrivalOf(ctx: M12Context, unit: M12Unit): { transitions: Array<
   const domain = ctx.units.find(item => item.definition.artifactType === 'domainEntity' && String(item.definition.data.entityId ?? item.definition.artifactId) === entityId);
   const fields = Array.isArray(domain?.definition.data.fields) ? domain.definition.data.fields as Array<{ name?: unknown; type?: unknown }> : [];
   const enums = fields.filter(field => field.type === 'enum' && typeof field.name === 'string').map(field => String(field.name));
-  return { transitions, stateField: enums.includes('status') ? 'status' : enums.length === 1 ? enums[0] : '' };
+  const stateFrom = unit.definition.data.stateFrom;
+  return { transitions, stateField: enums.includes('status') ? 'status' : enums.length === 1 ? enums[0] : '', ...(typeof stateFrom === 'string' && stateFrom ? { stateFrom } : {}) };
 }
 
 /** For a transition usecase, its id and target state from the l4 lifecycle (`transitions[].to`); null otherwise. */

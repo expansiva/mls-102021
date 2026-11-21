@@ -29,7 +29,7 @@ export interface M12CodeGateInput {
    * An `update` a `serve` arrival calls on an entity with a lifecycle (d1_259 s1c): the process transitions the def lists, and the field that holds the
    * state. The file moves the record only through them: it writes each state they lead to, and never takes the state from the input.
    */
-  arrival?: { transitions: ReadonlyArray<{ transitionId: string; to: string; from?: readonly string[] }>; stateField: string };
+  arrival?: { transitions: ReadonlyArray<{ transitionId: string; to: string; from?: readonly string[] }>; stateField: string; stateFrom?: string };
   /** The repository ports of the module (`DespesaRepository`); a name outside them is refused. */
   ports?: readonly string[];
   /** Connection gateways of the module (`<Connection>Gateway`), from `integrationOutbound` `connections`. */
@@ -428,12 +428,13 @@ export function transitionTargetProblems(code: string, transition?: { transition
 /**
  * d1_259 s1c: the arrival of a message from outside moves a record only through the process transitions the def lists. What the file assigns to the
  * state field must be one of the states they lead to, as a literal chosen by the state the arrival names: not a value read from the input, not a state the
- * transitions start from, not an expression with no such literal. A state no transition leads to is not written. An arrival that does not move the state
+ * transitions start from, not an expression with no such literal (d1_272: unless the def says the message carries the state, `stateFrom`, and the expression
+ * writes every state as a literal, choosing by that field). A state no transition leads to is not written. An arrival that does not move the state
  * assigns nothing to the field, and passes.
  */
 export function arrivalTransitionProblems(
   code: string,
-  arrival?: { transitions: ReadonlyArray<{ transitionId: string; to: string; from?: readonly string[] }>; stateField: string },
+  arrival?: { transitions: ReadonlyArray<{ transitionId: string; to: string; from?: readonly string[] }>; stateField: string; stateFrom?: string },
 ): string[] {
   if (!arrival || arrival.transitions.length === 0) return [];
   const problems: string[] = [];
@@ -460,7 +461,10 @@ export function arrivalTransitionProblems(
     const expression = code.slice(from, end);
     const names = [...expression.matchAll(/(['"])([^'"]*)\1/gu)].map(item => item[2]);
     const readsInput = new RegExp(`\\binput\\s*(?:\\.|\\[\\s*['"])\\s*${field}\\b`, 'u').test(expression);
-    if (readsInput || !names.some(name => targets.includes(name)) || names.some(name => starts.has(name))) {
+    // d1_272: when the message carries the state it names (`stateFrom`), reading that field is how the transition is chosen, as long as the expression
+    // writes every state the transitions lead to as a literal (`input.status === 'ready' ? 'ready' : 'refused'`). The field alone (`status: input.status`) writes none.
+    const choosesByMessage = !!arrival.stateFrom && targets.every(name => names.includes(name));
+    if ((readsInput && !choosesByMessage) || !names.some(name => targets.includes(name)) || names.some(name => starts.has(name))) {
       problems.push(`ARRIVAL_STATE_SET_DIRECTLY: \`${field}:${expression.trim() ? ` ${expression.trim().slice(0, 80)}` : ''}\` does not set the state through a transition: the arrival moves the record only through ${arrival.transitions.map(item => item.transitionId).join(', ')}, so ${field} is set to one of '${targets.join("', '")}' as a literal, never read from the input and never to a state the transitions start from.`);
     }
   }

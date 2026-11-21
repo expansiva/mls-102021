@@ -1,0 +1,29 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/createAgentDraft.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "createAgentDraft",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts",
+    "_102047_/l4/agents/rules.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "createAgentDraft",
+    "entityId": "AgentDraft",
+    "operation": "create",
+    "rulesApplied": [
+      "adminChoiceNotOverriddenByAutomatic",
+      "agentDraftNoticeIdempotent",
+      "agentDraftRecordedBeforeSending",
+      "agentNameUniqueAmongActive",
+      "refusalReasonShownWhenRefused"
+    ],
+    "effects": []
+  }
+} as const;
+
+export default definition;

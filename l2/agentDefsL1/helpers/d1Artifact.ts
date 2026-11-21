@@ -168,6 +168,8 @@ export interface D1UsecaseData {
   transitionRef?: string;
   /** d1_259 s1c: the process transitions an arrival applies (an `update` a `serve` calls on an entity with a lifecycle). */
   arrivalTransitions?: Array<{ transitionId: string; from: string[]; to: string; ruleRefs: string[] }>;
+  /** d1_272: the field of the message that names the state the arrival moves the record to. */
+  stateFrom?: string;
   /** d1_269: where the required fields of its outside call that no field names come from. */
   calls?: Array<{ call: string; input: Array<{ field: string; from: { kind: 'input'; field: string } | { kind: 'entity'; entity: string; field: string; idFrom: string } }> }>;
   mdm?: {

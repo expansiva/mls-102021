@@ -220,6 +220,11 @@ export interface D1SelectedUsecase {
    * entity with a lifecycle gives its `update` usecase these; the arrival writes the state only through one of them. Absent on every other usecase.
    */
   arrivalTransitions?: string[];
+  /**
+   * d1_272: the field of the message the arrival reads that names the state, when its values are exactly the states the `arrivalTransitions` lead to
+   * (`CmAgentDraftReadyInput.status: 'ready' | 'refused'`). The usecase chooses the transition by it. Absent when no field of the message has those values.
+   */
+  stateFrom?: string;
   /** The sources chosen for the required fields of its call that no field names (d1_269). Absent when none was asked or answered. */
   callInputs?: D1CallInput[];
 }

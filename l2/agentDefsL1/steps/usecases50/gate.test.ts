@@ -1145,3 +1145,14 @@ void test('d1_269: the sources the model chose for the fields of a call are writ
   const other = request.usecases.find(item => item !== list)!;
   assert.equal(data(other.usecaseId).calls, undefined);
 });
+
+void test('d1_272: the def of an arrival carries the stateFrom of its selection, and only an arrival does', () => {
+  const request = arrivalRequest(['confirmarConsulta', 'registrarFalta']);
+  request.usecases[0].stateFrom = 'status';
+  const build = buildD1Usecases(request);
+  assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));
+  assert.equal((build.emit[0]?.definition.data as { stateFrom?: string }).stateFrom, 'status');
+  const plain = arrivalRequest([]);
+  plain.usecases[0].stateFrom = 'status';
+  assert.equal((buildD1Usecases(plain).emit[0]?.definition.data as { stateFrom?: string }).stateFrom, undefined);
+});

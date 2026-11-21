@@ -1,0 +1,293 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/person_restrictions.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "person_restrictions",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listOrganizationUser.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listPersonToolRestriction.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listTool.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updatePersonToolRestriction.defs.ts"
+  ],
+  "data": {
+    "pageId": "person_restrictions",
+    "requests": [
+      {
+        "route": "agents.person_restrictions.listPeople",
+        "kind": "qry",
+        "uses": [
+          "listOrganizationUser"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "unresolved",
+            "path": "people.items.details",
+            "reason": "DISCLOSURE: Route agents.person_restrictions.listPeople projects items.details. A grant names a sub-path, but the nested shape could not be read, so the container was not released."
+          },
+          {
+            "kind": "list",
+            "path": "people",
+            "entity": "OrganizationUser",
+            "items": "items",
+            "page": "people.page",
+            "pageSize": "people.pageSize",
+            "hasMore": "people.hasMore",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "people.details.identification",
+            "reason": "Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which."
+          },
+          {
+            "kind": "unresolved",
+            "path": "people.details.agents",
+            "reason": "Interface PersonAgentsData has no field that is not readonly, so no entity owns it."
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "people",
+            "pages": "people"
+          },
+          {
+            "name": "pageSize",
+            "target": "people",
+            "pages": "people"
+          },
+          {
+            "name": "search",
+            "target": "people",
+            "field": "details.identification.name",
+            "optional": true
+          }
+        ],
+        "rules": [
+          "onlyActiveUsersRestricted"
+        ],
+        "doc": {
+          "raw": "Purpose: Lists the organization people with a platform login that the company admin can restrict, optionally searched by name.\nInput: search: text typed to find a person by name (optional); page and pageSize: the page of people requested.\nProcessing: Uses OrganizationUser locate.users / locate.byName filtered by name when search is given. Applies onlyActiveUsersRestricted: only users with status Active are returned. Login e-mail is derived from the platform login, never stored. Ordered by name.\nOutput: A page of active people, each with id, name, status and login e-mail, as { items, page, pageSize, hasMore }.",
+          "purpose": "Lists the organization people with a platform login that the company admin can restrict, optionally searched by name.",
+          "input": "search: text typed to find a person by name (optional); page and pageSize: the page of people requested.",
+          "processing": "Uses OrganizationUser locate.users / locate.byName filtered by name when search is given. Applies onlyActiveUsersRestricted: only users with status Active are returned. Login e-mail is derived from the platform login, never stored. Ordered by name.",
+          "output": "A page of active people, each with id, name, status and login e-mail, as { items, page, pageSize, hasMore }."
+        }
+      },
+      {
+        "route": "agents.person_restrictions.getPersonRestrictions",
+        "kind": "qry",
+        "uses": [
+          "getOrganizationUser",
+          "listTool",
+          "listPersonToolRestriction"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "unresolved",
+            "path": "person.details",
+            "reason": "DISCLOSURE: Route agents.person_restrictions.getPersonRestrictions projects details. A grant names a sub-path, but the nested shape could not be read, so the container was not released."
+          },
+          {
+            "kind": "entity",
+            "path": "person",
+            "entity": "OrganizationUser",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "path": "tools",
+            "entity": "Tool",
+            "items": "",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "tools.blocked",
+            "reason": "COMPUTED_NOT_DISCLOSED: agents.person_restrictions.getPersonRestrictions blocked"
+          },
+          {
+            "kind": "related",
+            "path": "tools.personToolRestriction",
+            "entity": "PersonToolRestriction",
+            "relationship": "restrictionTool",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "person.details.identification",
+            "reason": "Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which."
+          },
+          {
+            "kind": "unresolved",
+            "path": "person.details.agents",
+            "reason": "Interface PersonAgentsData has no field that is not readonly, so no entity owns it."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "onlyActiveUsersRestricted",
+          "restrictionUniquePerPersonTool",
+          "removedToolRestrictionKept"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads the restriction checklist of the chosen person: the whole tool catalog with the tools already blocked for that person marked.\nInput: personId: the person selected in the picker.\nProcessing: Reads the person (refused if not Active, onlyActiveUsersRestricted). Reads the catalog via Tool agents.toolTree and the person’s restrictions via PersonToolRestriction listByForeignKey in one read each, then joins them by tool: blocked is computed true when a restriction exists for the person and tool (at most one, restrictionUniquePerPersonTool). Removed tools stay listed with status removed and their restriction kept (removedToolRestrictionKept). toolName, toolPath and toolRemoved are derived from the catalog and markedAt comes from the restriction; nothing is stored. Ordered by module title, subject title and tool name.\nOutput: The person (id, name, status, login e-mail) and every catalog tool with module, subject, description, status, blocked flag and, when blocked, the restriction with id, version, marked date, tool name, path and removed flag.",
+          "purpose": "Loads the restriction checklist of the chosen person: the whole tool catalog with the tools already blocked for that person marked.",
+          "input": "personId: the person selected in the picker.",
+          "processing": "Reads the person (refused if not Active, onlyActiveUsersRestricted). Reads the catalog via Tool agents.toolTree and the person’s restrictions via PersonToolRestriction listByForeignKey in one read each, then joins them by tool: blocked is computed true when a restriction exists for the person and tool (at most one, restrictionUniquePerPersonTool). Removed tools stay listed with status removed and their restriction kept (removedToolRestrictionKept). toolName, toolPath and toolRemoved are derived from the catalog and markedAt comes from the restriction; nothing is stored. Ordered by module title, subject title and tool name.",
+          "output": "The person (id, name, status, login e-mail) and every catalog tool with module, subject, description, status, blocked flag and, when blocked, the restriction with id, version, marked date, tool name, path and removed flag."
+        }
+      },
+      {
+        "route": "agents.person_restrictions.saveRestrictions",
+        "kind": "cmd",
+        "uses": [
+          "updatePersonToolRestriction",
+          "getOrganizationUser",
+          "listTool"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "unresolved",
+            "path": "person.details",
+            "reason": "DISCLOSURE: Route agents.person_restrictions.saveRestrictions projects details. A grant names a sub-path, but the nested shape could not be read, so the container was not released."
+          },
+          {
+            "kind": "entity",
+            "path": "person",
+            "entity": "OrganizationUser",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "path": "tools",
+            "entity": "Tool",
+            "items": "",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "name",
+                "path": "name"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "tools.blocked",
+            "reason": "COMPUTED_NOT_DISCLOSED: agents.person_restrictions.saveRestrictions blocked"
+          },
+          {
+            "kind": "related",
+            "path": "tools.personToolRestriction",
+            "entity": "PersonToolRestriction",
+            "relationship": "restrictionTool",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "person.details.identification",
+            "reason": "Interface PersonIdentification: fields name are fields of Agent, AgentDraft, Tool; the types do not say which."
+          },
+          {
+            "kind": "unresolved",
+            "path": "person.details.agents",
+            "reason": "Interface PersonAgentsData has no field that is not readonly, so no entity owns it."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "onlyCompanyAdminRestrictsTools",
+          "onlyActiveUsersRestricted",
+          "restrictionUniquePerPersonTool",
+          "restrictionAppliesThroughAnyAgent",
+          "removedToolRestrictionKept"
+        ],
+        "doc": {
+          "raw": "Purpose: Saves the checklist of the chosen person: the ticked tools become blocked through any agent and the unticked ones are freed.\nInput: personId: the person whose tools are restricted; toolId: every tool ticked as blocked after the edit; knownRestrictions: id and version of the restrictions the page loaded, for optimistic concurrency.\nProcessing: Refuses unless the caller is company admin (onlyCompanyAdminRestrictsTools) and the person is Active (onlyActiveUsersRestricted). Checks the versions of knownRestrictions against storage and refuses on conflict. In one transaction, creates a restriction for each ticked tool without one (markedAt filled by the system) and deletes the restriction of each unticked tool; a tool already blocked is left unchanged (restrictionUniquePerPersonTool). Restrictions on removed tools that stay ticked are kept (removedToolRestrictionKept). From then on no agent offers those tools to the person (restrictionAppliesThroughAnyAgent). Derived fields are computed on read, not recorded.\nOutput: The person and the full checklist in its new saved state, same shape as getPersonRestrictions, with the new restrictions, their marked dates and versions.",
+          "purpose": "Saves the checklist of the chosen person: the ticked tools become blocked through any agent and the unticked ones are freed.",
+          "input": "personId: the person whose tools are restricted; toolId: every tool ticked as blocked after the edit; knownRestrictions: id and version of the restrictions the page loaded, for optimistic concurrency.",
+          "processing": "Refuses unless the caller is company admin (onlyCompanyAdminRestrictsTools) and the person is Active (onlyActiveUsersRestricted). Checks the versions of knownRestrictions against storage and refuses on conflict. In one transaction, creates a restriction for each ticked tool without one (markedAt filled by the system) and deletes the restriction of each unticked tool; a tool already blocked is left unchanged (restrictionUniquePerPersonTool). Restrictions on removed tools that stay ticked are kept (removedToolRestrictionKept). From then on no agent offers those tools to the person (restrictionAppliesThroughAnyAgent). Derived fields are computed on read, not recorded.",
+          "output": "The person and the full checklist in its new saved state, same shape as getPersonRestrictions, with the new restrictions, their marked dates and versions."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

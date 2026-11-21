@@ -1,0 +1,43 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/http/controllers/tool_catalog.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "tool_catalog",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/agents/layer_2_application/requests/tool_catalog.defs.ts",
+    "_102047_/l1/agents/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "tool_catalog",
+    "handlers": [
+      {
+        "route": "agents.tool_catalog.getToolCatalog",
+        "kind": "query",
+        "grantIds": [
+          "adminManageTools",
+          "memberReadToolCatalog"
+        ],
+        "serviceFunction": "agents.tool_catalog.getToolCatalog",
+        "contractPath": "l2/agents/web/contracts/tool_catalog.defs.ts",
+        "contractInterface": "Tool_catalogContracts"
+      },
+      {
+        "route": "agents.tool_catalog.listCatalogUpdates",
+        "kind": "query",
+        "grantIds": [
+          "adminManageTools",
+          "memberReadToolCatalog"
+        ],
+        "serviceFunction": "agents.tool_catalog.listCatalogUpdates",
+        "contractPath": "l2/agents/web/contracts/tool_catalog.defs.ts",
+        "contractInterface": "Tool_catalogContracts"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

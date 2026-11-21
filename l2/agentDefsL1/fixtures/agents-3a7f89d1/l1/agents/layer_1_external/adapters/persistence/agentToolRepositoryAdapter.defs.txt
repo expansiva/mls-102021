@@ -1,0 +1,66 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryAdapter",
+  "artifactId": "AgentToolRepository",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/agentTool.defs.ts",
+    "_102047_/l1/agents/layer_2_application/ports/agentToolRepository.defs.ts"
+  ],
+  "data": {
+    "entityId": "AgentTool",
+    "portId": "AgentToolRepository",
+    "tableId": "agentTool",
+    "columns": [
+      {
+        "field": "id",
+        "column": "id"
+      },
+      {
+        "field": "version",
+        "column": "json:version"
+      },
+      {
+        "field": "agentId",
+        "column": "agentId"
+      },
+      {
+        "field": "toolId",
+        "column": "toolId"
+      },
+      {
+        "field": "enabled",
+        "column": "enabled"
+      },
+      {
+        "field": "choiceSource",
+        "column": "choiceSource"
+      },
+      {
+        "field": "details.decidedAt",
+        "column": "json:details.decidedAt"
+      },
+      {
+        "field": "details.decidedBy",
+        "column": "json:details.decidedBy"
+      },
+      {
+        "field": "details.automaticOrigin",
+        "column": "json:details.automaticOrigin"
+      },
+      {
+        "field": "details.toolName",
+        "column": "json:details.toolName"
+      },
+      {
+        "field": "details.toolRemoved",
+        "column": "json:details.toolRemoved"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

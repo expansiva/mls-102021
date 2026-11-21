@@ -1,0 +1,2008 @@
+{
+  "schemaVersion": "2026-09-21-d1-persistence-v1",
+  "project": 102047,
+  "moduleName": "agents",
+  "llmCalls": 0,
+  "ok": true,
+  "enumerations": [
+    {
+      "entityId": "AgentDraft",
+      "path": "status",
+      "values": [
+        "preparing",
+        "ready",
+        "refused",
+        "activated",
+        "discarded"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "AgentSimulation",
+      "path": "level",
+      "values": [
+        "whatItCan",
+        "whatItUnderstands"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "AgentSimulation",
+      "path": "subjectKind",
+      "values": [
+        "person",
+        "role"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "AgentSimulation",
+      "path": "toolVerdicts.reason",
+      "values": [
+        "allowed",
+        "restrictedForPerson",
+        "notPermittedForRole",
+        "removedFromRelease"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "AgentTool",
+      "path": "choiceSource",
+      "values": [
+        "admin",
+        "automatic"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "AgentTool",
+      "path": "details.automaticOrigin",
+      "values": [
+        "draftSuggestion",
+        "catalogRefresh"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "ExecutionSummary",
+      "path": "details.actions.result",
+      "values": [
+        "succeeded",
+        "failed",
+        "refused"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "OrganizationUser",
+      "path": "details.identification.status",
+      "values": [
+        "Active",
+        "Inactive",
+        "Merged",
+        "Blocked"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "Tool",
+      "path": "origin",
+      "values": [
+        "appModule",
+        "cm"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "Tool",
+      "path": "status",
+      "values": [
+        "available",
+        "removed"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    }
+  ],
+  "uniqueKeys": [
+    {
+      "entityId": "AgentDraft",
+      "tableId": "agentDraft",
+      "uniqueKeys": [],
+      "consumed": true,
+      "placedOn": "table.data.uniqueKeys"
+    },
+    {
+      "entityId": "AgentTool",
+      "tableId": "agentTool",
+      "uniqueKeys": [
+        [
+          "agentId",
+          "toolId"
+        ]
+      ],
+      "consumed": true,
+      "placedOn": "table.data.uniqueKeys"
+    },
+    {
+      "entityId": "ConductChange",
+      "tableId": "conductChange",
+      "uniqueKeys": [],
+      "consumed": true,
+      "placedOn": "table.data.uniqueKeys"
+    },
+    {
+      "entityId": "ExecutionSummary",
+      "tableId": "executionSummary",
+      "uniqueKeys": [
+        [
+          "executionRef"
+        ]
+      ],
+      "consumed": true,
+      "placedOn": "table.data.uniqueKeys"
+    },
+    {
+      "entityId": "PersonToolRestriction",
+      "tableId": "personToolRestriction",
+      "uniqueKeys": [
+        [
+          "personId",
+          "toolId"
+        ]
+      ],
+      "consumed": true,
+      "placedOn": "table.data.uniqueKeys"
+    },
+    {
+      "entityId": "Tool",
+      "tableId": "tool",
+      "uniqueKeys": [
+        [
+          "toolKey"
+        ]
+      ],
+      "consumed": true,
+      "placedOn": "table.data.uniqueKeys"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "AgentDraftRepository",
+      "entityId": "AgentDraft",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "AgentDraft"
+          ],
+          "returns": "AgentDraft"
+        },
+        {
+          "name": "list",
+          "params": [
+            "AgentDraftFilter"
+          ],
+          "returns": "AgentDraft[]"
+        },
+        {
+          "name": "update",
+          "params": [
+            "AgentDraft"
+          ],
+          "returns": "AgentDraft"
+        },
+        {
+          "name": "transition",
+          "params": [
+            "AgentDraft",
+            "transitionId"
+          ],
+          "returns": "AgentDraft"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryPort",
+        "artifactId": "AgentDraftRepository",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "AgentDraft",
+          "interfaceName": "AgentDraftRepository",
+          "methods": [
+            {
+              "name": "create",
+              "params": [
+                "AgentDraft"
+              ],
+              "returns": "AgentDraft"
+            },
+            {
+              "name": "list",
+              "params": [
+                "AgentDraftFilter"
+              ],
+              "returns": "AgentDraft[]"
+            },
+            {
+              "name": "update",
+              "params": [
+                "AgentDraft"
+              ],
+              "returns": "AgentDraft"
+            },
+            {
+              "name": "transition",
+              "params": [
+                "AgentDraft",
+                "transitionId"
+              ],
+              "returns": "AgentDraft"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "portId": "AgentToolRepository",
+      "entityId": "AgentTool",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "AgentTool"
+          ],
+          "returns": "AgentTool"
+        },
+        {
+          "name": "list",
+          "params": [
+            "AgentToolFilter"
+          ],
+          "returns": "AgentTool[]"
+        },
+        {
+          "name": "update",
+          "params": [
+            "AgentTool"
+          ],
+          "returns": "AgentTool"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryPort",
+        "artifactId": "AgentToolRepository",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "AgentTool",
+          "interfaceName": "AgentToolRepository",
+          "methods": [
+            {
+              "name": "create",
+              "params": [
+                "AgentTool"
+              ],
+              "returns": "AgentTool"
+            },
+            {
+              "name": "list",
+              "params": [
+                "AgentToolFilter"
+              ],
+              "returns": "AgentTool[]"
+            },
+            {
+              "name": "update",
+              "params": [
+                "AgentTool"
+              ],
+              "returns": "AgentTool"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "portId": "ConductChangeRepository",
+      "entityId": "ConductChange",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_2_application/ports/conductChangeRepository.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "ConductChange"
+          ],
+          "returns": "ConductChange"
+        },
+        {
+          "name": "list",
+          "params": [
+            "ConductChangeFilter"
+          ],
+          "returns": "ConductChange[]"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryPort",
+        "artifactId": "ConductChangeRepository",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "ConductChange",
+          "interfaceName": "ConductChangeRepository",
+          "methods": [
+            {
+              "name": "create",
+              "params": [
+                "ConductChange"
+              ],
+              "returns": "ConductChange"
+            },
+            {
+              "name": "list",
+              "params": [
+                "ConductChangeFilter"
+              ],
+              "returns": "ConductChange[]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "portId": "ExecutionSummaryRepository",
+      "entityId": "ExecutionSummary",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "ExecutionSummary"
+          ],
+          "returns": "ExecutionSummary"
+        },
+        {
+          "name": "list",
+          "params": [
+            "ExecutionSummaryFilter"
+          ],
+          "returns": "ExecutionSummary[]"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryPort",
+        "artifactId": "ExecutionSummaryRepository",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "ExecutionSummary",
+          "interfaceName": "ExecutionSummaryRepository",
+          "methods": [
+            {
+              "name": "create",
+              "params": [
+                "ExecutionSummary"
+              ],
+              "returns": "ExecutionSummary"
+            },
+            {
+              "name": "list",
+              "params": [
+                "ExecutionSummaryFilter"
+              ],
+              "returns": "ExecutionSummary[]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "portId": "PersonToolRestrictionRepository",
+      "entityId": "PersonToolRestriction",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts",
+      "methods": [
+        {
+          "name": "list",
+          "params": [
+            "PersonToolRestrictionFilter"
+          ],
+          "returns": "PersonToolRestriction[]"
+        },
+        {
+          "name": "update",
+          "params": [
+            "PersonToolRestriction"
+          ],
+          "returns": "PersonToolRestriction"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryPort",
+        "artifactId": "PersonToolRestrictionRepository",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "PersonToolRestriction",
+          "interfaceName": "PersonToolRestrictionRepository",
+          "methods": [
+            {
+              "name": "list",
+              "params": [
+                "PersonToolRestrictionFilter"
+              ],
+              "returns": "PersonToolRestriction[]"
+            },
+            {
+              "name": "update",
+              "params": [
+                "PersonToolRestriction"
+              ],
+              "returns": "PersonToolRestriction"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "portId": "ToolRepository",
+      "entityId": "Tool",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_2_application/ports/toolRepository.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "Tool"
+          ],
+          "returns": "Tool"
+        },
+        {
+          "name": "list",
+          "params": [
+            "ToolFilter"
+          ],
+          "returns": "Tool[]"
+        },
+        {
+          "name": "update",
+          "params": [
+            "Tool"
+          ],
+          "returns": "Tool"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryPort",
+        "artifactId": "ToolRepository",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "Tool",
+          "interfaceName": "ToolRepository",
+          "methods": [
+            {
+              "name": "create",
+              "params": [
+                "Tool"
+              ],
+              "returns": "Tool"
+            },
+            {
+              "name": "list",
+              "params": [
+                "ToolFilter"
+              ],
+              "returns": "Tool[]"
+            },
+            {
+              "name": "update",
+              "params": [
+                "Tool"
+              ],
+              "returns": "Tool"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "agentDraft",
+      "entityId": "AgentDraft",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentDraft.defs.ts",
+      "physicalName": "agents_agentdraft",
+      "detailsColumn": "details",
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "table",
+        "artifactId": "agentDraft",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "tableId": "agentDraft",
+          "entityId": "AgentDraft",
+          "physicalName": "agents_agentdraft",
+          "primaryKey": [
+            "id"
+          ],
+          "uniqueKeys": [],
+          "indexes": [
+            {
+              "name": "agents_agentdraft_status",
+              "columns": [
+                "status"
+              ],
+              "unique": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tableId": "agentTool",
+      "entityId": "AgentTool",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentTool.defs.ts",
+      "physicalName": "agents_agenttool",
+      "detailsColumn": "details",
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "table",
+        "artifactId": "agentTool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "tableId": "agentTool",
+          "entityId": "AgentTool",
+          "physicalName": "agents_agenttool",
+          "primaryKey": [
+            "id"
+          ],
+          "uniqueKeys": [
+            [
+              "agentId",
+              "toolId"
+            ]
+          ],
+          "indexes": [
+            {
+              "name": "agents_agenttool_agentId_toolId",
+              "columns": [
+                "agentId",
+                "toolId"
+              ],
+              "unique": true
+            },
+            {
+              "name": "agents_agenttool_agentId",
+              "columns": [
+                "agentId"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agents_agenttool_toolId",
+              "columns": [
+                "toolId"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agents_agenttool_enabled",
+              "columns": [
+                "enabled"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agents_agenttool_choiceSource",
+              "columns": [
+                "choiceSource"
+              ],
+              "unique": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tableId": "conductChange",
+      "entityId": "ConductChange",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/conductChange.defs.ts",
+      "physicalName": "agents_conductchange",
+      "detailsColumn": "details",
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "table",
+        "artifactId": "conductChange",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "tableId": "conductChange",
+          "entityId": "ConductChange",
+          "physicalName": "agents_conductchange",
+          "primaryKey": [
+            "id"
+          ],
+          "uniqueKeys": [],
+          "indexes": [
+            {
+              "name": "agents_conductchange_agentId",
+              "columns": [
+                "agentId"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agents_conductchange_personId",
+              "columns": [
+                "personId"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agents_conductchange_changedAt",
+              "columns": [
+                "changedAt"
+              ],
+              "unique": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tableId": "executionSummary",
+      "entityId": "ExecutionSummary",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/executionSummary.defs.ts",
+      "physicalName": "agents_executionsummary",
+      "detailsColumn": "details",
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "table",
+        "artifactId": "executionSummary",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "tableId": "executionSummary",
+          "entityId": "ExecutionSummary",
+          "physicalName": "agents_executionsummary",
+          "primaryKey": [
+            "id"
+          ],
+          "uniqueKeys": [
+            [
+              "executionRef"
+            ]
+          ],
+          "indexes": [
+            {
+              "name": "agents_executionsummary_executionRef",
+              "columns": [
+                "executionRef"
+              ],
+              "unique": true
+            },
+            {
+              "name": "agents_executionsummary_agentId",
+              "columns": [
+                "agentId"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agents_executionsummary_personId",
+              "columns": [
+                "personId"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agents_executionsummary_startedAt",
+              "columns": [
+                "startedAt"
+              ],
+              "unique": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tableId": "personToolRestriction",
+      "entityId": "PersonToolRestriction",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/personToolRestriction.defs.ts",
+      "physicalName": "agents_persontoolrestriction",
+      "detailsColumn": "details",
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "table",
+        "artifactId": "personToolRestriction",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "tableId": "personToolRestriction",
+          "entityId": "PersonToolRestriction",
+          "physicalName": "agents_persontoolrestriction",
+          "primaryKey": [
+            "id"
+          ],
+          "uniqueKeys": [
+            [
+              "personId",
+              "toolId"
+            ]
+          ],
+          "indexes": [
+            {
+              "name": "agents_persontoolrestriction_personId_toolId",
+              "columns": [
+                "personId",
+                "toolId"
+              ],
+              "unique": true
+            },
+            {
+              "name": "agents_persontoolrestriction_personId",
+              "columns": [
+                "personId"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agents_persontoolrestriction_toolId",
+              "columns": [
+                "toolId"
+              ],
+              "unique": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tableId": "tool",
+      "entityId": "Tool",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/tool.defs.ts",
+      "physicalName": "agents_tool",
+      "detailsColumn": "details",
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "table",
+        "artifactId": "tool",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "tableId": "tool",
+          "entityId": "Tool",
+          "physicalName": "agents_tool",
+          "primaryKey": [
+            "id"
+          ],
+          "uniqueKeys": [
+            [
+              "toolKey"
+            ]
+          ],
+          "indexes": [
+            {
+              "name": "agents_tool_toolKey",
+              "columns": [
+                "toolKey"
+              ],
+              "unique": true
+            },
+            {
+              "name": "agents_tool_origin",
+              "columns": [
+                "origin"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agents_tool_moduleName",
+              "columns": [
+                "moduleName"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agents_tool_subject",
+              "columns": [
+                "subject"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agents_tool_name",
+              "columns": [
+                "name"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agents_tool_status",
+              "columns": [
+                "status"
+              ],
+              "unique": false
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "adapters": [
+    {
+      "portId": "AgentDraftRepository",
+      "entityId": "AgentDraft",
+      "tableId": "agentDraft",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentDraftRepositoryAdapter.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "AgentDraft"
+          ],
+          "returns": "AgentDraft"
+        },
+        {
+          "name": "list",
+          "params": [
+            "AgentDraftFilter"
+          ],
+          "returns": "AgentDraft[]"
+        },
+        {
+          "name": "update",
+          "params": [
+            "AgentDraft"
+          ],
+          "returns": "AgentDraft"
+        },
+        {
+          "name": "transition",
+          "params": [
+            "AgentDraft",
+            "transitionId"
+          ],
+          "returns": "AgentDraft"
+        }
+      ],
+      "bindings": [
+        {
+          "field": "name",
+          "column": "json:name",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "prompt",
+          "column": "json:prompt",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "refusalReason",
+          "column": "json:refusalReason",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "summary",
+          "column": "json:summary",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "audience",
+          "column": "json:audience",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "onBehalfOf",
+          "column": "json:onBehalfOf",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "proposedBehavior",
+          "column": "json:proposedBehavior",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "suggestedTools",
+          "column": "json:suggestedTools",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "requestedBy",
+          "column": "json:requestedBy",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "requestedAt",
+          "column": "json:requestedAt",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "id",
+          "column": "id",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "version",
+          "column": "json:version",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "status",
+          "column": "status",
+          "nullable": false,
+          "placement": "column"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryAdapter",
+        "artifactId": "AgentDraftRepository",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "AgentDraft",
+          "portId": "AgentDraftRepository",
+          "tableId": "agentDraft",
+          "columns": [
+            {
+              "field": "name",
+              "column": "json:name"
+            },
+            {
+              "field": "prompt",
+              "column": "json:prompt"
+            },
+            {
+              "field": "refusalReason",
+              "column": "json:refusalReason"
+            },
+            {
+              "field": "summary",
+              "column": "json:summary"
+            },
+            {
+              "field": "audience",
+              "column": "json:audience"
+            },
+            {
+              "field": "onBehalfOf",
+              "column": "json:onBehalfOf"
+            },
+            {
+              "field": "proposedBehavior",
+              "column": "json:proposedBehavior"
+            },
+            {
+              "field": "suggestedTools",
+              "column": "json:suggestedTools"
+            },
+            {
+              "field": "requestedBy",
+              "column": "json:requestedBy"
+            },
+            {
+              "field": "requestedAt",
+              "column": "json:requestedAt"
+            },
+            {
+              "field": "id",
+              "column": "id"
+            },
+            {
+              "field": "version",
+              "column": "json:version"
+            },
+            {
+              "field": "status",
+              "column": "status"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "portId": "AgentToolRepository",
+      "entityId": "AgentTool",
+      "tableId": "agentTool",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "AgentTool"
+          ],
+          "returns": "AgentTool"
+        },
+        {
+          "name": "list",
+          "params": [
+            "AgentToolFilter"
+          ],
+          "returns": "AgentTool[]"
+        },
+        {
+          "name": "update",
+          "params": [
+            "AgentTool"
+          ],
+          "returns": "AgentTool"
+        }
+      ],
+      "bindings": [
+        {
+          "field": "id",
+          "column": "id",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "version",
+          "column": "json:version",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "agentId",
+          "column": "agentId",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "toolId",
+          "column": "toolId",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "enabled",
+          "column": "enabled",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "choiceSource",
+          "column": "choiceSource",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "details.decidedAt",
+          "column": "json:details.decidedAt",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.decidedBy",
+          "column": "json:details.decidedBy",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.automaticOrigin",
+          "column": "json:details.automaticOrigin",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.toolName",
+          "column": "json:details.toolName",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.toolRemoved",
+          "column": "json:details.toolRemoved",
+          "nullable": true,
+          "placement": "json"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryAdapter",
+        "artifactId": "AgentToolRepository",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "AgentTool",
+          "portId": "AgentToolRepository",
+          "tableId": "agentTool",
+          "columns": [
+            {
+              "field": "id",
+              "column": "id"
+            },
+            {
+              "field": "version",
+              "column": "json:version"
+            },
+            {
+              "field": "agentId",
+              "column": "agentId"
+            },
+            {
+              "field": "toolId",
+              "column": "toolId"
+            },
+            {
+              "field": "enabled",
+              "column": "enabled"
+            },
+            {
+              "field": "choiceSource",
+              "column": "choiceSource"
+            },
+            {
+              "field": "details.decidedAt",
+              "column": "json:details.decidedAt"
+            },
+            {
+              "field": "details.decidedBy",
+              "column": "json:details.decidedBy"
+            },
+            {
+              "field": "details.automaticOrigin",
+              "column": "json:details.automaticOrigin"
+            },
+            {
+              "field": "details.toolName",
+              "column": "json:details.toolName"
+            },
+            {
+              "field": "details.toolRemoved",
+              "column": "json:details.toolRemoved"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "portId": "ConductChangeRepository",
+      "entityId": "ConductChange",
+      "tableId": "conductChange",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/conductChangeRepositoryAdapter.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "ConductChange"
+          ],
+          "returns": "ConductChange"
+        },
+        {
+          "name": "list",
+          "params": [
+            "ConductChangeFilter"
+          ],
+          "returns": "ConductChange[]"
+        }
+      ],
+      "bindings": [
+        {
+          "field": "id",
+          "column": "id",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "version",
+          "column": "json:version",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "agentId",
+          "column": "agentId",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "personId",
+          "column": "personId",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "changedAt",
+          "column": "changedAt",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "summary",
+          "column": "json:summary",
+          "nullable": false,
+          "placement": "json"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryAdapter",
+        "artifactId": "ConductChangeRepository",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "ConductChange",
+          "portId": "ConductChangeRepository",
+          "tableId": "conductChange",
+          "columns": [
+            {
+              "field": "id",
+              "column": "id"
+            },
+            {
+              "field": "version",
+              "column": "json:version"
+            },
+            {
+              "field": "agentId",
+              "column": "agentId"
+            },
+            {
+              "field": "personId",
+              "column": "personId"
+            },
+            {
+              "field": "changedAt",
+              "column": "changedAt"
+            },
+            {
+              "field": "summary",
+              "column": "json:summary"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "portId": "ExecutionSummaryRepository",
+      "entityId": "ExecutionSummary",
+      "tableId": "executionSummary",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "ExecutionSummary"
+          ],
+          "returns": "ExecutionSummary"
+        },
+        {
+          "name": "list",
+          "params": [
+            "ExecutionSummaryFilter"
+          ],
+          "returns": "ExecutionSummary[]"
+        }
+      ],
+      "bindings": [
+        {
+          "field": "id",
+          "column": "id",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "version",
+          "column": "json:version",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "agentId",
+          "column": "agentId",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "personId",
+          "column": "personId",
+          "nullable": true,
+          "placement": "column"
+        },
+        {
+          "field": "executionRef",
+          "column": "executionRef",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "startedAt",
+          "column": "startedAt",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "details.durationMs",
+          "column": "json:details.durationMs",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.cost",
+          "column": "json:details.cost",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.tookOver",
+          "column": "json:details.tookOver",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.conversationLink",
+          "column": "json:details.conversationLink",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.actions.toolName",
+          "column": "json:details.actions.toolName",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.actions.result",
+          "column": "json:details.actions.result",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.actions.resultNote",
+          "column": "json:details.actions.resultNote",
+          "nullable": true,
+          "placement": "json"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryAdapter",
+        "artifactId": "ExecutionSummaryRepository",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "ExecutionSummary",
+          "portId": "ExecutionSummaryRepository",
+          "tableId": "executionSummary",
+          "columns": [
+            {
+              "field": "id",
+              "column": "id"
+            },
+            {
+              "field": "version",
+              "column": "json:version"
+            },
+            {
+              "field": "agentId",
+              "column": "agentId"
+            },
+            {
+              "field": "personId",
+              "column": "personId"
+            },
+            {
+              "field": "executionRef",
+              "column": "executionRef"
+            },
+            {
+              "field": "startedAt",
+              "column": "startedAt"
+            },
+            {
+              "field": "details.durationMs",
+              "column": "json:details.durationMs"
+            },
+            {
+              "field": "details.cost",
+              "column": "json:details.cost"
+            },
+            {
+              "field": "details.tookOver",
+              "column": "json:details.tookOver"
+            },
+            {
+              "field": "details.conversationLink",
+              "column": "json:details.conversationLink"
+            },
+            {
+              "field": "details.actions.toolName",
+              "column": "json:details.actions.toolName"
+            },
+            {
+              "field": "details.actions.result",
+              "column": "json:details.actions.result"
+            },
+            {
+              "field": "details.actions.resultNote",
+              "column": "json:details.actions.resultNote"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "portId": "PersonToolRestrictionRepository",
+      "entityId": "PersonToolRestriction",
+      "tableId": "personToolRestriction",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.defs.ts",
+      "methods": [
+        {
+          "name": "list",
+          "params": [
+            "PersonToolRestrictionFilter"
+          ],
+          "returns": "PersonToolRestriction[]"
+        },
+        {
+          "name": "update",
+          "params": [
+            "PersonToolRestriction"
+          ],
+          "returns": "PersonToolRestriction"
+        }
+      ],
+      "bindings": [
+        {
+          "field": "id",
+          "column": "id",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "version",
+          "column": "json:version",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "personId",
+          "column": "personId",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "toolId",
+          "column": "toolId",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "details.markedAt",
+          "column": "json:details.markedAt",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.toolName",
+          "column": "json:details.toolName",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.toolPath",
+          "column": "json:details.toolPath",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.toolRemoved",
+          "column": "json:details.toolRemoved",
+          "nullable": true,
+          "placement": "json"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryAdapter",
+        "artifactId": "PersonToolRestrictionRepository",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "PersonToolRestriction",
+          "portId": "PersonToolRestrictionRepository",
+          "tableId": "personToolRestriction",
+          "columns": [
+            {
+              "field": "id",
+              "column": "id"
+            },
+            {
+              "field": "version",
+              "column": "json:version"
+            },
+            {
+              "field": "personId",
+              "column": "personId"
+            },
+            {
+              "field": "toolId",
+              "column": "toolId"
+            },
+            {
+              "field": "details.markedAt",
+              "column": "json:details.markedAt"
+            },
+            {
+              "field": "details.toolName",
+              "column": "json:details.toolName"
+            },
+            {
+              "field": "details.toolPath",
+              "column": "json:details.toolPath"
+            },
+            {
+              "field": "details.toolRemoved",
+              "column": "json:details.toolRemoved"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "portId": "ToolRepository",
+      "entityId": "Tool",
+      "tableId": "tool",
+      "action": "preserve",
+      "defPath": "l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "Tool"
+          ],
+          "returns": "Tool"
+        },
+        {
+          "name": "list",
+          "params": [
+            "ToolFilter"
+          ],
+          "returns": "Tool[]"
+        },
+        {
+          "name": "update",
+          "params": [
+            "Tool"
+          ],
+          "returns": "Tool"
+        }
+      ],
+      "bindings": [
+        {
+          "field": "id",
+          "column": "id",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "version",
+          "column": "json:version",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "toolKey",
+          "column": "toolKey",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "origin",
+          "column": "origin",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "moduleName",
+          "column": "moduleName",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "subject",
+          "column": "subject",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "name",
+          "column": "name",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "status",
+          "column": "status",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "details.moduleTitle",
+          "column": "json:details.moduleTitle",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.subjectTitle",
+          "column": "json:details.subjectTitle",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.description",
+          "column": "json:details.description",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.releaseLabel",
+          "column": "json:details.releaseLabel",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.addedAt",
+          "column": "json:details.addedAt",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.removedAt",
+          "column": "json:details.removedAt",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.usedByAgents",
+          "column": "json:details.usedByAgents",
+          "nullable": true,
+          "placement": "json"
+        },
+        {
+          "field": "details.catalogItem",
+          "column": "json:details.catalogItem",
+          "nullable": false,
+          "placement": "json"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryAdapter",
+        "artifactId": "ToolRepository",
+        "moduleName": "agents",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "Tool",
+          "portId": "ToolRepository",
+          "tableId": "tool",
+          "columns": [
+            {
+              "field": "id",
+              "column": "id"
+            },
+            {
+              "field": "version",
+              "column": "json:version"
+            },
+            {
+              "field": "toolKey",
+              "column": "toolKey"
+            },
+            {
+              "field": "origin",
+              "column": "origin"
+            },
+            {
+              "field": "moduleName",
+              "column": "moduleName"
+            },
+            {
+              "field": "subject",
+              "column": "subject"
+            },
+            {
+              "field": "name",
+              "column": "name"
+            },
+            {
+              "field": "status",
+              "column": "status"
+            },
+            {
+              "field": "details.moduleTitle",
+              "column": "json:details.moduleTitle"
+            },
+            {
+              "field": "details.subjectTitle",
+              "column": "json:details.subjectTitle"
+            },
+            {
+              "field": "details.description",
+              "column": "json:details.description"
+            },
+            {
+              "field": "details.releaseLabel",
+              "column": "json:details.releaseLabel"
+            },
+            {
+              "field": "details.addedAt",
+              "column": "json:details.addedAt"
+            },
+            {
+              "field": "details.removedAt",
+              "column": "json:details.removedAt"
+            },
+            {
+              "field": "details.usedByAgents",
+              "column": "json:details.usedByAgents"
+            },
+            {
+              "field": "details.catalogItem",
+              "column": "json:details.catalogItem"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "problems": [],
+  "normalizations": [
+    {
+      "code": "CATALOG_READ_ONLY",
+      "path": "/_102034_/l2/shared/contracts/connections/cm.ts",
+      "detail": "Opened and not written."
+    },
+    {
+      "code": "CATALOG_READ_ONLY",
+      "path": "/_102034_/l2/shared/contracts/connections/cm.ts",
+      "detail": "Opened and not written."
+    },
+    {
+      "code": "CATALOG_READ_ONLY",
+      "path": "/_102034_/l2/shared/contracts/connections/cm.ts",
+      "detail": "Opened and not written."
+    },
+    {
+      "code": "CATALOG_READ_ONLY",
+      "path": "/_102034_/l2/shared/contracts/connections/cm.ts",
+      "detail": "Opened and not written."
+    },
+    {
+      "code": "DETAILS_COLUMN",
+      "path": "AgentDraft.details",
+      "detail": "Non-indexed fields use the runtime details JSONB column. Keys inside it are the logical paths."
+    },
+    {
+      "code": "ID_COLUMN",
+      "path": "AgentDraft.id",
+      "detail": "Primary key column name is the logical field id."
+    },
+    {
+      "code": "VERSION_IN_DETAILS",
+      "path": "AgentDraft.version",
+      "detail": "Row version stays the logical field version inside details JSON. It is not the table schema version and it was not renamed."
+    },
+    {
+      "code": "DETAILS_COLUMN",
+      "path": "AgentTool.details",
+      "detail": "Non-indexed fields use the runtime details JSONB column. Keys inside it are the logical paths."
+    },
+    {
+      "code": "ID_COLUMN",
+      "path": "AgentTool.id",
+      "detail": "Primary key column name is the logical field id."
+    },
+    {
+      "code": "VERSION_IN_DETAILS",
+      "path": "AgentTool.version",
+      "detail": "Row version stays the logical field version inside details JSON. It is not the table schema version and it was not renamed."
+    },
+    {
+      "code": "DETAILS_COLUMN",
+      "path": "ConductChange.details",
+      "detail": "Non-indexed fields use the runtime details JSONB column. Keys inside it are the logical paths."
+    },
+    {
+      "code": "ID_COLUMN",
+      "path": "ConductChange.id",
+      "detail": "Primary key column name is the logical field id."
+    },
+    {
+      "code": "VERSION_IN_DETAILS",
+      "path": "ConductChange.version",
+      "detail": "Row version stays the logical field version inside details JSON. It is not the table schema version and it was not renamed."
+    },
+    {
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "domain30.enumerations",
+      "detail": "10 enum values stay on the domain draft. persistence40 does not copy them."
+    },
+    {
+      "code": "DETAILS_COLUMN",
+      "path": "ExecutionSummary.details",
+      "detail": "Non-indexed fields use the runtime details JSONB column. Keys inside it are the logical paths."
+    },
+    {
+      "code": "ID_COLUMN",
+      "path": "ExecutionSummary.id",
+      "detail": "Primary key column name is the logical field id."
+    },
+    {
+      "code": "VERSION_IN_DETAILS",
+      "path": "ExecutionSummary.version",
+      "detail": "Row version stays the logical field version inside details JSON. It is not the table schema version and it was not renamed."
+    },
+    {
+      "code": "PK_INDEX_OMITTED",
+      "path": "id",
+      "detail": "The primary key is not repeated as a secondary index."
+    },
+    {
+      "code": "PK_INDEX_OMITTED",
+      "path": "id",
+      "detail": "The primary key is not repeated as a secondary index."
+    },
+    {
+      "code": "PK_INDEX_OMITTED",
+      "path": "id",
+      "detail": "The primary key is not repeated as a secondary index."
+    },
+    {
+      "code": "PK_INDEX_OMITTED",
+      "path": "id",
+      "detail": "The primary key is not repeated as a secondary index."
+    },
+    {
+      "code": "PK_INDEX_OMITTED",
+      "path": "id",
+      "detail": "The primary key is not repeated as a secondary index."
+    },
+    {
+      "code": "PK_INDEX_OMITTED",
+      "path": "id",
+      "detail": "The primary key is not repeated as a secondary index."
+    },
+    {
+      "code": "OUT_OF_STEP",
+      "path": "l1/agents/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+      "detail": "persistence40 does not write seeds or the registry."
+    },
+    {
+      "code": "OUT_OF_STEP",
+      "path": "l1/agents/layer_1_external/adapters/persistence/seeds.defs.ts",
+      "detail": "persistence40 does not write seeds or the registry."
+    },
+    {
+      "code": "DETAILS_COLUMN",
+      "path": "PersonToolRestriction.details",
+      "detail": "Non-indexed fields use the runtime details JSONB column. Keys inside it are the logical paths."
+    },
+    {
+      "code": "ID_COLUMN",
+      "path": "PersonToolRestriction.id",
+      "detail": "Primary key column name is the logical field id."
+    },
+    {
+      "code": "VERSION_IN_DETAILS",
+      "path": "PersonToolRestriction.version",
+      "detail": "Row version stays the logical field version inside details JSON. It is not the table schema version and it was not renamed."
+    },
+    {
+      "code": "DETAILS_COLUMN",
+      "path": "Tool.details",
+      "detail": "Non-indexed fields use the runtime details JSONB column. Keys inside it are the logical paths."
+    },
+    {
+      "code": "ID_COLUMN",
+      "path": "Tool.id",
+      "detail": "Primary key column name is the logical field id."
+    },
+    {
+      "code": "VERSION_IN_DETAILS",
+      "path": "Tool.version",
+      "detail": "Row version stays the logical field version inside details JSON. It is not the table schema version and it was not renamed."
+    }
+  ],
+  "preserved": [
+    "l1/agents/layer_1_external/adapters/persistence/agentDraft.defs.ts",
+    "l1/agents/layer_1_external/adapters/persistence/agentDraftRepositoryAdapter.defs.ts",
+    "l1/agents/layer_1_external/adapters/persistence/agentTool.defs.ts",
+    "l1/agents/layer_1_external/adapters/persistence/agentToolRepositoryAdapter.defs.ts",
+    "l1/agents/layer_1_external/adapters/persistence/conductChange.defs.ts",
+    "l1/agents/layer_1_external/adapters/persistence/conductChangeRepositoryAdapter.defs.ts",
+    "l1/agents/layer_1_external/adapters/persistence/executionSummary.defs.ts",
+    "l1/agents/layer_1_external/adapters/persistence/executionSummaryRepositoryAdapter.defs.ts",
+    "l1/agents/layer_1_external/adapters/persistence/personToolRestriction.defs.ts",
+    "l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.defs.ts",
+    "l1/agents/layer_1_external/adapters/persistence/tool.defs.ts",
+    "l1/agents/layer_1_external/adapters/persistence/toolRepositoryAdapter.defs.ts",
+    "l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts",
+    "l1/agents/layer_2_application/ports/agentToolRepository.defs.ts",
+    "l1/agents/layer_2_application/ports/conductChangeRepository.defs.ts",
+    "l1/agents/layer_2_application/ports/executionSummaryRepository.defs.ts",
+    "l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts",
+    "l1/agents/layer_2_application/ports/toolRepository.defs.ts"
+  ],
+  "removed": [],
+  "emit": []
+}

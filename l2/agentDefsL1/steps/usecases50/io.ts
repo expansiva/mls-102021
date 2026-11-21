@@ -338,6 +338,7 @@ async function usecaseRequest(
     operation: usecase.operation,
     ...(usecase.operation === 'transition' ? { transitionRef: usecase.transitionRef || '' } : {}),
     ...(usecase.operation === 'update' && usecase.arrivalTransitions?.length ? { arrivalTransitions: [...usecase.arrivalTransitions] } : {}),
+    ...(usecase.operation === 'update' && usecase.arrivalTransitions?.length && usecase.stateFrom ? { stateFrom: usecase.stateFrom } : {}),
     ...(usecase.callInputs?.length ? { callInputs: usecase.callInputs.map(item => ({ ...item, from: { ...item.from } })) } : {}),
     routes: [...usecase.routes],
     defPath: snapshot.files.find(file => file.artifactType === 'usecase' && file.identity === usecase.usecaseId)?.defPath

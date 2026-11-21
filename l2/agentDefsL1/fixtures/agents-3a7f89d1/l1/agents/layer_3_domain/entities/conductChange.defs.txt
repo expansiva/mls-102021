@@ -1,0 +1,60 @@
+/// <mls fileReference="_102047_/l1/agents/layer_3_domain/entities/conductChange.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "ConductChange",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/agent.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+  ],
+  "data": {
+    "entityId": "ConductChange",
+    "storageTarget": "moduleDatabase",
+    "fields": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "derived": true
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "agentId",
+        "type": "record",
+        "ref": "Agent"
+      },
+      {
+        "name": "personId",
+        "type": "record",
+        "ref": "OrganizationUser"
+      },
+      {
+        "name": "changedAt",
+        "type": "timestamp",
+        "derived": true
+      },
+      {
+        "name": "summary",
+        "type": "string"
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [
+      "ownConductOnly",
+      "conductChangeRecorded",
+      "ownConductHistoryOnly"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

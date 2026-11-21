@@ -81,3 +81,25 @@ void test('d1_264: an arrival carries no version: an input that declares it, or 
   const own = `export interface UpdateAgentDraftInput {\n  id: string;\n  reason?: string;\n}\n${BY_TRANSITION.replace("const move =", 'const known = draft.version; const move =')}`;
   assert.deepEqual(arrivalTransitionProblems(own, ARRIVAL), []);
 });
+
+// d1_272: the message carries the state it names (`stateFrom`): the usecase chooses the transition by that field, writing every state as a literal.
+void test('d1_272: with stateFrom the file may choose the transition by the field, and never copies it', () => {
+  const withFrom = { ...ARRIVAL, stateFrom: 'status' };
+  const chosen = "const next = { ...draft, status: input.status === 'ready' ? 'ready' : 'refused' };";
+  assert.deepEqual(arrivalTransitionProblems(chosen, withFrom), []);
+  // Without the def saying so, the same read is refused as before.
+  assert.equal(arrivalTransitionProblems(chosen, ARRIVAL).some(item => item.startsWith('ARRIVAL_STATE_SET_DIRECTLY')), true);
+  // Copying the field, or choosing between one literal only, is refused even with stateFrom.
+  assert.equal(arrivalTransitionProblems('const next = { ...draft, status: input.status };', withFrom).some(item => item.startsWith('ARRIVAL_STATE_SET_DIRECTLY')), true);
+  assert.equal(arrivalTransitionProblems("const next = { ...draft, status: input.status === 'ready' ? 'ready' : 'preparing' };", withFrom).some(item => item.startsWith('ARRIVAL_STATE_SET_DIRECTLY')), true);
+  assert.equal(arrivalTransitionProblems("const next = { ...draft, status: input.status ? 'ready' : 'refused' };", withFrom).length, 0);
+});
+
+void test('d1_272: the usecase unit reads stateFrom from its def', async () => {
+  const { arrivalOf } = await import('/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js');
+  const unit = (data: Record<string, unknown>) => ({ definition: { artifactType: 'usecase', artifactId: 'updateAgentDraft', data } }) as never;
+  const domain = { definition: { artifactType: 'domainEntity', artifactId: 'agentDraft', data: { entityId: 'AgentDraft', fields: [{ name: 'status', type: 'enum' }] } } };
+  const listed = [{ transitionId: 'markReady', from: ['preparing'], to: 'ready', ruleRefs: [] }, { transitionId: 'markRefused', from: ['preparing'], to: 'refused', ruleRefs: [] }];
+  assert.equal(arrivalOf({ units: [domain] } as never, unit({ operation: 'update', entityId: 'AgentDraft', arrivalTransitions: listed, stateFrom: 'status' }))?.stateFrom, 'status');
+  assert.equal(arrivalOf({ units: [domain] } as never, unit({ operation: 'update', entityId: 'AgentDraft', arrivalTransitions: listed }))?.stateFrom, undefined);
+});

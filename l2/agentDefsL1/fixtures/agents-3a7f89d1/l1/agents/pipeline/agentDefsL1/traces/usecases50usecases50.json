@@ -1,0 +1,159 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agents",
+  "step": "usecases50",
+  "unitId": "usecases50",
+  "runId": "sha256:ed32d78f98febca140cd4d7d179c78cb8ce8027939acd2d7eedc5ee6adc7bee2",
+  "snapshotHash": "sha256:ed32d78f98febca140cd4d7d179c78cb8ce8027939acd2d7eedc5ee6adc7bee2",
+  "draftHash": "sha256:3ce7497e8ec9dc59c0df7cc770f68b7060ce8a3421ac0143efa2f3b66b79e1bf",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/createTool.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/getAgent.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/getAgentBehavior.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/getPersonalConduct.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/undoAgentChange.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateAgentDraft.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateTool.ts",
+    "l1/agents/layer_2_application/usecases/createExecutionSummary.ts",
+    "l1/agents/layer_2_application/usecases/createTool.ts",
+    "l1/agents/layer_2_application/usecases/getAgent.ts",
+    "l1/agents/layer_2_application/usecases/getAgentBehavior.ts",
+    "l1/agents/layer_2_application/usecases/getOrganizationUser.ts",
+    "l1/agents/layer_2_application/usecases/getPersonalConduct.ts",
+    "l1/agents/layer_2_application/usecases/undoAgentChange.ts",
+    "l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.ts",
+    "l1/agents/layer_2_application/usecases/updateAgentDraft.ts",
+    "l1/agents/layer_2_application/usecases/updateTool.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createExecutionSummary.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:c2f58f5752ad47ae200d6d0cb52cd574c307e99eecb50e9cfdcc89e92e7dd7ed",
+      "desiredHash": "sha256:c2f58f5752ad47ae200d6d0cb52cd574c307e99eecb50e9cfdcc89e92e7dd7ed",
+      "written": "sha256:c2f58f5752ad47ae200d6d0cb52cd574c307e99eecb50e9cfdcc89e92e7dd7ed",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/createExecutionSummary.ts",
+        "l1/agents/layer_2_application/usecases/createExecutionSummary.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/createTool.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:4baf0a79b8c8cc6cc14a56349673bfef1a06a39da0ee827e8a0418585b52511b",
+      "desiredHash": "sha256:4baf0a79b8c8cc6cc14a56349673bfef1a06a39da0ee827e8a0418585b52511b",
+      "written": "sha256:4baf0a79b8c8cc6cc14a56349673bfef1a06a39da0ee827e8a0418585b52511b",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/createTool.ts",
+        "l1/agents/layer_2_application/usecases/createTool.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getAgent.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:ff00501613c4e1372906f1cf3b4c6b9941de6dd250841f138afa61a57206ed63",
+      "desiredHash": "sha256:ff00501613c4e1372906f1cf3b4c6b9941de6dd250841f138afa61a57206ed63",
+      "written": "sha256:ff00501613c4e1372906f1cf3b4c6b9941de6dd250841f138afa61a57206ed63",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/getAgent.ts",
+        "l1/agents/layer_2_application/usecases/getAgent.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getAgentBehavior.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:bf4ef7a0c6bfad192172514f2f2c1b903412781c92d0bb59bdcdd9f1e76a64bd",
+      "desiredHash": "sha256:bf4ef7a0c6bfad192172514f2f2c1b903412781c92d0bb59bdcdd9f1e76a64bd",
+      "written": "sha256:bf4ef7a0c6bfad192172514f2f2c1b903412781c92d0bb59bdcdd9f1e76a64bd",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/getAgentBehavior.ts",
+        "l1/agents/layer_2_application/usecases/getAgentBehavior.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getOrganizationUser.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:d85c3a1330549af2c3edc44560451bb6140965e3a93ff481dd0d32a4769f3694",
+      "desiredHash": "sha256:d85c3a1330549af2c3edc44560451bb6140965e3a93ff481dd0d32a4769f3694",
+      "written": "sha256:d85c3a1330549af2c3edc44560451bb6140965e3a93ff481dd0d32a4769f3694",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.ts",
+        "l1/agents/layer_2_application/usecases/getOrganizationUser.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/getPersonalConduct.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:37d3b1c48e158be48fec9418e095f15a983e00c4a37dbc881b06a1d76683ae69",
+      "desiredHash": "sha256:37d3b1c48e158be48fec9418e095f15a983e00c4a37dbc881b06a1d76683ae69",
+      "written": "sha256:37d3b1c48e158be48fec9418e095f15a983e00c4a37dbc881b06a1d76683ae69",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/getPersonalConduct.ts",
+        "l1/agents/layer_2_application/usecases/getPersonalConduct.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/undoAgentChange.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:7d9eae545ed33c6f3f7aa2b613d6bc1bad5c176624f449b17b487a8a6b8ef73e",
+      "desiredHash": "sha256:7d9eae545ed33c6f3f7aa2b613d6bc1bad5c176624f449b17b487a8a6b8ef73e",
+      "written": "sha256:7d9eae545ed33c6f3f7aa2b613d6bc1bad5c176624f449b17b487a8a6b8ef73e",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/undoAgentChange.ts",
+        "l1/agents/layer_2_application/usecases/undoAgentChange.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:2e0e1c8c09eb795f255defdc22a1ee1391a05aae26d4297084f6413c9093aabb",
+      "desiredHash": "sha256:2e0e1c8c09eb795f255defdc22a1ee1391a05aae26d4297084f6413c9093aabb",
+      "written": "sha256:2e0e1c8c09eb795f255defdc22a1ee1391a05aae26d4297084f6413c9093aabb",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.ts",
+        "l1/agents/layer_2_application/usecases/updateAgentAgentBehavior.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateAgentDraft.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:1a83ee3792b1d2070d602799e94584408d9385a665944a53226f1b44f6c48fda",
+      "desiredHash": "sha256:1a83ee3792b1d2070d602799e94584408d9385a665944a53226f1b44f6c48fda",
+      "written": "sha256:1a83ee3792b1d2070d602799e94584408d9385a665944a53226f1b44f6c48fda",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/updateAgentDraft.ts",
+        "l1/agents/layer_2_application/usecases/updateAgentDraft.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agents/layer_2_application/usecases/updateTool.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:baa16e5086f948ba111d13912081e8f416a1f01371b6767d2338532f6b2c2cec",
+      "desiredHash": "sha256:baa16e5086f948ba111d13912081e8f416a1f01371b6767d2338532f6b2c2cec",
+      "written": "sha256:baa16e5086f948ba111d13912081e8f416a1f01371b6767d2338532f6b2c2cec",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/usecases/updateTool.ts",
+        "l1/agents/layer_2_application/usecases/updateTool.ts"
+      ]
+    }
+  ],
+  "issues": [],
+  "sourceKey": "sha256:9adad1a1c8768c70fae4615d14a0db5e9addb8502fe4a4c387aaa9dbb0d3b065"
+}

@@ -17,6 +17,8 @@ import { arrivalUpsertProblems, emptyCastProblems, emptyRequiredProblems, gatewa
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, infoOfRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { l4Process } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { routeReachableOperations, processStartEvent, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
 import { moduleSpecifier, workflowFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { routeChildWrites } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import { childRecordsOf } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
@@ -364,9 +366,7 @@ export function workflowRoutes(units: readonly M12Unit[], requestDef: Record<str
   if (!processes.length) return [];
   const usecaseOperation = new Map<string, string[]>();
   for (const unit of units.filter(item => item.definition.artifactType === 'usecase')) {
-    const entityId = String(unit.definition.data.entityId ?? '');
-    const ops = [String(unit.definition.data.operation ?? ''), String(unit.definition.data.transitionRef ?? '')].filter(Boolean).map(op => `${entityId}.${op}`);
-    usecaseOperation.set(unit.unitId, ops);
+    usecaseOperation.set(unit.unitId, usecaseOperationNames(unit.definition.data));
   }
   const out: M12WorkflowRoute[] = [];
   const requests = Array.isArray(requestDef.requests) ? requestDef.requests.filter(isRecord) : [];
@@ -374,14 +374,7 @@ export function workflowRoutes(units: readonly M12Unit[], requestDef: Record<str
     const route = String(request.route ?? '');
     for (const usecaseId of Array.isArray(request.uses) ? request.uses.map(String) : []) {
       for (const process of processes) {
-        // d1_264: a process the system starts (an event, a schedule) reaches an operation only by its own `task:` steps; a route of a page does not
-        // start it and does not call its function. Only a step of a journey (`journey:...`), or a trigger a person starts, puts the route in the process.
-        const system = isRecord(process.definition.data.trigger) && process.definition.data.trigger.kind !== 'manual';
-        const operations = Array.isArray(process.definition.data.operations)
-          ? process.definition.data.operations.filter(isRecord)
-            .filter(row => !system || !Array.isArray(row.steps) || row.steps.length === 0 || row.steps.some(step => !String(step).startsWith('task:')))
-            .map(row => String(row.operation ?? ''))
-          : [];
+        const operations = routeReachableOperations(process.definition.data);
         const operation = (usecaseOperation.get(usecaseId) ?? []).find(op => operations.includes(op));
         if (!operation) continue;
         const processId = String(process.definition.data.processId ?? process.unitId);
@@ -401,14 +394,33 @@ export function workflowRoutes(units: readonly M12Unit[], requestDef: Record<str
 export function eventWorkflowRoutes(units: readonly M12Unit[], serves: readonly { route: string; serves: string }[], project: number, moduleName: string): M12WorkflowRoute[] {
   const out: M12WorkflowRoute[] = [];
   for (const process of units.filter(unit => unit.definition.artifactType === 'workflowProcess')) {
-    const trigger = process.definition.data.trigger;
-    if (!isRecord(trigger) || trigger.kind !== 'event' || typeof trigger.event !== 'string' || !trigger.event) continue;
+    const event = processStartEvent(process.definition.data);
+    if (!event) continue;
     const processId = String(process.definition.data.processId ?? process.unitId);
-    for (const item of serves.filter(row => row.serves === trigger.event)) {
-      out.push({ route: item.route, processId, operation: `event ${trigger.event}`, specifier: moduleSpecifier(workflowFile(project, moduleName, processId)) });
+    for (const item of serves.filter(row => row.serves === event)) {
+      out.push({ route: item.route, processId, operation: `event ${event}`, specifier: moduleSpecifier(workflowFile(project, moduleName, processId)) });
     }
   }
   return out;
+}
+
+/**
+ * d1_272: what the l4 says each function of a process does (`functions[].description` of the l4 workflows source the process def cites). The service
+ * shows the signatures; the handler of a route calls "the function the l4 prose names for the step", and without that prose the model cannot tell them
+ * apart (the process has four functions, and a route that adjusts a tool is not the one that opens the review). '' when the l4 does not describe them.
+ */
+async function processFunctionNotes(ctx: M12Context, processId: string): Promise<string> {
+  const { project, module: moduleName } = ctx.run;
+  const processUnit = ctx.units.find(item => item.definition.artifactType === 'workflowProcess' && String(item.definition.data.processId ?? item.unitId) === processId);
+  const l4Ref = processUnit?.definition.dependencies.find(ref => ref.endsWith(`/l4/${moduleName}/workflows.defs.ts`)) ?? `_${project}_/l4/${moduleName}/workflows.defs.ts`;
+  const text = l4Process(await ctx.read(l4Ref), processId);
+  if (!text) return '';
+  let functions: unknown;
+  try { functions = (JSON.parse(text) as Record<string, unknown>).functions; } catch { return ''; }
+  const lines = (Array.isArray(functions) ? functions : []).filter(isRecord)
+    .filter(item => typeof item.functionId === 'string' && typeof item.description === 'string' && item.description)
+    .map(item => `- ${String(item.functionId)}: ${String(item.description)}`);
+  return lines.length ? ['What the l4 says each function does (choose the one that fits the step of the route):', ...lines].join('\n') : '';
 }
 
 /** A page whose routes reach a process and a file that never imports its workflow service. */
@@ -461,20 +473,49 @@ function typeBlocks(source: string): Map<string, string> {
   return blocks;
 }
 
-function citedTypes(source: string, roots: readonly string[]): string {
-  const blocks = typeBlocks(source);
+/** `import type { A, B as C } from '<specifier>'` of a catalog file: name → specifier (the name the file uses). */
+function importedTypeSpecifiers(source: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const match of source.matchAll(/^import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+['"]([^'"]+)['"]/gmu)) {
+    for (const item of match[1].split(',')) {
+      const name = item.trim().split(/\s+as\s+/u).pop()?.trim() ?? '';
+      if (/^[A-Za-z_$][\w$]*$/u.test(name)) out.set(name, match[2]);
+    }
+  }
+  return out;
+}
+
+/**
+ * The types the roots cite, followed through the catalog file and (d1_272) through the files it imports them from: `entry: AssistantCatalogItem` of
+ * a catalog type is declared in another file, with an index signature that makes every field the model reads from it `unknown`; without that
+ * declaration the model reads a field that is not there and the compiler refuses `unknown` where a string is declared.
+ */
+async function citedTypes(source: string, roots: readonly string[], read: (ref: string) => Promise<string | null>): Promise<string> {
+  const files = new Map<string, Map<string, string>>([['', typeBlocks(source)]]);
+  const imports = importedTypeSpecifiers(source);
   const seen = new Set<string>();
   const pending = [...roots];
   const parts: string[] = [];
+  const blockOf = async (name: string): Promise<string | undefined> => {
+    const own = files.get('')?.get(name);
+    if (own) return own;
+    const specifier = imports.get(name);
+    if (!specifier || !specifier.startsWith('/_')) return undefined;
+    if (!files.has(specifier)) {
+      const text = await read(specifier.replace(/\.js$/u, '.ts'));
+      files.set(specifier, text ? typeBlocks(text) : new Map());
+    }
+    return files.get(specifier)?.get(name);
+  };
   while (pending.length) {
     const name = pending.pop();
     if (!name || seen.has(name)) continue;
     seen.add(name);
-    const block = blocks.get(name);
+    const block = await blockOf(name);
     if (!block) continue;
     parts.push(block);
     for (const match of block.matchAll(/\b[A-Z][A-Za-z0-9_]*\b/gu)) {
-      if (blocks.has(match[0]) && !seen.has(match[0])) pending.push(match[0]);
+      if (!seen.has(match[0]) && await blockOf(match[0])) pending.push(match[0]);
     }
   }
   return parts.join('\n\n');
@@ -564,7 +605,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
       description,
       flags.join('; '),
       'The input and output types, and the types of this catalog file they cite:',
-      fence('ts', citedTypes(source, [operation.inputType, operation.outputType])),
+      fence('ts', await citedTypes(source, [operation.inputType, operation.outputType], ctx.read)),
     ].filter(Boolean).join('\n'));
   }
   const contractsInterface = requestsTypeOfServe(typed);
@@ -634,6 +675,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
       `Import from \`${specifier}\`. The route does not call a usecase for this message: it checks the catalog input as above, builds the input of the entry function of the process (the one that opens the occurrence, chosen by its signature and by the l4 prose) from the message, calls it with \`ctx\`, and returns the catalog output. The function owns the occurrence and the writes; the route does not repeat them.`,
       generated ? fence('ts', exportSignatures(generated)) : '(the workflow service was not generated: the phase before this one failed for it)',
       ...(generated ? [await resolvedInputSection(ctx, generated)].filter(Boolean) : []),
+      ...[await processFunctionNotes(ctx, items[0].processId)].filter(Boolean),
     ].join('\n')));
   }
   // d1_232: a route of an arrival that creates and updates an entity looks the record up by its key (a route a process owns leaves it to the process).
@@ -892,6 +934,7 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
       `Import from \`${specifier}\`. The handler of each route above calls the function of the process that the l4 prose names for that step (open the occurrence, advance it, reassign who acts): the function reuses the usecase, keeps the Task of the occurrence and decides; this service does not open a Task or call the usecase of that operation on its own. Pass \`ctx\` (or \`bound\` inside a command).`,
       generated ? fence('ts', exportSignatures(generated)) : '(the workflow service was not generated: the phase before this one failed for it)',
       ...(generated ? [await resolvedInputSection(ctx, generated)].filter(Boolean) : []),
+      ...[await processFunctionNotes(ctx, items[0].processId)].filter(Boolean),
     ].join('\n')));
   }
   // The children a route writes with its parent and no usecase writes (the checklist items of a task): through the

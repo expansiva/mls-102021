@@ -1,0 +1,26 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/updatePersonalConduct.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "updatePersonalConduct",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/ports/conductChangeRepository.defs.ts",
+    "_102047_/l1/agents/layer_3_domain/entities/personalConduct.defs.ts",
+    "_102047_/l4/agents/rules.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "updatePersonalConduct",
+    "entityId": "PersonalConduct",
+    "operation": "update",
+    "rulesApplied": [
+      "conductOnlyForAgentActingOnBehalf",
+      "ownConductOnly"
+    ],
+    "effects": []
+  }
+} as const;
+
+export default definition;

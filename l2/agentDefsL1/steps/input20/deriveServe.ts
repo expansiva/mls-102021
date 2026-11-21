@@ -157,6 +157,7 @@ function oneServe(input: DeriveServeInput, line: D1ServeLine): D1SelectedRequest
   const declared = input.declaredSystems?.[connectionId];
   let kind: 'cmd' | 'qry' | '';
   let params: D1RequestParam[];
+  let operationInputType = '';
   if (!source && declared) {
     const declaredOperation = declared.find(item => item.operationId === operationId);
     if (!declaredOperation) {
@@ -190,6 +191,7 @@ function oneServe(input: DeriveServeInput, line: D1ServeLine): D1SelectedRequest
       return null;
     }
     params = topParams(source, operation.inputType);
+    operationInputType = operation.inputType;
   }
   // d1_232: what the line does to each entity comes from the one reader of the NS5 (the new `entityEffects`, or the old line translated).
   const entries = ns5ArrivalEffects(line, 'serve').filter(entry => entry.entityId);
@@ -223,7 +225,7 @@ function oneServe(input: DeriveServeInput, line: D1ServeLine): D1SelectedRequest
         refusalOf: usecaseId => usecaseRefusal(entry.entityId, operationName, usecaseId, input.entities, input.plannedIds, input.removedIds),
       });
     }
-    if (!owned && entry.effects.includes('update')) linkArrivalTransitions(input.usecases, kept, entry.entityId, input.entities[entry.entityId]);
+    if (!owned && entry.effects.includes('update')) linkArrivalTransitions(input.usecases, kept, entry.entityId, input.entities[entry.entityId], stateFieldOf(source, operationInputType));
     if (upsert) {
       const key = upsertKeyOf(input.entities[entry.entityId]);
       if (key) upserts.push({ entityId: entry.entityId, ...key });
@@ -255,14 +257,47 @@ export function processTransitionsOf(entity: unknown): string[] {
     .sort();
 }
 
-/** The `update` usecase a serve calls on an entity with a lifecycle carries that entity's process transitions. */
-function linkArrivalTransitions(usecases: D1SelectedUsecase[], uses: readonly string[], entityId: string, entity: unknown): void {
+/**
+ * The `update` usecase a serve calls on an entity with a lifecycle carries that entity's process transitions, and (d1_272) the field of the message that
+ * names the state when there is one: `stateOf(states)` finds, in the catalog input, the field whose values are exactly the states the transitions lead to.
+ */
+function linkArrivalTransitions(usecases: D1SelectedUsecase[], uses: readonly string[], entityId: string, entity: unknown, stateOf: (states: readonly string[]) => string): void {
   const transitions = processTransitionsOf(entity);
   if (transitions.length === 0) return;
+  const leads = new Map(isRecord(entity) && Array.isArray(entity.transitions)
+    ? entity.transitions.filter(isRecord).map(item => [String(item.transitionId), String(item.to)] as const)
+    : []);
   for (const usecase of usecases) {
     if (usecase.entity !== entityId || usecase.operation !== 'update' || !uses.includes(usecase.usecaseId)) continue;
     usecase.arrivalTransitions = [...new Set([...(usecase.arrivalTransitions ?? []), ...transitions])].sort();
+    const field = stateOf([...new Set(usecase.arrivalTransitions.map(id => leads.get(id) ?? ''))]);
+    if (field) usecase.stateFrom = field;
   }
+}
+
+/**
+ * d1_272: the member of the catalog input interface whose type is a union of string literals equal to `states`. A message that carries the state it moves
+ * the record to (`status: 'ready' | 'refused'`) lets the usecase choose the transition by it; no member with exactly those values, no field (the
+ * gate of the materializer then asks for the literal by the transition alone, and the case is a finding for the L4).
+ */
+export function stateFieldOf(source: string | undefined, inputType: string): (states: readonly string[]) => string {
+  return states => {
+    if (!source || !inputType || states.length === 0 || states.some(state => !state)) return '';
+    const raw = interfaceBody(source, inputType);
+    if (raw === null) return '';
+    let body = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    for (let previous = ''; previous !== body;) {
+      previous = body;
+      body = body.replace(/\{[^{}]*\}/g, '');
+    }
+    const wanted = [...states].sort().join('|');
+    const found: string[] = [];
+    for (const match of body.matchAll(/(?:^|[;,\n])\s*(?:readonly\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\??\s*:\s*((?:'[^']*'|"[^"]*")(?:\s*\|\s*(?:'[^']*'|"[^"]*"))*)\s*(?=[;,\n]|$)/gu)) {
+      const values = [...match[2].matchAll(/['"]([^'"]*)['"]/gu)].map(item => item[1]).sort();
+      if ([...new Set(values)].join('|') === wanted) found.push(match[1]);
+    }
+    return found.length === 1 ? found[0] : '';
+  };
 }
 
 export function usecaseRefusal(

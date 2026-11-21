@@ -347,3 +347,45 @@ test('d1_237: the page workflow section resolves the process function input, inc
     (globalThis as { mls: unknown }).mls = previous;
   }
 });
+
+// d1_272: the section of a process the page reaches says what the l4 says each function does, so the handler of a route can choose the one that fits.
+void test('d1_272: the page workflow section lists the l4 description of each function of the process', async () => {
+  const previous = globalThis.mls;
+  const contractInfo: M12FileInfo = { project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: PAGE, extension: '.defs.ts' };
+  const usecase = unit('usecase', 'updateAgentTool', { entityId: 'AgentTool', operation: 'update' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/updateAgentTool.ts`);
+  const process = unit('workflowProcess', 'virtualEmployeeCreation', {
+    processId: 'virtualEmployeeCreation',
+    trigger: { kind: 'manual', actorRef: 'companyAdmin' },
+    operations: [{ operation: 'AgentTool.update', steps: ['journey:reviewAndActivateDraft/adjustDraftTools'] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/virtualEmployeeCreation.ts`);
+  process.definition.dependencies = [`_${PROJECT}_/l4/${MODULE}/workflows.defs.ts`];
+  const request = unit('requestService', PAGE, {
+    pageId: PAGE,
+    requests: [{ route: `${MODULE}.${PAGE}.adjust`, uses: ['updateAgentTool'], output: [] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/requests/${PAGE}.ts`);
+  const workflowInfo: M12FileInfo = { project: PROJECT, level: 1, folder: `${MODULE}/layer_2_application/workflows`, shortName: 'virtualEmployeeCreation', extension: '.ts' };
+  const workflow = [
+    'export interface OpenInput { id: string }',
+    'export interface DecideInput { id: string }',
+    'export async function resolveDraftReviewer(input: OpenInput, ctx: RequestContext): Promise<void> {}',
+    'export async function completeDraftReview(input: DecideInput, ctx: RequestContext): Promise<void> {}',
+  ].join('\n');
+  const l4 = `export const flows = ${JSON.stringify({ processes: [{ processId: 'virtualEmployeeCreation', functions: [
+    { functionId: 'resolveDraftReviewer', description: 'Called when the review stage opens; writes nothing.' },
+    { functionId: 'completeDraftReview', description: 'Activates or discards the ready draft.' },
+  ] }] })} as const;\n`;
+  (globalThis as { mls: unknown }).mls = {
+    actualProject: PROJECT,
+    stor: { files: { [keyOf(contractInfo)]: file(contractInfo, CONTRACT), [keyOf(workflowInfo)]: file(workflowInfo, workflow) }, getKeyToFile: keyOf },
+  };
+  try {
+    const read = async (ref: string) => (ref === `_${PROJECT}_/l4/${MODULE}/workflows.defs.ts` ? l4 : null);
+    const human = (await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [request, usecase, process], read } as never, request)).human;
+    const section = human.slice(human.indexOf('## Workflow service of process virtualEmployeeCreation'));
+    assert.match(section, /What the l4 says each function does/u);
+    assert.match(section, /- resolveDraftReviewer: Called when the review stage opens; writes nothing\./u);
+    assert.match(section, /- completeDraftReview: Activates or discards the ready draft\./u);
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});

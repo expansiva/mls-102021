@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agents",
+  "step": "persistence40",
+  "unitId": "persistence40",
+  "runId": "sha256:f5bcd459867f93ec8a9c911f0b3b0384a37607ce7b2a91fea359c88385d71b40",
+  "snapshotHash": "sha256:f5bcd459867f93ec8a9c911f0b3b0384a37607ce7b2a91fea359c88385d71b40",
+  "draftHash": "sha256:d04c272b80d6076500a62ba5bfa446d05a6a62d82bbfd2de0f22e2f3dfa31064",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agents/layer_2_application/ports/conductChangeRepository.ts",
+    "l1/agents/layer_2_application/ports/conductChangeRepository.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agents/layer_2_application/ports/conductChangeRepository.defs.ts",
+      "action": "write",
+      "previousHash": "sha256:43a057131a2a269a620ed64bf76eba0109370b53b51f10adc8d5e19e4378bf2b",
+      "desiredHash": "sha256:e8f31590c2826de94b3f1b86af1bf6f9d9653fccb9f154e7fbf383dda334f219",
+      "written": "sha256:e8f31590c2826de94b3f1b86af1bf6f9d9653fccb9f154e7fbf383dda334f219",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agents/layer_2_application/ports/conductChangeRepository.ts",
+        "l1/agents/layer_2_application/ports/conductChangeRepository.ts"
+      ]
+    }
+  ],
+  "issues": [],
+  "sourceKey": "sha256:9adad1a1c8768c70fae4615d14a0db5e9addb8502fe4a4c387aaa9dbb0d3b065"
+}

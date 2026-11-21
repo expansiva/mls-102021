@@ -1,0 +1,49 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/ports/agentDraftRepository.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryPort",
+  "artifactId": "AgentDraftRepository",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts"
+  ],
+  "data": {
+    "entityId": "AgentDraft",
+    "interfaceName": "AgentDraftRepository",
+    "methods": [
+      {
+        "name": "create",
+        "params": [
+          "AgentDraft"
+        ],
+        "returns": "AgentDraft"
+      },
+      {
+        "name": "list",
+        "params": [
+          "AgentDraftFilter"
+        ],
+        "returns": "AgentDraft[]"
+      },
+      {
+        "name": "update",
+        "params": [
+          "AgentDraft"
+        ],
+        "returns": "AgentDraft"
+      },
+      {
+        "name": "transition",
+        "params": [
+          "AgentDraft",
+          "transitionId"
+        ],
+        "returns": "AgentDraft"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

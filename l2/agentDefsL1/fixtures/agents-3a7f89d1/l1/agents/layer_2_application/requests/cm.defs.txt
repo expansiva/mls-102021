@@ -1,0 +1,138 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/cm.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "cm",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/usecases/createAgentTool.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listAgentTool.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listPersonToolRestriction.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/listTool.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateAgentDraft.defs.ts"
+  ],
+  "data": {
+    "pageId": "cm",
+    "requests": [
+      {
+        "route": "agents.cm.agentDraftReady",
+        "kind": "cmd",
+        "uses": [
+          "updateAgentDraft",
+          "createAgentTool"
+        ],
+        "transaction": "single",
+        "output": [],
+        "params": [
+          {
+            "name": "draftId",
+            "target": ""
+          },
+          {
+            "name": "status",
+            "target": ""
+          },
+          {
+            "name": "refusedReason",
+            "target": "",
+            "optional": true
+          },
+          {
+            "name": "suggestedTools",
+            "target": "",
+            "optional": true
+          }
+        ],
+        "rules": [],
+        "serves": "cm.agentDraftReady"
+      },
+      {
+        "route": "agents.cm.describe",
+        "kind": "qry",
+        "uses": [
+          "listAgentTool",
+          "listPersonToolRestriction",
+          "listTool"
+        ],
+        "transaction": "none",
+        "output": [],
+        "params": [
+          {
+            "name": "agentId",
+            "target": ""
+          },
+          {
+            "name": "knownVersion",
+            "target": "",
+            "optional": true
+          },
+          {
+            "name": "authorities",
+            "target": ""
+          },
+          {
+            "name": "snapshotAt",
+            "target": ""
+          }
+        ],
+        "rules": [],
+        "serves": "cm.describe"
+      },
+      {
+        "route": "agents.cm.record",
+        "kind": "cmd",
+        "uses": [],
+        "transaction": "single",
+        "output": [],
+        "params": [
+          {
+            "name": "executionId",
+            "target": ""
+          },
+          {
+            "name": "agentId",
+            "target": ""
+          },
+          {
+            "name": "mode",
+            "target": ""
+          },
+          {
+            "name": "startedAt",
+            "target": ""
+          },
+          {
+            "name": "durationMs",
+            "target": ""
+          },
+          {
+            "name": "costUsd",
+            "target": ""
+          },
+          {
+            "name": "actions",
+            "target": ""
+          },
+          {
+            "name": "usedMainModel",
+            "target": ""
+          },
+          {
+            "name": "handedOff",
+            "target": ""
+          },
+          {
+            "name": "refs",
+            "target": ""
+          }
+        ],
+        "rules": [],
+        "serves": "cm.record"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

@@ -1,0 +1,34 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/ports/conductChangeRepository.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryPort",
+  "artifactId": "ConductChangeRepository",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/conductChange.defs.ts"
+  ],
+  "data": {
+    "entityId": "ConductChange",
+    "interfaceName": "ConductChangeRepository",
+    "methods": [
+      {
+        "name": "create",
+        "params": [
+          "ConductChange"
+        ],
+        "returns": "ConductChange"
+      },
+      {
+        "name": "list",
+        "params": [
+          "ConductChangeFilter"
+        ],
+        "returns": "ConductChange[]"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

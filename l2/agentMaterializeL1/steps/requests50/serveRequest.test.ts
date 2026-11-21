@@ -12,6 +12,8 @@ import { loadRequestContext, normalizeRequestsTyping, requestGate, serveUsecaseP
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
 const CATALOG = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/connections/cm.ts'), 'utf8');
 const CATALOG_REF = '/_102034_/l2/shared/contracts/connections/cm.ts';
+const TYPES = readFileSync(path.join(ROOT, 'mls-102034/l2/shared/contracts/connections/types.ts'), 'utf8');
+const TYPES_REF = '/_102034_/l2/shared/contracts/connections/types.ts';
 const PROJECT = 102099;
 const MODULE = 'agents';
 
@@ -484,4 +486,21 @@ void test('d1_230: the describe route derived from the L4 line lists both usecas
   // A call of the other usecase in another route of the same file does not count for this route.
   const elsewhere = today.replace("return { version, toolsMode: 'all', allowed };", "return { version, toolsMode: 'all', allowed };").replace("const out: CmRecordOutput = { status: 'recorded' };", "await listPersonToolRestriction({}, ctx);\n      const out: CmRecordOutput = { status: 'recorded' };");
   assert.equal(serveUsecaseProblems(elsewhere, uses).length, 1);
+});
+
+// d1_272: the types a catalog type cites come from the file it imports them from too. `CmTool.entry` is an `AssistantCatalogItem` of `types.ts`, whose index
+// signature makes `entry.purpose` an `unknown`: without that declaration the model reads a field that is not there and the compiler refuses it.
+void test('d1_272: the connection catalog section quotes a cited type that the catalog imports from another file', async () => {
+  const describe = unit('requestService', 'cm', {
+    pageId: 'cm',
+    requests: [{ route: `${MODULE}.cm.describe`, serves: 'cm.describe', entityRefs: [], effect: 'read', writes: '' }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/cm.ts`);
+  const files = new Map<string, string>([[CATALOG_REF, CATALOG], [TYPES_REF, TYPES]]);
+  const read = async (ref: string) => files.get(ref.startsWith('/') ? ref : `/${ref}`) ?? null;
+  const loaded = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [describe], read } as never, describe);
+  assert.match(loaded.human, /export interface CmTool \{/u);
+  assert.match(loaded.human, /export interface AssistantCatalogItem \{/u);
+  assert.match(loaded.human, /\[field: string\]: unknown;/u);
+  const without = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [describe], read: async (ref: string) => (ref.replace(/^\//u, '') === CATALOG_REF.slice(1) ? CATALOG : null) } as never, describe);
+  assert.doesNotMatch(without.human, /export interface AssistantCatalogItem/u);
 });

@@ -1,0 +1,32 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/agentDraft.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "table",
+  "artifactId": "agentDraft",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/agentDraft.defs.ts"
+  ],
+  "data": {
+    "tableId": "agentDraft",
+    "entityId": "AgentDraft",
+    "physicalName": "agents_agentdraft",
+    "primaryKey": [
+      "id"
+    ],
+    "uniqueKeys": [],
+    "indexes": [
+      {
+        "name": "agents_agentdraft_status",
+        "columns": [
+          "status"
+        ],
+        "unique": false
+      }
+    ]
+  }
+} as const;
+
+export default definition;

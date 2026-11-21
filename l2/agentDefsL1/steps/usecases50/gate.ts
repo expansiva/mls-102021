@@ -129,6 +129,8 @@ function planUsecase(
     effects: effects.map(eventId => ({ eventId, path: integrationPath, symbol: eventId })),
     ...(transitionRef ? { transitionRef } : {}),
     ...(arrival.transitions.length ? { arrivalTransitions: arrival.transitions } : {}),
+    // d1_272: the field of the message that names the state: the materializer tells the usecase to choose the transition by it.
+    ...(arrival.transitions.length && usecase.stateFrom ? { stateFrom: usecase.stateFrom } : {}),
     ...(usecase.callInputs?.length ? { calls: callsOf(usecase.callInputs) } : {}),
     ...(mdm ? { mdm: storedMdm(mdm) } : {}),
     ...(derivedRead ? { derivedRead } : {}),

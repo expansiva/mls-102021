@@ -45,3 +45,15 @@ void test('d1_264: nothing changed, nothing is listed', async () => {
   const { targets } = await stateWith([]);
   assert.deepEqual(targets, []);
 });
+
+// d1_272: a request calls the function of a process without citing the workflow def in `dependencies`. The route reaches it by the usecase it uses
+// (`AgentTool.update` is an operation of the process, by a step of a journey): the request is listed when the workflow def changed, and so is the
+// controller that reads the request. A request whose routes use no operation of the process is not.
+void test('d1_272: a request whose route reaches a process is listed when the workflow def changed; one that does not reach it is not', async () => {
+  const { targets } = await stateWith([WORKFLOW]);
+  assert.ok(targets);
+  assert.ok(targets.includes(targetOf(WORKFLOW)), 'the changed workflow');
+  assert.ok(targets.includes(targetOf('l1/agents/layer_2_application/requests/agent_tools.defs.ts')), 'agent_tools: toggleToolChoice uses updateAgentTool, an operation of the process');
+  assert.ok(targets.includes(targetOf('l1/agents/layer_1_external/adapters/http/controllers/agent_tools.defs.ts')), 'the controller reads the request');
+  assert.equal(targets.includes(targetOf('l1/agents/layer_2_application/requests/agent_overview.defs.ts')), false, 'agent_overview reaches no process');
+});

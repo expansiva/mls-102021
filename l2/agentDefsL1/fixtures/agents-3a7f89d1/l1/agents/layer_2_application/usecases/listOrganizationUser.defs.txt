@@ -1,0 +1,78 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/listOrganizationUser.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "listOrganizationUser",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_3_domain/entities/organizationUser.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "listOrganizationUser",
+    "entityId": "OrganizationUser",
+    "operation": "list",
+    "rulesApplied": [],
+    "effects": [],
+    "mdm": {
+      "namespace": "agents",
+      "role": "agents.OrganizationUser",
+      "atomic": true,
+      "calls": [
+        {
+          "id": "listUsers",
+          "method": "listUsers",
+          "target": "identity",
+          "shape": "collection",
+          "capabilities": [
+            "locate.users"
+          ],
+          "alternative": false,
+          "when": [
+            {
+              "kind": "contract",
+              "path": "details.identification.name",
+              "present": true
+            }
+          ],
+          "arguments": [
+            {
+              "name": "name",
+              "role": "selector",
+              "origin": {
+                "kind": "contract",
+                "path": "details.identification.name"
+              },
+              "path": "details.identification.name"
+            },
+            {
+              "name": "pageSize",
+              "role": "parameter",
+              "origin": {
+                "kind": "contract",
+                "path": "pageSize"
+              },
+              "path": "pageSize"
+            },
+            {
+              "name": "cursor",
+              "role": "parameter",
+              "origin": {
+                "kind": "contract",
+                "path": "cursor"
+              },
+              "path": "cursor"
+            }
+          ],
+          "result": [
+            "items",
+            "nextCursor"
+          ]
+        }
+      ]
+    }
+  }
+} as const;
+
+export default definition;

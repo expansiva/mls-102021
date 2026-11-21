@@ -129,6 +129,8 @@ export interface D1UsecaseSelection {
   transitionRef?: string;
   /** L4 `transitionId`s (`by: []`) a `serve` arrival applies through this `update` (d1_259 s1c). Absent otherwise. */
   arrivalTransitions?: string[];
+  /** d1_272: the field of the message that names the state the arrival moves the record to (see the input20 contract). Absent otherwise. */
+  stateFrom?: string;
   /** The sources chosen for the required fields of its call that no field names (d1_269). */
   callInputs?: D1CallInput[];
   routes: string[];

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { exampleCatalog } from '/_102034_/testing/connections/connectionFixtures.js';
 import type { D1InputProblem, D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { deriveServeRequests, processTriggerServes, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
+import { deriveServeRequests, processTriggerServes, stateFieldOf, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const catalogPath = path.resolve(here, '../../../../../mls-102034/l2/shared/contracts/connections/cm.ts');
@@ -385,4 +385,18 @@ void test('d1_259 s1c: a planned update usecase keeps its id and gets the transi
   const usecases = runOn({ AgentDraft: DRAFT }, [{ connectionId: 'cm', operationId: 'agentDraftReady', entityRefs: ['AgentDraft'], effect: 'update' }], [planned]);
   assert.equal(usecases.length, 1);
   assert.deepEqual(usecases[0].arrivalTransitions, ['markReady', 'markRefused']);
+});
+
+// d1_272: the notice carries `status: 'ready' | 'refused'`, which are the states the process transitions lead to: the update usecase gets that field as `stateFrom`.
+void test('d1_272: the field of the message whose values are the states the arrival leads to is the stateFrom of the update usecase', () => {
+  const usecases = runOn({ AgentDraft: DRAFT }, [{ connectionId: 'cm', operationId: 'agentDraftReady', entityRefs: ['AgentDraft'], effect: 'update' }]);
+  assert.equal(usecases.find(item => item.operation === 'update')?.stateFrom, 'status');
+  // An entity whose process moves lead to other states than the message names: no field, the gate keeps asking for the literal by the transition.
+  const wider = { ...DRAFT, transitions: [...DRAFT.transitions, { transitionId: 'expire', from: ['preparing'], to: 'expired', by: [], ruleRefs: [] }] };
+  assert.equal(runOn({ AgentDraft: wider }, [{ connectionId: 'cm', operationId: 'agentDraftReady', entityRefs: ['AgentDraft'], effect: 'update' }]).find(item => item.operation === 'update')?.stateFrom, undefined);
+  // A message with no such field (a serve that creates, or one whose input has no union of those values) gives none.
+  assert.equal(stateFieldOf(catalogText, 'CmRecordInput')(['ready', 'refused']), '');
+  assert.equal(stateFieldOf(catalogText, 'CmAgentDraftReadyInput')(['ready', 'refused']), 'status');
+  assert.equal(stateFieldOf(catalogText, 'CmAgentDraftReadyInput')(['ready']), '');
+  assert.equal(stateFieldOf(undefined, 'CmAgentDraftReadyInput')(['ready', 'refused']), '');
 });

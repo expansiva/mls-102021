@@ -613,6 +613,8 @@ export const D1_FIELD_READERS = {
   'usecase.arrivalTransitions.from': 'usecaseIssues',
   'usecase.arrivalTransitions.to': 'usecaseIssues',
   'usecase.arrivalTransitions.ruleRefs': 'usecaseIssues',
+  // d1_272: the field of the message that chooses the transition; read by usecaseIssues (the shape) and by the usecase unit of the materializer (arrivalOf).
+  'usecase.stateFrom': 'usecaseIssues',
   'usecase.calls': 'usecaseIssues',
   'usecase.calls.call': 'usecaseIssues',
   'usecase.calls.input': 'usecaseIssues',

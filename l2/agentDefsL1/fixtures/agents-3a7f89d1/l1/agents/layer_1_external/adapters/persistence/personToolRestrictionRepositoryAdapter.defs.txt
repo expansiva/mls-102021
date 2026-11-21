@@ -1,0 +1,54 @@
+/// <mls fileReference="_102047_/l1/agents/layer_1_external/adapters/persistence/personToolRestrictionRepositoryAdapter.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "repositoryAdapter",
+  "artifactId": "PersonToolRestrictionRepository",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_1_external/adapters/persistence/personToolRestriction.defs.ts",
+    "_102047_/l1/agents/layer_2_application/ports/personToolRestrictionRepository.defs.ts"
+  ],
+  "data": {
+    "entityId": "PersonToolRestriction",
+    "portId": "PersonToolRestrictionRepository",
+    "tableId": "personToolRestriction",
+    "columns": [
+      {
+        "field": "id",
+        "column": "id"
+      },
+      {
+        "field": "version",
+        "column": "json:version"
+      },
+      {
+        "field": "personId",
+        "column": "personId"
+      },
+      {
+        "field": "toolId",
+        "column": "toolId"
+      },
+      {
+        "field": "details.markedAt",
+        "column": "json:details.markedAt"
+      },
+      {
+        "field": "details.toolName",
+        "column": "json:details.toolName"
+      },
+      {
+        "field": "details.toolPath",
+        "column": "json:details.toolPath"
+      },
+      {
+        "field": "details.toolRemoved",
+        "column": "json:details.toolRemoved"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

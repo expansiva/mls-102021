@@ -539,7 +539,8 @@ void test('d1_255 (on 30f16c8e): the result the manager reads at the end of the 
   assert.equal(result.materializeTargets?.length, result.rederiveChanged);
   // The fixture and the rules are fixed: the exact targets the manager has to materialize. d1_264: next to the 28 defs whose bytes changed come the 17 that
   // read one of them through `dependencies` (the controllers of the requests, the usecases of the entity AgentDraft, and the workflow virtualEmployeeCreation, which
-  // reads draft.situation and was left stale before).
+  // reads draft.situation and was left stale before). d1_272: and the request agent_tools, which calls resolveDraftReviewer of that workflow without citing it in
+  // `dependencies` (the route reaches the process by the usecase it uses): the 17 readers become 18.
   assert.deepEqual(result.materializeTargets, [
     'layer_1_external/adapters/http/controllers/agent_activity',
     'layer_1_external/adapters/http/controllers/agent_behavior',
@@ -567,6 +568,7 @@ void test('d1_255 (on 30f16c8e): the result the manager reads at the end of the 
     'layer_2_application/requests/agent_behavior',
     'layer_2_application/requests/agent_configuration',
     'layer_2_application/requests/agent_overview',
+    'layer_2_application/requests/agent_tools',
     'layer_2_application/requests/agents',
     'layer_2_application/requests/cm',
     'layer_2_application/requests/draft_review',
@@ -641,3 +643,22 @@ void test('d1_267 (on 7c4030ec): the preserved ConductChange port gets the creat
   assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
   assert.deepEqual(errorsOf(host), []);
 });
+
+// d1_272, on the copy of 102047@3a7f89d1 (L2 committed, L1 of 74f17ca3): the targets of the manager list the request that calls the function of a regenerated
+// workflow, and the def of the arrival says which field of the cm notice names the state.
+void test('d1_272 (on 3a7f89d1): agent_tools is listed with the workflow it calls, and updateAgentDraft carries stateFrom', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'agents-3a7f89d1', PROJECT);
+  await replanPool(host).catch(() => undefined);
+  await answerNewGaps().catch(() => undefined);
+  const out = await rederiveRun(host, 'usecases50');
+  assert.deepEqual(out.filter(item => item.status === 'failed').map(item => `${item.stepId}: ${item.trace.slice(0, 200)}`), []);
+  const done = out.find(item => item.stepId === 'result:finalize80-done');
+  const result = JSON.parse(done?.trace ?? '{}') as { materializeTargets?: string[] };
+  const targets = result.materializeTargets ?? [];
+  assert.ok(targets.some(target => target.includes('/layer_2_application/requests/agent_tools.defs.ts')), 'agent_tools calls resolveDraftReviewer of virtualEmployeeCreation');
+  assert.ok(targets.some(target => target.includes('/layer_2_application/workflows/virtualEmployeeCreation.defs.ts')));
+  const file = Object.values(host.files).find(item => item.level === 1 && item.shortName === 'updateAgentDraft' && item.extension === '.defs.ts');
+  assert.match(typeof file?.content === 'string' ? file.content : '', /"stateFrom": "status"/u);
+});
+

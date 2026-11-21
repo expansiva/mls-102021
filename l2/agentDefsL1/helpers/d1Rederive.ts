@@ -10,6 +10,7 @@ import { D1_FLOW_STEP_IDS, type D1FileInfo, type D1StepId } from '/_102021_/l2/a
 import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, removeOwned, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { processStartEvent, routeReachableOperations, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
 import { parseDefinitionSource, readDefinition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 
@@ -112,6 +113,7 @@ async function readersOfChanged(project: number, candidates: readonly string[], 
   if (!changed.length) return [];
   const prefix = `_${project}_/`;
   const reads = new Map<string, string[]>();
+  const parsedDefs = new Map<string, { artifactType: string; artifactId: string; data: Record<string, unknown> }>();
   for (const defPath of candidates) {
     const info = artifactFile(project, qualifyDefPath(project, defPath));
     const text = info ? await readText(info) : null;
@@ -120,6 +122,27 @@ async function readersOfChanged(project: number, candidates: readonly string[], 
     const definition = 'definition' in parsed ? readDefinition(parsed.definition) : null;
     if (!definition || 'issues' in definition) continue;
     reads.set(defPath, definition.dependencies.filter(ref => ref.startsWith(prefix)).map(ref => ref.slice(prefix.length)));
+    parsedDefs.set(defPath, { artifactType: definition.artifactType, artifactId: definition.artifactId, data: definition.data });
+  }
+  // d1_272: a request calls the function of a process without citing it in `dependencies` (the plan of the processes is born after the requests): the
+  // process is read through the route, by the one rule the materializer uses to make the handler call it (usecase `Entity.operation` in the process
+  // operations, or the message a route serves is the event that starts it).
+  const processes = [...parsedDefs].filter(([, def]) => def.artifactType === 'workflowProcess');
+  for (const [defPath, def] of parsedDefs) {
+    if (def.artifactType !== 'requestService' || !processes.length) continue;
+    const rows = Array.isArray(def.data.requests) ? def.data.requests.filter((row): row is Record<string, unknown> => row !== null && typeof row === 'object') : [];
+    const operations = new Set<string>();
+    for (const row of rows) {
+      for (const usecaseId of Array.isArray(row.uses) ? row.uses.map(String) : []) {
+        const usecase = [...parsedDefs.values()].find(item => item.artifactType === 'usecase' && item.artifactId === usecaseId);
+        if (usecase) for (const name of usecaseOperationNames(usecase.data)) operations.add(name);
+      }
+    }
+    const serves = new Set(rows.map(row => String(row.serves ?? '')).filter(Boolean));
+    for (const [processPath, process] of processes) {
+      const reached = routeReachableOperations(process.data).some(name => operations.has(name)) || serves.has(processStartEvent(process.data));
+      if (reached && !reads.get(defPath)?.includes(processPath)) reads.get(defPath)?.push(processPath);
+    }
   }
   const inClosure = new Set(changed);
   const added: string[] = [];

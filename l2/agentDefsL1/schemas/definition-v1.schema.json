@@ -231,7 +231,8 @@
               "ruleRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } }
             }
           }
-        }
+        },
+        "stateFrom": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
       }
     },
     "derivedRead": {
