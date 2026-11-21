@@ -93,7 +93,7 @@ export async function assembleD1Support(
   const usecaseIds = [...new Set(selected.flatMap(item => [item.usecaseId, item.identity]))].filter(Boolean).sort();
   const transitionUsecases = transitionUsecasesOf(selected);
   const operationUsecases = operationUsecasesOf(selected);
-  const linked = await effectsOf(project, moduleName, selected, entityKindsOf(index));
+  const linked = await effectsOf(project, moduleName, selected);
   const serves = new Set((snapshot.selection.requests || []).flatMap(request => request.serves ? [request.serves] : []));
   const processes = await processesOf(project, moduleName, selected, serves, arrivalUpserts((snapshot.selection.requests || [])));
   const request: D1SupportRequest = {
@@ -735,20 +735,10 @@ export function inboundOperation(
   return { id: row.id, kind: 'inbound', operations, mechanism: '', consumer, scheduled: false };
 }
 
-function entityKindsOf(index: unknown): Map<string, string> {
-  const kinds = new Map<string, string>();
-  if (!isRecord(index)) return kinds;
-  for (const entity of arrayOf(index.entities)) {
-    if (isRecord(entity) && typeof entity.entityId === 'string') kinds.set(entity.entityId, typeof entity.kind === 'string' ? entity.kind : '');
-  }
-  return kinds;
-}
-
 async function effectsOf(
   project: number,
   moduleName: string,
   selected: readonly D1SelectedUsecase[],
-  entityKind: ReadonlyMap<string, string>,
 ): Promise<{ outbound: D1EffectEvent[]; operations: D1EffectOperation[] }> {
   const paths = inputPaths(moduleName);
   const integrationText = await readLogical(project, paths.integration);
@@ -794,7 +784,7 @@ async function effectsOf(
     const workflowsText = await readLogical(project, inputPaths(moduleName).workflows);
     const workflows = workflowsText ? parseD1Source(workflowsText, 'defs') : null;
     const processes = isRecord(workflows) ? arrayOf(workflows.processes) : [];
-    operations.push(...connectionOperations(callRows, selected, catalogs, journeys, processes, catalogProblems, entityKind));
+    operations.push(...connectionOperations(callRows, selected, catalogs, journeys, processes, catalogProblems));
   }
   return { outbound, operations };
 }
@@ -833,9 +823,8 @@ export function connectionOperations(
   journeys: Record<string, unknown> = {},
   processes: readonly unknown[] = [],
   catalogProblems: Readonly<Record<string, { code: string; detail: string }>> = {},
-  entityKind: ReadonlyMap<string, string> = new Map(),
 ): D1EffectOperation[] {
-  const matches = externalCallsOf({ journeys, connections: rows, usecases: selected, entityKind, allEntities: true });
+  const matches = externalCallsOf({ journeys, connections: rows, usecases: selected, entityKind: new Map(), allEntities: true });
   const out: D1EffectOperation[] = [];
   for (const row of rows) {
     if (!isRecord(row) || row.direction !== 'call') continue;

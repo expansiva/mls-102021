@@ -31,8 +31,7 @@ export interface D1ExternalCallsInput {
  * Which call serves an external usecase. The step is the bridge: same entity, and
  * `act`+`transition` by `transitionRef`, `act`+effect by operation (`read`↔`get`, `remove`↔`delete`),
  * `locate`→`list` and `inspect`→`get` (the other read is the reserve when the preferred operation is absent).
- * A call serves when `usedBy` contains `<journeyId>.<stepId>`. `effect` is not read. `entityRefs` is read only for a read (`list`/`get`): a call that
- * names entities, and not this one, does not serve it (d1_264). A write keeps serving by the step: the cm `Agent` includes its drafts.
+ * A call serves when `usedBy` contains `<journeyId>.<stepId>`. `effect` and `entityRefs` on the call are not read.
  */
 export function externalCallsOf(args: D1ExternalCallsInput): D1ExternalCallMatch[] {
   const steps = journeySteps(args.journeys);
@@ -51,12 +50,6 @@ export function externalCallsOf(args: D1ExternalCallsInput): D1ExternalCallMatch
       if (!refs.some(ref => cited.has(ref))) continue;
       const connectionId = text(row.connectionId);
       const operationId = text(row.operationId);
-      // d1_264: a call that names the entities it reads (`entityRefs`) does not serve the read (`list`/`get`) of another entity: the read of an entity
-      // the module stores itself stays on its repository, even when a step of that entity cites the call (the cm list of agents shows the drafts' situation only).
-      if ((usecase.operation === 'list' || usecase.operation === 'get') && storedByModule(args.entityKind, usecase.entity)) {
-        const refs = strings(row.entityRefs);
-        if (refs.length > 0 && !refs.includes(usecase.entity)) continue;
-      }
       // A usecase that names its call (a split, below) serves only that call.
       if (usecase.call && usecase.call !== `${connectionId}.${operationId}`) continue;
       const key = `${connectionId}\0${operationId}`;
@@ -67,12 +60,6 @@ export function externalCallsOf(args: D1ExternalCallsInput): D1ExternalCallMatch
     out.push({ usecaseId: usecase.usecaseId, steps: refs, calls: matched });
   }
   return out;
-}
-
-/** An entity the L4 declares and that is not `external`: the module stores it, so its reads stay on its repository (d1_264). */
-function storedByModule(kinds: ReadonlyMap<string, string> | undefined, entity: string): boolean {
-  const kind = kinds?.get(entity);
-  return kind !== undefined && kind !== '' && kind !== 'external';
 }
 
 interface JourneyStep {
@@ -258,8 +245,6 @@ export function routeCallsOf(args: {
   needs: unknown;
   journeys: Record<string, unknown>;
   connections: readonly unknown[];
-  /** Kind of each entity of the L4 ontology; an entity not in it is not known to be stored by the module. */
-  entityKind?: ReadonlyMap<string, string>;
   pageId: string;
   entity: string;
   operation: string;
@@ -279,9 +264,6 @@ export function routeCallsOf(args: {
   const cited = new Set(steps.map(step => step.ref));
   const out = new Set<string>();
   for (const row of args.connections.map(rec).filter(item => text(item.direction) === 'call')) {
-    // d1_264: the same rule as `externalCallsOf`: a call that names other entities does not serve the read of this one.
-    const named = strings(row.entityRefs);
-    if (read && storedByModule(args.entityKind, args.entity) && named.length > 0 && !named.includes(args.entity)) continue;
     if (strings(row.usedBy).some(ref => cited.has(ref))) out.add(`${text(row.connectionId)}.${text(row.operationId)}`);
   }
   return [...out].sort();

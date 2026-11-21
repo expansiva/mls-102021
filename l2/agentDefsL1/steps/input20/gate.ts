@@ -296,7 +296,6 @@ export function buildD1InputSnapshot(
       needs: artifacts.needs,
       journeys: artifacts.journeys,
       connections: rows(integration.connections),
-      entityKind,
       pageId,
       entity,
       operation,
