@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentPlannerL1/steps/plan20/contracts.ts" enhancement="_blank"/>
 
+import { integrationImplied } from '/_102021_/l2/helpers/connections/integrationImplied.js';
 import { classifyEntityKind } from '/_102021_/l2/agentPlannerL1/helpers/defsSource.js';
 import type { L1Inventory, L1InventoryUsecase } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 import { P1_DEVICE, P1_NEEDS_SCHEMA, type P1Device } from '/_102021_/l2/agentPlannerL1/helpers/p1Core.js';
@@ -138,6 +139,8 @@ export interface P1PlanBackendInput {
   l4diff?: P1L4DiffFile | null;
   /** access.defs.ts actors; absent ⇒ every needs actor becomes a named gap. */
   actors?: readonly P1ActorView[];
+  /** `integration.defs.ts` `connections[]` (d1_259): what the L4 says is called or served outside the pages. Absent ⇒ none. */
+  integration?: readonly unknown[];
 }
 
 export interface P1PlanBackendResult {
@@ -406,6 +409,7 @@ export function planP1Backend(input: P1PlanBackendInput): P1PlanBackendResult {
     llmCalled: !!input.resolution,
     l4diff: input.l4diff ?? null,
     actors: input.actors ?? [],
+    integration: input.integration ?? [],
   });
   return { file, unresolved };
 }
@@ -424,7 +428,9 @@ export function normalizeP1Backend(value: unknown, fallback: P1PlanBackendInput)
   const usecases = list(raw.usecases).map(item => normalizeUsecase(item, ontology));
   const ports = list(raw.ports).map(item => normalizePort(item));
   const tables = list(raw.tables).map(item => normalizeTable(item));
-  const removed = list(raw.removed).map(item => normalizeRemoved(item)).filter(Boolean) as PoolBackendRemoved[];
+  const impliedIds = impliedInventoryIds(inventory, fallback.integration);
+  const removed = (list(raw.removed).map(item => normalizeRemoved(item)).filter(Boolean) as PoolBackendRemoved[])
+    .filter(item => !(item.kind === 'usecase' && impliedIds.has(item.id)));
   const meta = record(raw.meta);
   const pages = pagesFromMeta(meta.pages, endpoints, needs);
   const built = {
@@ -602,6 +608,12 @@ function collectCandidates(needs: P1NeedsView, ontology: Map<string, P1EntityVie
   return { usecases: [...usecases.values()], endpoints };
 }
 
+/** Ids of the inventory usecases the L4 integration implies (d1_259): an (entity, operation) a call of the cm or a serve names. */
+function impliedInventoryIds(inventory: L1Inventory, integration: readonly unknown[] | undefined): Set<string> {
+  const implied = new Set(integrationImplied(integration ?? []).map(item => `${item.entity}\0${item.operation}`));
+  return new Set(inventory.usecases.filter(item => item.entityId && item.operation && implied.has(`${item.entityId}\0${item.operation}`)).map(item => item.usecaseId));
+}
+
 function matchCandidates(candidates: Matched, inventory: L1Inventory, ontology: Map<string, P1EntityView>): Matched {
   if (!inventory.present) return candidates;
   const usecases = candidates.usecases.map(candidate => {
@@ -716,6 +728,7 @@ function assembleFile(input: {
   llmCalled: boolean;
   l4diff: P1L4DiffFile | null;
   actors: readonly P1ActorView[];
+  integration: readonly unknown[];
 }): PoolBackendFile {
   const { needs, inventory, ontology, now, llmCalled } = input;
   const usecases = sortBy(input.usecases.map(item => stripDraft(item)), item => item.usecaseId);
@@ -763,8 +776,11 @@ function assembleFile(input: {
   const usedTableEntities = new Set(tables.map(item => item.entity));
   const removed: PoolBackendRemoved[] = [];
   if (inventory.present) {
+    // d1_259: a usecase the L4 integration implies (a call of the cm on its entity, a serve that writes it) is not "no page needs it":
+    // the D1 input splits an external usecase into one per call and a serve route writes through its own usecase.
+    const impliedIds = impliedInventoryIds(inventory, input.integration);
     for (const usecase of inventory.usecases) {
-      if (usedUsecaseIds.has(usecase.usecaseId)) continue;
+      if (usedUsecaseIds.has(usecase.usecaseId) || impliedIds.has(usecase.usecaseId)) continue;
       removed.push({
         kind: 'usecase',
         id: usecase.usecaseId,

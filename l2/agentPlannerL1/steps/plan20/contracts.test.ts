@@ -245,6 +245,40 @@ void test('fixture 102039 with invented needs: a usecase without a signature is 
   assert.ok(planned.file.removed.some(item => item.kind === 'table' && item.id === 'Comentario'));
 });
 
+/** d1_259: an inventory with defs that no page of the needs asks for, and what the L4 integration says about them. */
+function removedWith(integration: unknown[] | undefined): string[] {
+  const def = (usecaseId: string, entityId: string, operation: string) => ({ usecaseId, file: `l1/x/layer_2_application/usecases/${usecaseId}.defs.ts`, entityId, operation, functions: [], ports: [], rulesApplied: [], statusBackend: '' as const });
+  const inventory: L1Inventory = {
+    routes: [],
+    usecases: [def('getAgent', 'Agent', 'get'), def('undoAgentChange', 'AgentBehavior', 'update'), def('createTool', 'Tool', 'create'), def('getAgentDraft', 'AgentDraft', 'get'), def('deleteThing', 'Thing', 'delete')],
+    ports: [],
+    tables: [],
+    present: true,
+  };
+  const planned = planP1Backend({ needs: parseP1Needs(NEEDS_CHAMADOS), inventory, ontology: CHAMADOS_ONTOLOGY, now: AT, ...(integration ? { integration } : {}) });
+  return planned.file.removed.filter(item => item.kind === 'usecase').map(item => item.id).filter(id => ['getAgent', 'undoAgentChange', 'createTool', 'getAgentDraft', 'deleteThing'].includes(id)).sort();
+}
+
+void test('d1_259: a usecase the L4 integration implies (a call on its entity, a serve that writes it) is not removed as "no page needs it"', () => {
+  const all = ['createTool', 'deleteThing', 'getAgent', 'getAgentDraft', 'undoAgentChange'];
+  // Without the integration nothing is implied: every def no page asks for is removed, as before.
+  assert.deepEqual(removedWith(undefined), all);
+  assert.deepEqual(removedWith([]), all);
+  const integration = [
+    { connectionId: 'cm', operationId: 'readAgent', direction: 'call', effect: 'read', entityRefs: ['Agent', 'AgentBehavior'] },
+    { connectionId: 'cm', operationId: 'undoAgentChange', direction: 'call', effect: 'update', entityRefs: ['AgentBehavior'] },
+    { connectionId: 'platform', operationId: 'releaseCatalogChanged', direction: 'serve', entityEffects: [{ entityId: 'Tool', effects: ['create', 'update'] }] },
+    { connectionId: 'cm', operationId: 'dropThing', direction: 'call', effect: 'remove', entityRefs: ['Thing'] },
+  ];
+  // read → get, update on AgentBehavior, a serve write on Tool, remove → delete; AgentDraft is nobody's outside call.
+  assert.deepEqual(removedWith(integration), ['getAgentDraft']);
+  // A row that names another entity or another operation implies nothing about these.
+  assert.deepEqual(removedWith([
+    { connectionId: 'cm', operationId: 'listAgents', direction: 'call', effect: 'list', entityRefs: ['Agent'] },
+    { connectionId: 'cm', operationId: 'other', direction: 'serve', entityEffects: [{ entityId: 'Tool', effects: ['list'] }] },
+  ]), all);
+});
+
 void test('alias resolution reuses an l1 usecase of another name', async () => {
   const host = installHost(102039);
   seedControleChamados(host);

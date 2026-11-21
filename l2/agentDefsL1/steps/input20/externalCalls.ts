@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/input20/externalCalls.ts" enhancement="_blank"/>
 
+import { operationMatchesEffect, operationsOfEffect } from '/_102021_/l2/helpers/connections/integrationImplied.js';
 import type { D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 
 /** One `direction: 'call'` line that cites a step in `usedBy`. */
@@ -124,12 +125,6 @@ function stepServes(step: JourneyStep, usecase: D1SelectedUsecase, reads: Readon
   return reads.get(`${step.entity}\0${step.kind}`) === usecase.operation;
 }
 
-function operationMatchesEffect(operation: string, effect: string): boolean {
-  return operation === effect
-    || (operation === 'get' && effect === 'read')
-    || (operation === 'delete' && effect === 'remove');
-}
-
 function rows(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? value.map(rec) : [];
 }
@@ -181,11 +176,9 @@ function keyOf(call: D1ExternalCallRef): string {
 }
 
 /** The read operation a call's catalog-side `effect` names (`list`, `read`): it only names the action, it never pairs a step. */
-const READ_OPERATION_OF_EFFECT: Readonly<Record<string, 'list' | 'get'>> = { list: 'list', read: 'get' };
-
 function operationOfCall(usecase: D1SelectedUsecase, effect: string): string {
   if (usecase.operation !== 'list' && usecase.operation !== 'get') return usecase.operation;
-  return READ_OPERATION_OF_EFFECT[effect] ?? usecase.operation;
+  return effect === 'list' || effect === 'read' ? operationsOfEffect(effect)[0] : usecase.operation;
 }
 
 export interface D1ExternalSplit {
