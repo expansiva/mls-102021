@@ -1017,3 +1017,29 @@ void test('a connection pseudo-page is the pageId of a request that serves its o
   assert.equal(connectionPageIds(pseudo({ serves: 'other.op' })).has('cm'), false);
   assert.equal(connectionPageIds(pseudo({})).has('cm'), false);
 });
+
+void test('d1_271: a def of an earlier format (data.ports) is an error when the plan uses it, and a review when it is a removed def no route reads', () => {
+  const stale = (req: D1FinalizeRequest): void => {
+    const observed = req.observed.find(item => item.defPath === PATHS.usecase);
+    assert.ok(observed?.text);
+    observed.text = observed.text.replace('"data": {', '"data": {\n    "ports": [],');
+  };
+  const used = request();
+  stale(used);
+  const usedReport = buildD1Finalize(used);
+  assert.equal(usedReport.findings.some(item => item.code === 'SCHEMA_INVALID' && item.path === PATHS.usecase && item.message.includes('data.ports') && item.severity === 'error'), true);
+  assert.equal(usedReport.findings.some(item => item.code === 'REMOVED_DEF_SCHEMA'), false);
+  assert.equal(usedReport.outcome, 'held');
+
+  const dead = request();
+  stale(dead);
+  assert.ok(dead.snapshot);
+  dead.snapshot.files = dead.snapshot.files.filter(file => file.defPath !== PATHS.usecase && !file.defPath.endsWith(PATHS.usecase));
+  dead.snapshot.removed = [...dead.snapshot.removed, { kind: 'usecase', id: 'registrarAtendimento', defPath: PATHS.usecase, inventoried: true, contentHash: HASH } as never];
+  const deadReport = buildD1Finalize(dead);
+  assert.equal(deadReport.findings.some(item => item.code === 'SCHEMA_INVALID' && item.path === PATHS.usecase), false);
+  const review = deadReport.findings.find(item => item.code === 'REMOVED_DEF_SCHEMA' && item.path === PATHS.usecase);
+  assert.ok(review);
+  assert.equal(review.severity, 'review');
+  assert.match(review.message, /Unknown field data\.ports\. It is a removed def no route reads/u);
+});

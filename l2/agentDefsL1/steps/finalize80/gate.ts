@@ -190,22 +190,22 @@ function parseObserved(request: D1FinalizeRequest, findings: D1FinalizeFinding[]
     const raw = read?.definition;
     if (!raw || !isRecord(raw) || !isRecord(raw.data) || typeof raw.artifactType !== 'string') {
       if (inventoried.has(logical)) {
-        error(findings, 'SCHEMA_INVALID', logical, `Inventoried file ${logical} is not a definition.`, logical);
+        schemaFinding(request, findings, logical, `Inventoried file ${logical} is not a definition.`, logical);
       }
       continue;
     }
     if (!Array.isArray(raw.dependencies)) raw.dependencies = declaredDependencyPaths(observed.text);
     if (read.pipelineExport && inventoried.has(logical)) {
-      error(findings, 'SCHEMA_INVALID', logical, `Inventoried file ${logical} exports pipeline. v2 has no pipeline.`, logical);
+      schemaFinding(request, findings, logical, `Inventoried file ${logical} exports pipeline. v2 has no pipeline.`, logical);
     }
     if (!isArtifactType(raw.artifactType)) {
       if (inventoried.has(logical)) {
-        error(findings, 'SCHEMA_INVALID', logical, `Inventoried file ${logical} is not a v2 definition.`, logical);
+        schemaFinding(request, findings, logical, `Inventoried file ${logical} is not a v2 definition.`, logical);
       }
       continue;
     }
     if (!isDefinition(raw) && inventoried.has(logical)) {
-      error(findings, 'SCHEMA_INVALID', logical, `Inventoried file ${logical} is not a v2 definition.`, logical);
+      schemaFinding(request, findings, logical, `Inventoried file ${logical} is not a v2 definition.`, logical);
     }
     parsed.push({
       logical,
@@ -298,7 +298,7 @@ function checkSchemaAndGraph(request: D1FinalizeRequest, parsed: ParsedDef[], fi
   const present = new Set(parsed.map(item => qualify(request.project, item.logical)));
   for (const item of parsed) {
     for (const issue of definitionIssues(item.definition)) {
-      error(findings, 'SCHEMA_INVALID', item.logical, issue, item.definition.artifactId);
+      schemaFinding(request, findings, item.logical, issue, item.definition.artifactId);
     }
   }
   const items = parsed.flatMap(item => item.pipeline);
@@ -802,6 +802,30 @@ function sourceRows(request: D1FinalizeRequest): D1FinalizeReport['sources'] {
   return [...sources]
     .map(source => ({ path: source.path, sha256: source.sha256, state: source.state }))
     .sort((left, right) => left.path.localeCompare(right.path));
+}
+
+/**
+ * d1_271: the defs the plan keeps on the disk and no one reads or generates: a usecase in `removed` (inventoried, the d1_254 brake: the D1 never deletes a def)
+ * that no planned file names. A def of an earlier format that sits there (`data.ports`, agendaClinica and comandaRestaurante) is not output this generator makes,
+ * so its schema is a review and not an error; a def the plan uses stays an error.
+ */
+function unreadRemovedPaths(request: D1FinalizeRequest): Set<string> {
+  const planned = new Set((request.snapshot?.files || []).map(file => logicalDefPath(file.defPath)));
+  const out = new Set<string>();
+  for (const removed of request.snapshot?.removed || []) {
+    if (!removed.defPath) continue;
+    const logical = logicalDefPath(removed.defPath);
+    if (!planned.has(logical)) out.add(logical);
+  }
+  return out;
+}
+
+function schemaFinding(request: D1FinalizeRequest, findings: D1FinalizeFinding[], logical: string, message: string, owner: string): void {
+  if (unreadRemovedPaths(request).has(logical)) {
+    pushFinding(findings, 'review', 'REMOVED_DEF_SCHEMA', logical, `${message} It is a removed def no route reads and the plan does not generate, kept on the disk: it stays as it is.`, owner);
+    return;
+  }
+  error(findings, 'SCHEMA_INVALID', logical, message, owner);
 }
 
 function inventoriedPaths(request: D1FinalizeRequest): Set<string> {
