@@ -4,6 +4,7 @@
 // step tables every process function uses, and the module tick that runs the scheduled processes. The functions
 // themselves are written by the model from the l4 prose (steps/workflows45).
 
+import { taskEffects } from '/_102021_/l2/helpers/l1Defs/taskEffects.js';
 import { MDM_LIST_USERS_PAGE_SIZE_MAX } from '/_102021_/l2/agentMaterializeL1/helpers/mdmPlatformLimits.js';
 import { workflowRecoverName, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 
@@ -148,7 +149,8 @@ export function workflowTablesFromL4(source: string | null): WorkflowTableEmit[]
       const wake = item.wake;
       if (wake && typeof wake === 'object' && typeof (wake as { mode?: unknown }).mode === 'string') step.wakeMode = (wake as { mode: string }).mode;
       steps.push(step);
-      if (typeof item.entityRef === 'string' && item.entityRef) entityOf.set(stepId, item.entityRef);
+      const [entity] = taskEffects(item);
+      if (entity) entityOf.set(stepId, entity.entityId);
     }
     const recordEntity = firstRecordEntity(steps, entityOf);
     addReturnToPreviousHuman(steps);

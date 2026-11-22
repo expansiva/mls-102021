@@ -4,6 +4,7 @@
 // task with an entity and create, update or a transition) and the entities its arrival creates and updates (planned by deriveServe/deriveConsume).
 // Nobody called them (the route calls the process), so the prune of an unrequested usecase would drop them: the route of the arrival is their route.
 
+import { taskEffects } from '/_102021_/l2/helpers/l1Defs/taskEffects.js';
 import { takeUsecase, usecaseRefusal } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
 import type { D1InputProblem, D1SelectedRequest, D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 
@@ -43,27 +44,30 @@ export function deriveProcessUsecases(input: DeriveProcessInput): Map<string, Se
       const path = `l4/${input.moduleName}/workflows.defs.ts`;
       for (const task of Array.isArray(process.tasks) ? process.tasks.filter(isRecord) : []) {
         const kind = text(task.kind);
-        const entity = text(task.entityRef);
-        const effect = text(task.effect);
         const transitionRef = text(task.transitionRef);
-        if ((kind !== 'mechanical' && kind !== 'llm') || !entity) continue;
-        const transition = effect === 'transition' && transitionRef !== '';
-        const operation = transition ? 'transition' : effect === 'create' || effect === 'update' ? effect : '';
-        if (!operation) continue;
-        const uses: string[] = [];
-        takeUsecase({
-          problems: input.problems,
-          path,
-          routeName: request.route,
-          entity,
-          operation,
-          transitionKey: transition ? transitionRef : '',
-          usecases: input.usecases,
-          uses,
-          colliding: new Set(),
-          refusalOf: usecaseId => usecaseRefusal(entity, operation, usecaseId, input.entities, input.plannedIds, input.removedIds),
-        });
-        for (const id of uses) ids.add(id);
+        if (kind !== 'mechanical' && kind !== 'llm') continue;
+        // d1_279: each effect the task says on each entity (`entityEffects`, or the older `entityRef` + `effect`) takes its usecase.
+        for (const { entityId: entity, effects } of taskEffects(task)) {
+          for (const effect of effects) {
+            const transition = effect === 'transition' && transitionRef !== '';
+            const operation = transition ? 'transition' : effect === 'create' || effect === 'update' ? effect : '';
+            if (!operation) continue;
+            const uses: string[] = [];
+            takeUsecase({
+              problems: input.problems,
+              path,
+              routeName: request.route,
+              entity,
+              operation,
+              transitionKey: transition ? transitionRef : '',
+              usecases: input.usecases,
+              uses,
+              colliding: new Set(),
+              refusalOf: usecaseId => usecaseRefusal(entity, operation, usecaseId, input.entities, input.plannedIds, input.removedIds),
+            });
+            for (const id of uses) ids.add(id);
+          }
+        }
       }
       // The entities the arrival creates and updates: deriveServe/deriveConsume planned both usecases for the port of the process.
       for (const upsert of request.upserts ?? []) {

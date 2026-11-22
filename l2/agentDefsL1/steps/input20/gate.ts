@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/input20/gate.ts" enhancement="_blank"/>
 
+import { taskEffects } from '/_102021_/l2/helpers/l1Defs/taskEffects.js';
 import { declarationDefPath } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import type { D2ContractV2Definition, D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
@@ -1462,7 +1463,7 @@ function noteExternalEffects(
   }
 }
 
-function workflowFiles(
+export function workflowFiles(
   workflows: Record<string, unknown>,
   journeys: Record<string, unknown>,
   usecases: readonly D1SelectedUsecase[],
@@ -1493,7 +1494,9 @@ function workflowFiles(
     for (const task of rows(process.tasks)) {
       const kind = text(task.kind);
       if (kind !== 'mechanical' && kind !== 'llm') continue;
-      consider(text(task.entityRef), text(task.effect), text(task.transitionRef));
+      for (const entry of taskEffects(task)) {
+        for (const effect of entry.effects) consider(entry.entityId, effect, text(task.transitionRef));
+      }
     }
     plans.push({ processId, dependsOn: [...dependsOn].sort() });
   }

@@ -11,6 +11,7 @@ import { entityCatalogSource, entityPath, inputPaths, journeyPath, type D1InputS
 import { resolveAllowedFields } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { ns5ArrivalEffects } from '/_102035_/l2/solution/arrivalEffects.js';
+import { taskEffects } from '/_102021_/l2/helpers/l1Defs/taskEffects.js';
 import { externalCallsOf, processConsumersOf, type D1ExternalCallMatch } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo, readCatalogRef } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
@@ -1076,12 +1077,11 @@ export async function processesOf(
       if (task.kind !== 'mechanical' && task.kind !== 'llm') continue;
       const taskId = typeof task.taskId === 'string' ? task.taskId : '';
       if (!taskId) continue;
-      add(
-        typeof task.entityRef === 'string' ? task.entityRef : '',
-        typeof task.effect === 'string' ? task.effect : '',
-        typeof task.transitionRef === 'string' ? task.transitionRef : '',
-        `task:${taskId}`,
-      );
+      // d1_279: one `add` per effect the task says on each entity (`entityEffects`, or the older `entityRef` + `effect`).
+      const transitionRef = typeof task.transitionRef === 'string' ? task.transitionRef : '';
+      for (const entry of taskEffects(task)) {
+        for (const effect of entry.effects) add(entry.entityId, effect, transitionRef, `task:${taskId}`);
+      }
     }
     // d1_232: the arrival that starts the process says create and update on an entity: the process writes both, whatever its tasks say.
     // The step of an operation is a step of the process (`task:` or `journey:`): the arrival starts the process, its first task does the write.
@@ -1133,7 +1133,10 @@ function occurrenceOf(
   }
   const task = tasks[0];
   if (!task) return '';
-  if ((task.kind === 'mechanical' || task.kind === 'llm') && typeof task.entityRef === 'string') return task.entityRef;
+  if (task.kind === 'mechanical' || task.kind === 'llm') {
+    const [first] = taskEffects(task);
+    if (first) return first.entityId;
+  }
   if (task.kind !== 'human' || typeof task.journeyRef !== 'string') return '';
   const steps = acts.get(task.journeyRef) || [];
   const created = steps.find(step => step.effect === 'create');
