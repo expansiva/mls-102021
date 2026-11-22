@@ -1,0 +1,64 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/updatePersonalConduct.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { CmUpdateAgentOutput } from '/_102034_/l2/shared/contracts/connections/cm.js';
+import type { CmGateway } from '/_102047_/l1/agents/layer_1_external/adapters/integration/outbound.js';
+import type { ConductChangeRepository } from '/_102047_/l1/agents/layer_2_application/ports/conductChangeRepository.js';
+
+export interface UpdatePersonalConductInput {
+  agentId: string;
+  changeRequest: string;
+  expectVersion: string;
+}
+
+export interface UpdatePersonalConductOutput extends CmUpdateAgentOutput {}
+
+export async function updatePersonalConduct(input: UpdatePersonalConductInput, ctx: RequestContext): Promise<UpdatePersonalConductOutput> {
+  const gateway = resolveRepository<CmGateway>(ctx, 'CmGateway');
+  const repository = resolveRepository<ConductChangeRepository>(ctx, 'ConductChangeRepository');
+
+  if (typeof input.agentId !== 'string' || !input.agentId.trim()) {
+    throw new AppError('INVALID_INPUT', 'agentId is required.', 400);
+  }
+  if (typeof input.changeRequest !== 'string' || !input.changeRequest.trim()) {
+    throw new AppError('INVALID_INPUT', 'changeRequest is required.', 400);
+  }
+  const personId = ctx.sessionContext.person?.mdmId;
+  if (!personId) {
+    throw new AppError('INVALID_INPUT', 'The session personId is required.', 400, { ruleId: 'ownConductOnly' });
+  }
+
+  const reading: unknown = await gateway.readAgent({ agentId: input.agentId }, ctx);
+  if (typeof reading !== 'object' || reading === null ||
+      !('agent' in reading) || reading.agent !== input.agentId ||
+      !('person' in reading) || typeof reading.person !== 'string' ||
+      !('summary' in reading) || typeof reading.summary !== 'string') {
+    throw new AppError('INVALID_INPUT', 'The agent reading does not establish a personal conduct for this member.', 400, { ruleId: 'conductOnlyForAgentActingOnBehalf' });
+  }
+  if (reading.person !== personId) {
+    throw new AppError('INVALID_INPUT', 'Only the signed-in member’s conduct may be changed.', 400, { ruleId: 'ownConductOnly' });
+  }
+
+  const result = await gateway.updateAgent(
+    { agentId: input.agentId, scope: 'personal', prompt: input.changeRequest },
+    ctx,
+    { expectVersion: input.expectVersion },
+  );
+  const summary = (typeof result.summary === 'string' && result.summary.trim() ? result.summary : input.changeRequest)
+    .replace(/\s+/g, ' ').trim();
+  await repository.create({
+    id: ctx.idGenerator.newId(),
+    version: 1,
+    agentId: input.agentId,
+    personId,
+    changedAt: ctx.clock.nowIso(),
+    summary,
+  });
+
+  return {
+    version: result.version,
+    changeId: result.changeId,
+    ...(result.summary !== undefined ? { summary: result.summary } : {}),
+  };
+}

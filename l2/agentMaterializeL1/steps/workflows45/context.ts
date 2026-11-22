@@ -23,7 +23,7 @@ import { stepCallProblems, stepCallsOf, withUsecases, type StepCall } from '/_10
 import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/engineImports.js';
 import { enumFieldValues } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
 import { connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
-import { arrivalUpsertProblems, connectionRowsOf, emptyCastProblems, emptyRequiredProblems, recordCastProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { arrivalUpsertProblems, connectionRowsOf, emptyCastProblems, emptyRequiredProblems, recordCastProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, typedResultDiscardedProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
@@ -750,6 +750,7 @@ export function workflowGate(code: string, input: { siblingImports?: readonly st
     problems.push(`The process keeps an occurrence of ${input.facts.occurrence}: open and advance it through the module engine (${moduleSpecifier(workflowEngineFile(input.project, input.moduleName))}), never in a table of your own.`);
   }
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) problems.push('No `as unknown as` and no `as any`.');
+  problems.push(...typedResultDiscardedProblems(code));
   problems.push(...emptyCastProblems(code));
   problems.push(...recordCastProblems(code));
   problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
@@ -874,12 +875,13 @@ function exportHeader(source: string, name: string): string | null {
   }
 }
 
-function functionTextProblems(code: string, project: number, moduleName: string, targets: ReadonlyMap<string, string>, siblingImports: readonly string[] = [], usecaseInputs: ReadonlyMap<string, readonly M12InputField[]> = new Map()): string[] {
+export function functionTextProblems(code: string, project: number, moduleName: string, targets: ReadonlyMap<string, string>, siblingImports: readonly string[] = [], usecaseInputs: ReadonlyMap<string, readonly M12InputField[]> = new Map()): string[] {
   const problems: string[] = [];
   problems.push(...workflowTransitionProblems(code, targets));
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) problems.push('No `as unknown as` and no `as any`.');
   problems.push(...emptyCastProblems(code));
   problems.push(...recordCastProblems(code));
+  problems.push(...typedResultDiscardedProblems(code));
   problems.push(...emptyRequiredProblems(code, usecaseInputs));
   const ownL1 = `/_${project}_/l1/${moduleName}/`;
   for (const specifier of importSpecifiers(code)) {

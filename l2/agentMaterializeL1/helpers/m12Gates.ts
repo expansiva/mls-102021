@@ -794,6 +794,26 @@ export function externalVersionConversionProblems(code: string): string[] {
     : [];
 }
 
+/**
+ * d1_278: the result of a call keeps the type the call returns. `const reading: unknown = await gateway.readAgent(...)` (updatePersonalConduct) and
+ * `const listing: unknown = await listAgent(...)` (toolCatalogRefresh) hid the answer from the compiler, so a field the contract does not have
+ * (`agent`, `person`, `definition` of a card) was read and failed in the field. Not for `catch (e: unknown)`, a parameter or a helper that takes `unknown`.
+ */
+export function typedResultDiscardedProblems(code: string): string[] {
+  const clean = withoutComments(code);
+  const callee = String.raw`(?:[A-Za-z_$][\w$]*\s*\.\s*)*(?!import\b|json\b)[A-Za-z_$][\w$]*\s*\(`;
+  const annotated = new RegExp(String.raw`\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*:\s*unknown\s*=\s*await\s+${callee}`, 'u').test(clean);
+  const cast = /\(\s*await\s+[^()]*\([^;]*\)\s*\)\s*as\s+unknown\b(?!\s+as\b)/u.test(clean);
+  let late = false;
+  for (const match of clean.matchAll(/\blet\s+([A-Za-z_$][\w$]*)\s*:\s*unknown\s*;/gu)) {
+    const name = match[1].replace(/\$/gu, '\\$');
+    if (new RegExp(String.raw`\b${name}\s*=\s*await\s+${callee}`, 'u').test(clean.slice((match.index ?? 0) + match[0].length))) late = true;
+  }
+  return annotated || cast || late
+    ? ['TYPED_RESULT_DISCARDED: use the type the call returns; do not annotate the result of a call `unknown` (nor cast it to `unknown`). The compiler then shows the fields the contract has: a field it does not have does not exist. The free answer of an AI prompt is the field `result` of `runAiPrompt`: `const { result } = await gateway.runAiPrompt(...)`.']
+    : [];
+}
+
 export function versionProblems(code: string): string[] {
   const increments = /\bversion\s*:\s*[^,\n;}]*\+\s*1\b|\.version\s*\+\s*1\b|\.version\s*\+\+|\.version\s*\+=/u;
   return increments.test(code)
@@ -978,6 +998,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...repositoryProblems(code, input.ports, input.gateways, input.externalPort));
   problems.push(...gatewayBypassProblems(code));
   problems.push(...versionProblems(code));
+  problems.push(...typedResultDiscardedProblems(code));
   if (input.stringVersion) problems.push(...externalVersionConversionProblems(code));
   problems.push(...derivedReadProblems(code, input.derivedPaths ?? []));
   if (input.operation === 'list') problems.push(...listFilterProblems(code));

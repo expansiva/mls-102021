@@ -1,0 +1,916 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/workflows/toolCatalogRefresh.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import {
+  createOccurrenceContext,
+  occurrenceRecordId,
+  workflowWakeCommandId,
+} from '/_102034_/l1/workflow/index.js';
+import type {
+  ModuleWakeEvent,
+  TaskOccurrenceLlmResult,
+  TaskOccurrenceSnapshot,
+  OccurrenceKey,
+  WorkflowExecutor,
+} from '/_102034_/l1/workflow/index.js';
+import type { CmGateway } from '/_102047_/l1/agents/layer_1_external/adapters/integration/outbound.js';
+import {
+  workflowEngine,
+  workflowPlans,
+} from '/_102047_/l1/agents/layer_1_external/adapters/workflow/engine.js';
+import { updateTool } from '/_102047_/l1/agents/layer_2_application/usecases/updateTool.js';
+import type { UpdateToolInput } from '/_102047_/l1/agents/layer_2_application/usecases/updateTool.js';
+import { updateAgentTool } from '/_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.js';
+import type { UpdateAgentToolInput } from '/_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.js';
+import { listAgent } from '/_102047_/l1/agents/layer_2_application/usecases/listAgent.js';
+import type { AgentToolRepository } from '/_102047_/l1/agents/layer_2_application/ports/agentToolRepository.js';
+import type { ToolRepository } from '/_102047_/l1/agents/layer_2_application/ports/toolRepository.js';
+import type { Tool } from '/_102047_/l1/agents/layer_3_domain/entities/tool.js';
+import type { AgentTool } from '/_102047_/l1/agents/layer_3_domain/entities/agentTool.js';
+
+// ---------------------------------------------------------------------------
+// Constants shared by the functions of this process
+// ---------------------------------------------------------------------------
+
+const PROJECT_ID = '102047';
+const MODULE_NAME = 'agents';
+const PROCESS_ID = 'toolCatalogRefresh';
+const ENTITY_ID = 'Tool';
+const STEP_REBUILD_CATALOG = 'rebuildCatalog';
+const STEP_CHOOSE_NEW_TOOLS = 'chooseNewToolsPerAgent';
+
+const EXECUTOR_APPLY_RELEASE_CATALOG: WorkflowExecutor = {
+  kind: 'routine',
+  name: 'agents.toolCatalogRefresh.applyReleaseCatalog',
+};
+
+const EXECUTOR_CHOOSE_TOOLS: WorkflowExecutor = {
+  kind: 'routine',
+  name: 'agents.toolCatalogRefresh.chooseToolsForAgents',
+};
+
+/** Builds the occurrence key of the process for one record id. */
+function occurrenceKeyOf(recordId: string): OccurrenceKey {
+  return {
+    project: PROJECT_ID,
+    module: MODULE_NAME,
+    processId: PROCESS_ID,
+    entity: ENTITY_ID,
+    recordId,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// applyReleaseCatalog
+// ---------------------------------------------------------------------------
+
+/** One action of the release catalog, as the platform delivers it. */
+export interface ReleaseCatalogItem {
+  toolKey: string;
+  origin: string;
+  moduleName: string;
+  subject: string;
+  name: string;
+  moduleTitle: string;
+  subjectTitle: string;
+  description: string;
+  /** The whole catalog item exactly as delivered (stored whole on the tool). */
+  item: unknown;
+}
+
+export interface ApplyReleaseCatalogInput {
+  releaseLabel?: string;
+  items: ReleaseCatalogItem[];
+}
+
+export interface ApplyReleaseCatalogOutput {
+  newTools: number;
+  updatedTools: number;
+  removedTools: number;
+}
+
+function isFilledText(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+/** Narrows the delivered origin to the origin of the Tool entity. */
+function toolOriginOf(value: string): Tool['origin'] {
+  if (value === 'appModule') return 'appModule';
+  if (value === 'cm') return 'cm';
+  throw new AppError('RELEASE_CATALOG_ORIGIN_INVALID', 'A catalog item has an origin that is not known.', 400, {
+    ruleId: 'catalogRebuiltOnRelease',
+  });
+}
+
+/** The details of a tool without the removal date (the tool is back in the release). */
+function detailsWithoutRemovedAt(details: Tool['details']): Tool['details'] {
+  return {
+    moduleTitle: details.moduleTitle,
+    subjectTitle: details.subjectTitle,
+    description: details.description,
+    ...(details.releaseLabel !== undefined ? { releaseLabel: details.releaseLabel } : {}),
+    addedAt: details.addedAt,
+    ...(details.usedByAgents !== undefined ? { usedByAgents: details.usedByAgents } : {}),
+    catalogItem: details.catalogItem,
+  };
+}
+
+/** Refuses a catalog that is not usable; returns the validated items. */
+function validateReleaseCatalog(input: ApplyReleaseCatalogInput): ReleaseCatalogItem[] {
+  if (input === null || typeof input !== 'object' || !Array.isArray(input.items) || input.items.length === 0) {
+    throw new AppError('RELEASE_CATALOG_EMPTY', 'The release catalog must bring at least one item.', 400, {
+      ruleId: 'catalogRebuiltOnRelease',
+    });
+  }
+  if (input.releaseLabel !== undefined && !isFilledText(input.releaseLabel)) {
+    throw new AppError('RELEASE_LABEL_INVALID', 'The release label must be a filled text.', 400, {
+      ruleId: 'catalogRebuiltOnRelease',
+    });
+  }
+  const seen = new Set<string>();
+  for (const entry of input.items) {
+    if (
+      entry === null ||
+      typeof entry !== 'object' ||
+      !isFilledText(entry.toolKey) ||
+      !isFilledText(entry.moduleName) ||
+      !isFilledText(entry.subject) ||
+      !isFilledText(entry.name) ||
+      !isFilledText(entry.moduleTitle) ||
+      !isFilledText(entry.subjectTitle) ||
+      !isFilledText(entry.description)
+    ) {
+      throw new AppError('RELEASE_CATALOG_ITEM_INVALID', 'A catalog item is missing a required value.', 400, {
+        ruleId: 'catalogRebuiltOnRelease',
+      });
+    }
+    toolOriginOf(entry.origin);
+    if (entry.item === undefined || entry.item === null) {
+      throw new AppError('RELEASE_CATALOG_ITEM_MISSING', 'A catalog item arrived without its whole item.', 400, {
+        ruleId: 'toolKeepsWholeCatalogItem',
+      });
+    }
+    if (seen.has(entry.toolKey)) {
+      throw new AppError('RELEASE_CATALOG_DUPLICATE_KEY', 'The release brings the same tool key twice.', 400, {
+        ruleId: 'toolKeyUnique',
+      });
+    }
+    seen.add(entry.toolKey);
+  }
+  return input.items;
+}
+
+/** The whole catalog item exactly as delivered, kept as text. */
+function catalogItemText(item: unknown, toolKey: string): string {
+  const text: string | undefined = JSON.stringify(item);
+  if (typeof text !== 'string') {
+    throw new AppError('RELEASE_CATALOG_ITEM_NOT_SERIALIZABLE', `The catalog item of ${toolKey} cannot be stored.`, 400, {
+      ruleId: 'toolKeepsWholeCatalogItem',
+    });
+  }
+  return text;
+}
+
+export interface ChooseToolsForAgentsInput {
+  /** Record id of the occurrence opened by applyReleaseCatalog, when the caller has it. */
+  recordId?: string;
+  releaseLabel?: string;
+}
+
+export interface ChooseToolsTurnedOn {
+  agentId: string;
+  toolId: string;
+  toolName: string;
+}
+
+export interface ChooseToolsForAgentsOutput {
+  turnedOn: ChooseToolsTurnedOn[];
+  total: number;
+}
+
+interface ChooseAgentRef {
+  id: string;
+  name: string;
+  description: string;
+}
+
+function chooseIsRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function chooseFirstText(row: Record<string, unknown>, keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/** Reads the agents the cm listed: id, name and description of each one. */
+function chooseAgentsFromListing(listing: unknown): ChooseAgentRef[] {
+  let rows: unknown[];
+  if (Array.isArray(listing)) {
+    rows = listing;
+  } else if (chooseIsRecord(listing)) {
+    const container = listing['items'] ?? listing['agents'];
+    if (!Array.isArray(container)) {
+      throw new AppError('AGENT_LISTING_INVALID', 'The cm agent listing did not bring a list of agents.', 500, {
+        ruleId: 'newToolsChosenFromDescription',
+      });
+    }
+    rows = container;
+  } else {
+    throw new AppError('AGENT_LISTING_INVALID', 'The cm agent listing did not bring a list of agents.', 500, {
+      ruleId: 'newToolsChosenFromDescription',
+    });
+  }
+  const agents: ChooseAgentRef[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!chooseIsRecord(row)) {
+      throw new AppError('AGENT_LISTING_INVALID', 'The cm agent listing has an entry that is not an agent.', 500, {
+        ruleId: 'newToolsChosenFromDescription',
+      });
+    }
+    const id = chooseFirstText(row, ['id', 'agentId', 'agentMdmId']);
+    if (id === undefined) {
+      throw new AppError('AGENT_LISTING_INVALID', 'The cm agent listing has an agent without an id.', 500, {
+        ruleId: 'newToolsChosenFromDescription',
+      });
+    }
+    if (seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    agents.push({
+      id,
+      name: chooseFirstText(row, ['name']) ?? '',
+      description: chooseFirstText(row, ['definition', 'description']) ?? '',
+    });
+  }
+  return agents;
+}
+
+/** Reads the tool keys of the answer of the cm prompt; refuses an answer outside the requested format. */
+function chooseToolKeysFromAnswer(answer: unknown, depth: number): string[] {
+  if (depth > 4) {
+    throw new AppError('TOOL_CHOICE_ANSWER_INVALID', 'The answer of the cm prompt is not in the requested format.', 502, {
+      ruleId: 'newToolsChosenFromDescription',
+    });
+  }
+  if (typeof answer === 'string') {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(answer);
+    } catch (error) {
+      throw new AppError('TOOL_CHOICE_ANSWER_INVALID', 'The answer of the cm prompt is not valid JSON.', 502, {
+        ruleId: 'newToolsChosenFromDescription',
+      });
+    }
+    return chooseToolKeysFromAnswer(parsed, depth + 1);
+  }
+  if (chooseIsRecord(answer)) {
+    const keys = answer['toolKeys'];
+    if (Array.isArray(keys)) {
+      const texts: string[] = [];
+      for (const key of keys) {
+        if (typeof key !== 'string') {
+          throw new AppError('TOOL_CHOICE_ANSWER_INVALID', 'The tool keys of the answer must be texts.', 502, {
+            ruleId: 'newToolsChosenFromDescription',
+          });
+        }
+        texts.push(key);
+      }
+      return texts;
+    }
+    for (const wrapper of ['result', 'output', 'answer', 'text', 'content', 'data']) {
+      if (wrapper in answer) {
+        return chooseToolKeysFromAnswer(answer[wrapper], depth + 1);
+      }
+    }
+  }
+  throw new AppError('TOOL_CHOICE_ANSWER_INVALID', 'The answer of the cm prompt is not in the requested format.', 502, {
+    ruleId: 'newToolsChosenFromDescription',
+  });
+}
+
+const CHOOSE_LLM_SYSTEM =
+  'You choose, for every agent of the company, which new catalog tools should be turned on, reading only the description of the agent and of each tool. ' +
+  'Never change a choice the admin made. Answer only with the requested structure.';
+
+const CHOOSE_LLM_USER =
+  'For every agent listed by the cm, decide from its description which of the new available tools should be on. ' +
+  'Return, for each agent, its id and the tool keys to turn on.';
+
+const CHOOSE_LLM_SCHEMA: { name: string; description?: string; parameters: Record<string, unknown> } = {
+  name: 'chooseNewToolsPerAgent',
+  description: 'The new tools chosen for each agent of the company.',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['agents'],
+    properties: {
+      agents: {
+        type: 'array',
+        description: 'One entry per agent that gets new tools.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['agentId', 'toolKeys'],
+          properties: {
+            agentId: { type: 'string', description: 'Id of the agent as the cm listed it.' },
+            toolKeys: {
+              type: 'array',
+              description: 'Tool keys to turn on for the agent.',
+              items: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+/** Returns why the llm output is outside the schema, or undefined when it is valid. */
+function chooseLlmOutputProblem(raw: string | undefined): string | undefined {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    return 'the output is empty';
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return 'the output is not valid JSON';
+  }
+  if (!chooseIsRecord(parsed)) {
+    return 'the output is not an object';
+  }
+  const agents = parsed['agents'];
+  if (!Array.isArray(agents)) {
+    return 'the field agents is not a list';
+  }
+  for (const entry of agents) {
+    if (!chooseIsRecord(entry)) {
+      return 'an agent entry is not an object';
+    }
+    const agentId = entry['agentId'];
+    if (typeof agentId !== 'string' || agentId.trim().length === 0) {
+      return 'an agent entry has no agentId';
+    }
+    const toolKeys = entry['toolKeys'];
+    if (!Array.isArray(toolKeys)) {
+      return 'an agent entry has no list of toolKeys';
+    }
+    for (const toolKey of toolKeys) {
+      if (typeof toolKey !== 'string') {
+        return 'a tool key is not a text';
+      }
+    }
+  }
+  return undefined;
+}
+
+const RECOVERY_EXECUTOR: WorkflowExecutor = {
+  kind: 'routine',
+  name: 'agents.toolCatalogRefresh.recuperarToolCatalogRefresh',
+};
+
+/** Minimum age of the last movement of an occurrence before the recovery acts on it: one tick. */
+const RECOVERY_MIN_AGE_MS = 60_000;
+
+/**
+ * Called by the release arrival: validates the catalog, creates new tools, updates existing ones by toolKey with the
+ * whole catalog item, marks missing ones removed, opens the occurrence; returns the counts of new, updated and removed tools.
+ */
+export async function applyReleaseCatalog(
+  input: ApplyReleaseCatalogInput,
+  ctx: RequestContext,
+): Promise<ApplyReleaseCatalogOutput> {
+  const catalogItems = validateReleaseCatalog(input);
+  const releaseLabel = input.releaseLabel;
+
+  // The step reads the cm tools (the cm is reachable and answers); the items of the release are what the platform delivers.
+  const gateway = resolveRepository<CmGateway>(ctx, 'CmGateway');
+  await gateway.listCmTools({}, ctx);
+
+  const toolRepository = resolveRepository<ToolRepository>(ctx, 'ToolRepository');
+  const storedTools = await toolRepository.list({});
+  const storedByKey = new Map<string, Tool>();
+  for (const stored of storedTools) storedByKey.set(stored.toolKey, stored);
+
+  const recordSeed =
+    releaseLabel !== undefined ? releaseLabel : catalogItems.map((entry) => entry.toolKey).sort().join('|');
+  const recordId = occurrenceRecordId(ctx, PROCESS_ID, recordSeed);
+
+  let newTools = 0;
+  let updatedTools = 0;
+  let removedTools = 0;
+  let occurrenceIdUsed = false;
+  const deliveredKeys = new Set<string>();
+
+  for (const entry of catalogItems) {
+    deliveredKeys.add(entry.toolKey);
+    const catalogItem = catalogItemText(entry.item, entry.toolKey);
+    const stored = storedByKey.get(entry.toolKey);
+
+    if (stored === undefined) {
+      // The tool is not there: it is created through the port. The first id is the one of the occurrence record.
+      let newId: string;
+      if (!occurrenceIdUsed) {
+        occurrenceIdUsed = true;
+        newId = createOccurrenceContext(ctx, recordId).idGenerator.newId();
+      } else {
+        newId = ctx.idGenerator.newId();
+      }
+      const toCreate: Tool = {
+        id: newId,
+        version: 1,
+        toolKey: entry.toolKey,
+        origin: toolOriginOf(entry.origin),
+        moduleName: entry.moduleName,
+        subject: entry.subject,
+        name: entry.name,
+        status: 'available',
+        details: {
+          moduleTitle: entry.moduleTitle,
+          subjectTitle: entry.subjectTitle,
+          description: entry.description,
+          ...(releaseLabel !== undefined ? { releaseLabel } : {}),
+          addedAt: ctx.clock.nowIso(),
+          catalogItem,
+        },
+      };
+      const created = await toolRepository.create(toCreate);
+      storedByKey.set(created.toolKey, created);
+      newTools += 1;
+      continue;
+    }
+
+    let current: Tool = stored;
+    let changed = false;
+
+    if (current.status === 'removed') {
+      const restoredRecord: Tool = {
+        ...current,
+        status: 'available',
+        details: detailsWithoutRemovedAt(current.details),
+      };
+      current = await toolRepository.transition(restoredRecord, 'restoreToRelease');
+      changed = true;
+    }
+
+    const labelDiffers = releaseLabel !== undefined && current.details.releaseLabel !== releaseLabel;
+    const differs =
+      current.origin !== entry.origin ||
+      current.moduleName !== entry.moduleName ||
+      current.subject !== entry.subject ||
+      current.name !== entry.name ||
+      current.details.moduleTitle !== entry.moduleTitle ||
+      current.details.subjectTitle !== entry.subjectTitle ||
+      current.details.description !== entry.description ||
+      current.details.catalogItem !== catalogItem ||
+      current.details.removedAt !== undefined ||
+      labelDiffers;
+
+    if (differs) {
+      const nextLabel = releaseLabel !== undefined ? releaseLabel : current.details.releaseLabel;
+      const updateInput: UpdateToolInput = {
+        id: current.id,
+        version: current.version,
+        toolKey: entry.toolKey,
+        origin: entry.origin,
+        moduleName: entry.moduleName,
+        subject: entry.subject,
+        name: entry.name,
+        status: 'available',
+        details: {
+          moduleTitle: entry.moduleTitle,
+          subjectTitle: entry.subjectTitle,
+          description: entry.description,
+          ...(nextLabel !== undefined ? { releaseLabel: nextLabel } : {}),
+          addedAt: current.details.addedAt,
+          catalogItem,
+        },
+      };
+      await updateTool(updateInput, ctx);
+      changed = true;
+    }
+    if (changed) updatedTools += 1;
+  }
+
+  for (const stored of storedTools) {
+    if (deliveredKeys.has(stored.toolKey) || stored.status !== 'available') continue;
+    // The record takes the state the transition leads to; the port stores the record as given.
+    const removedRecord: Tool = {
+      ...stored,
+      status: 'removed',
+      details: { ...stored.details, removedAt: ctx.clock.nowIso() },
+    };
+    await toolRepository.transition(removedRecord, 'removeFromRelease');
+    removedTools += 1;
+  }
+
+  // The business rows are saved; now the occurrence opens and moves on to the llm step (a repeat finds it already there).
+  const key = occurrenceKeyOf(recordId);
+  const opened = await workflowEngine.open(ctx, {
+    key,
+    plan: workflowPlans.toolCatalogRefresh,
+    title: releaseLabel !== undefined ? `Tool catalog ${releaseLabel}` : 'Tool catalog release',
+    firstStep: STEP_REBUILD_CATALOG,
+    actorNow: null,
+    owner: null,
+    origin: { kind: 'event' },
+    executor: EXECUTOR_APPLY_RELEASE_CATALOG,
+    room: { mode: 'exclusive' },
+  });
+  const snapshot = opened.occurrence;
+  if (snapshot.step === STEP_REBUILD_CATALOG && !snapshot.done) {
+    const advanced = await workflowEngine.advance(ctx, key, {
+      commandId: `${recordId}:${STEP_CHOOSE_NEW_TOOLS}`,
+      expectedRevision: snapshot.revision,
+      from: STEP_REBUILD_CATALOG,
+      to: STEP_CHOOSE_NEW_TOOLS,
+      actorNow: null,
+      executor: EXECUTOR_APPLY_RELEASE_CATALOG,
+    });
+    if (advanced.outcome === 'conflict') {
+      ctx.log.info('toolCatalogRefresh: occurrence already advanced by another call', { recordId });
+    }
+  }
+
+  return { newTools, updatedTools, removedTools };
+}
+
+// ---------------------------------------------------------------------------
+// chooseToolsForAgents
+// ---------------------------------------------------------------------------
+
+/**
+ * Called by the llm stage: for every agent of the company read from the cm, turns on suggested new tools only where
+ * the admin made no choice, records them as automatic; returns the tools turned on; repeating it keeps the result.
+ */
+export async function chooseToolsForAgents(
+  input: ChooseToolsForAgentsInput,
+  ctx: RequestContext,
+): Promise<ChooseToolsForAgentsOutput> {
+  if (input === null || typeof input !== 'object') {
+    throw new AppError('CHOOSE_TOOLS_INPUT_INVALID', 'The input of the tool choice must be an object.', 400, {
+      ruleId: 'newToolsChosenFromDescription',
+    });
+  }
+  if (input.releaseLabel !== undefined && !isFilledText(input.releaseLabel)) {
+    throw new AppError('RELEASE_LABEL_INVALID', 'The release label must be a filled text.', 400, {
+      ruleId: 'newToolsChosenFromDescription',
+    });
+  }
+
+  const gateway = resolveRepository<CmGateway>(ctx, 'CmGateway');
+  const toolRepository = resolveRepository<ToolRepository>(ctx, 'ToolRepository');
+  const agentToolRepository = resolveRepository<AgentToolRepository>(ctx, 'AgentToolRepository');
+
+  // Every agent of the company, read from the cm (not only the ones that already have a tool choice).
+  const listing: unknown = await listAgent({ includeDrafts: false }, ctx);
+  const agents: ChooseAgentRef[] = chooseAgentsFromListing(listing);
+
+  const availableTools: Tool[] = await toolRepository.list({ status: 'available' });
+  const turnedOn: ChooseToolsTurnedOn[] = [];
+
+  for (const agent of agents) {
+    if (agent.description.length === 0) {
+      ctx.log.info('toolCatalogRefresh.chooseToolsForAgents: agent without description skipped', {
+        agentId: agent.id,
+      });
+      continue;
+    }
+    const choices: AgentTool[] = await agentToolRepository.list({ agentId: agent.id });
+    const choiceByTool = new Map<string, AgentTool>();
+    for (const choice of choices) {
+      choiceByTool.set(choice.toolId, choice);
+    }
+
+    // A choice the admin made is never a candidate; only tools with no choice, or with an automatic choice that is off.
+    const candidates: Tool[] = availableTools.filter((tool: Tool): boolean => {
+      const choice = choiceByTool.get(tool.id);
+      return choice === undefined || (choice.choiceSource === 'automatic' && !choice.enabled);
+    });
+    if (candidates.length === 0) {
+      continue;
+    }
+
+    const toolLines: string = candidates
+      .map((tool: Tool): string => `- ${tool.toolKey}: ${tool.name} — ${tool.details.description}`)
+      .join('\n');
+    const prompt: string =
+      'Decide which of the new tools below should be turned on for this agent, from the agent description. ' +
+      'Answer only with the tool keys of the tools that fit the agent; answer an empty list when none fits.\n' +
+      (input.releaseLabel !== undefined ? `Release: ${input.releaseLabel}\n` : '') +
+      `Agent name: ${agent.name}\n` +
+      `Agent description: ${agent.description}\n` +
+      `New tools:\n${toolLines}`;
+    const outputFormat: Record<string, unknown> = {
+      type: 'object',
+      properties: {
+        toolKeys: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Tool keys, exactly as listed, of the tools to turn on for the agent.',
+        },
+      },
+      required: ['toolKeys'],
+      additionalProperties: false,
+    };
+    const answer: unknown = await gateway.runAiPrompt({ prompt, outputFormat }, ctx);
+    const suggested = new Set<string>(chooseToolKeysFromAnswer(answer, 0));
+
+    for (const tool of candidates) {
+      if (!suggested.has(tool.toolKey)) {
+        continue;
+      }
+      const existing = choiceByTool.get(tool.id);
+      if (existing !== undefined) {
+        const updateInput: UpdateAgentToolInput = {
+          id: existing.id,
+          version: existing.version,
+          agentId: agent.id,
+          toolId: tool.id,
+          enabled: true,
+          choiceSource: 'automatic',
+          details: { automaticOrigin: 'catalogRefresh' },
+        };
+        await updateAgentTool(updateInput, ctx);
+      } else {
+        const created: AgentTool = {
+          id: ctx.idGenerator.newId(),
+          version: 1,
+          agentId: agent.id,
+          toolId: tool.id,
+          enabled: true,
+          choiceSource: 'automatic',
+          details: {
+            decidedAt: ctx.clock.nowIso(),
+            automaticOrigin: 'catalogRefresh',
+            toolName: tool.name,
+          },
+        };
+        await agentToolRepository.create(created);
+      }
+      turnedOn.push({ agentId: agent.id, toolId: tool.id, toolName: tool.name });
+    }
+  }
+
+  return { turnedOn, total: turnedOn.length };
+}
+
+// ---------------------------------------------------------------------------
+// llm step: notice handler and tick recovery
+// ---------------------------------------------------------------------------
+
+/**
+ * Wake handler of the llm step chooseNewToolsPerAgent: accepts only `llm-step-finished` of the current pass,
+ * rereads the result with the same commandId and advances the Task.
+ */
+export async function entregarChooseNewToolsPerAgent(ctx: RequestContext, event: ModuleWakeEvent): Promise<void> {
+  if (event.kind !== 'llm-step-finished') {
+    return;
+  }
+  if (event.stepKey !== STEP_CHOOSE_NEW_TOOLS) {
+    return;
+  }
+  const commandId: unknown = event.commandId;
+  if (typeof commandId !== 'string' || commandId.length === 0) {
+    throw new AppError('LLM_STEP_COMMAND_MISSING', 'The llm step notice arrived without its command id.', 400, {
+      ruleId: 'newToolsChosenFromDescription',
+    });
+  }
+  const suffix = `:${STEP_CHOOSE_NEW_TOOLS}:${event.pass}`;
+  if (!commandId.endsWith(suffix) || commandId.length === suffix.length) {
+    throw new AppError('LLM_STEP_COMMAND_INVALID', 'The llm step notice has a command id that does not belong to this step.', 400, {
+      ruleId: 'newToolsChosenFromDescription',
+    });
+  }
+  const recordId = commandId.slice(0, commandId.length - suffix.length);
+  const key = occurrenceKeyOf(recordId);
+  const occurrence = await workflowEngine.find(ctx, key);
+  if (occurrence === null) {
+    throw new AppError('OCCURRENCE_NOT_FOUND', 'The occurrence of the llm step notice was not found.', 404, {
+      ruleId: 'catalogRebuiltOnRelease',
+    });
+  }
+  if (occurrence.taskId !== event.taskId) {
+    ctx.log.info('toolCatalogRefresh: llm notice of another task ignored', { taskId: event.taskId });
+    return;
+  }
+  if (occurrence.done || occurrence.step !== STEP_CHOOSE_NEW_TOOLS) {
+    // Another call already advanced the occurrence: nothing to do.
+    return;
+  }
+  if (occurrence.pass !== event.pass) {
+    ctx.log.info('toolCatalogRefresh: llm notice of a pass that is not the current one ignored', {
+      taskId: occurrence.taskId,
+      pass: event.pass,
+    });
+    return;
+  }
+
+  // Same commandId: the runtime returns the step it already has and never calls the LLM again.
+  const llmResult: TaskOccurrenceLlmResult = await workflowEngine.requestLlmStep(ctx, {
+    key,
+    commandId,
+    stepKey: STEP_CHOOSE_NEW_TOOLS,
+    maxPasses: 2,
+    system: CHOOSE_LLM_SYSTEM,
+    user: CHOOSE_LLM_USER,
+    outputSchema: CHOOSE_LLM_SCHEMA,
+  });
+  if (llmResult.state === 'pending' || llmResult.state === 'in_progress') {
+    return;
+  }
+
+  const wakeCommandId = workflowWakeCommandId(`${occurrence.taskId}:${STEP_CHOOSE_NEW_TOOLS}:llm:${commandId}`);
+
+  if (llmResult.state === 'completed') {
+    const refusal = chooseLlmOutputProblem(llmResult.result);
+    if (refusal === undefined) {
+      const advanced = await workflowEngine.advance(ctx, key, {
+        commandId: wakeCommandId,
+        expectedRevision: occurrence.revision,
+        from: STEP_CHOOSE_NEW_TOOLS,
+        to: 'end',
+        actorNow: null,
+        executor: EXECUTOR_CHOOSE_TOOLS,
+      });
+      if (advanced.outcome === 'conflict') {
+        ctx.log.info('toolCatalogRefresh: llm step already advanced by another call', { taskId: occurrence.taskId });
+      }
+      return;
+    }
+    ctx.log.error('toolCatalogRefresh: llm output refused', { taskId: occurrence.taskId, reason: refusal });
+    const returned = await workflowEngine.advance(ctx, key, {
+      commandId: wakeCommandId,
+      expectedRevision: occurrence.revision,
+      from: STEP_CHOOSE_NEW_TOOLS,
+      to: STEP_REBUILD_CATALOG,
+      actorNow: null,
+      executor: EXECUTOR_CHOOSE_TOOLS,
+      note: `LLM_OUTPUT_INVALID: ${refusal}`,
+    });
+    if (returned.outcome === 'conflict') {
+      ctx.log.info('toolCatalogRefresh: llm step already advanced by another call', { taskId: occurrence.taskId });
+    }
+    return;
+  }
+
+  // state === 'failed'
+  const failureCode = llmResult.failure !== undefined ? llmResult.failure.code : 'LLM_STEP_FAILED';
+  ctx.log.error('toolCatalogRefresh: llm step failed', { taskId: occurrence.taskId, code: failureCode });
+  const failed = await workflowEngine.advance(ctx, key, {
+    commandId: wakeCommandId,
+    expectedRevision: occurrence.revision,
+    from: STEP_CHOOSE_NEW_TOOLS,
+    to: STEP_REBUILD_CATALOG,
+    actorNow: null,
+    executor: EXECUTOR_CHOOSE_TOOLS,
+    note: `LLM_STEP_FAILED: ${failureCode}`,
+  });
+  if (failed.outcome === 'conflict') {
+    ctx.log.info('toolCatalogRefresh: llm step already advanced by another call', { taskId: occurrence.taskId });
+  }
+}
+
+/**
+ * Tick recovery: finishes the gaps between the rebuild write, the advance to the llm step and the llm request/result,
+ * without a second LLM call.
+ */
+export async function recuperarToolCatalogRefresh(ctx: RequestContext): Promise<void> {
+  const nowMs = Date.parse(ctx.clock.nowIso());
+  if (Number.isNaN(nowMs)) {
+    throw new AppError('CLOCK_INVALID', 'The clock of the context did not return a valid time.', 500, {
+      ruleId: 'catalogRebuiltOnRelease',
+    });
+  }
+
+  const toolRepository = resolveRepository<ToolRepository>(ctx, 'ToolRepository');
+  const tools: Tool[] = await toolRepository.list({});
+  const toolIds = new Set<string>(tools.map((tool) => tool.id));
+
+  let llmUser: string | undefined;
+  const buildLlmUser = async (): Promise<string> => {
+    if (llmUser !== undefined) {
+      return llmUser;
+    }
+    const agents = chooseAgentsFromListing(await listAgent({}, ctx));
+    const availableTools = tools
+      .filter((tool) => tool.status === 'available')
+      .map((tool) => ({ toolKey: tool.toolKey, name: tool.name, description: tool.details.description }));
+    llmUser =
+      CHOOSE_LLM_USER +
+      '\nAgents:\n' +
+      JSON.stringify(agents) +
+      '\nNew available tools:\n' +
+      JSON.stringify(availableTools);
+    return llmUser;
+  };
+
+  const recoverOne = async (recordId: string): Promise<void> => {
+    const key = occurrenceKeyOf(recordId);
+    const found = await workflowEngine.find(ctx, key);
+    if (found === null || found.done) {
+      return;
+    }
+    const lastEntry = found.history[found.history.length - 1];
+    if (lastEntry === undefined) {
+      return;
+    }
+    const lastAt = Date.parse(lastEntry.at);
+    if (Number.isNaN(lastAt) || nowMs - lastAt < RECOVERY_MIN_AGE_MS) {
+      return;
+    }
+
+    let current: TaskOccurrenceSnapshot = found;
+
+    // Gap 1: the record is saved and the Task is still on the previous step.
+    if (current.step === STEP_REBUILD_CATALOG) {
+      if (!toolIds.has(recordId)) {
+        return;
+      }
+      const advanced = await workflowEngine.advance(ctx, key, {
+        commandId: `${recordId}:applyReleaseCatalog:r${current.revision}`,
+        expectedRevision: current.revision,
+        from: STEP_REBUILD_CATALOG,
+        to: STEP_CHOOSE_NEW_TOOLS,
+        actorNow: null,
+        executor: RECOVERY_EXECUTOR,
+        note: 'Recovered: the catalog was already saved and the advance to the llm step was missing.',
+      });
+      if (advanced.outcome !== 'advanced' && advanced.outcome !== 'unchanged') {
+        return;
+      }
+      current = advanced.occurrence;
+    }
+
+    if (current.step !== STEP_CHOOSE_NEW_TOOLS || current.done) {
+      return;
+    }
+
+    // Gaps 2 and 3: the Task is on the llm step. The same commandId returns the step the runtime already has.
+    const commandId = `${recordId}:${STEP_CHOOSE_NEW_TOOLS}:${current.pass}`;
+    const result: TaskOccurrenceLlmResult = await workflowEngine.requestLlmStep(ctx, {
+      key,
+      commandId,
+      stepKey: STEP_CHOOSE_NEW_TOOLS,
+      maxPasses: 2,
+      system: CHOOSE_LLM_SYSTEM,
+      user: await buildLlmUser(),
+      outputSchema: CHOOSE_LLM_SCHEMA,
+    });
+    if (result.state === 'pending' || result.state === 'in_progress') {
+      return;
+    }
+
+    let note: string;
+    if (result.state === 'failed') {
+      const code = result.failure !== undefined ? result.failure.code : 'NO_FAILURE_REPORTED';
+      note = `LLM_STEP_FAILED:${code}`;
+    } else {
+      const problem = chooseLlmOutputProblem(result.result);
+      note = problem === undefined ? 'LLM_STEP_COMPLETED' : `LLM_OUTPUT_INVALID:${problem}`;
+    }
+
+    const fresh = await workflowEngine.find(ctx, key);
+    if (fresh === null || fresh.done || fresh.step !== STEP_CHOOSE_NEW_TOOLS) {
+      return;
+    }
+    await workflowEngine.advance(ctx, key, {
+      commandId: workflowWakeCommandId(`${fresh.taskId}:${STEP_CHOOSE_NEW_TOOLS}:llm:${commandId}`),
+      expectedRevision: fresh.revision,
+      from: STEP_CHOOSE_NEW_TOOLS,
+      to: 'end',
+      actorNow: null,
+      executor: RECOVERY_EXECUTOR,
+      note,
+    });
+  };
+
+  let firstError: unknown;
+  let failed = false;
+  for (const tool of tools) {
+    try {
+      await recoverOne(tool.id);
+    } catch (error) {
+      ctx.log.error('toolCatalogRefresh recovery failed for an occurrence', {
+        recordId: tool.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (!failed) {
+        failed = true;
+        firstError = error;
+      }
+    }
+  }
+  if (failed) {
+    throw firstError;
+  }
+}

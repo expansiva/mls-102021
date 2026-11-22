@@ -310,6 +310,18 @@ export function catalogTypeBody(source: string | null, name: string): string {
   return body.length > 0 && body.length <= 700 ? body : '';
 }
 
+/** The catalog types the body of `typeName` names (`CmAgentCard` in `{ agents: CmAgentCard[] }`), the ones the catalog declares, in order, once. */
+export function answerTypeNames(source: string | null, typeName: string): string[] {
+  const body = catalogTypeBody(source, typeName);
+  if (!body || !source) return [];
+  const names = new Set<string>();
+  for (const match of body.matchAll(/\b([A-Z][A-Za-z0-9]*)\b/gu)) {
+    const name = match[1];
+    if (name !== typeName && /^[A-Z]/u.test(name) && new RegExp(`export\\s+(?:interface\\s+${name}\\b|type\\s+${name}\\s*=)`, 'u').test(source)) names.add(name);
+  }
+  return [...names];
+}
+
 /**
  * Gateways this usecase consumes: the interface, the import, and only its operations, with the catalog types.
  */
@@ -356,7 +368,9 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
       const later = operation.reply === 'later'
         ? ` The method returns the id of the work (\`${operation.outputType}\`). The usecase returns that id as its output and does not wait for the result. Do not create a column or a correlation table for it. Store it only when an l4 rule or entity says to store it. The result arrives later through the serve operation \`${operation.resultOperation}\`.`
         : '';
-      const shapes = [operation.inputType, operation.outputType].flatMap(name => {
+      // d1_278: the fields of the answer reach the model, one level down: `CmListAgentsOutput` is `{ agents: CmAgentCard[] }` and the card is what the
+      // answer carries (no `definition`). Without it the model guessed the field it needed and annotated the result `unknown`.
+      const shapes = [operation.inputType, operation.outputType, ...answerTypeNames(catalogSource, operation.outputType)].flatMap(name => {
         const body = catalogTypeBody(catalogSource, name);
         return body ? [`\`${name}\` is \`${body}\``] : [];
       });
