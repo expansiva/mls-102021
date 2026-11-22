@@ -34,7 +34,7 @@ import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/con
 import { D1_GAP_NONE } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
-import { readRederive, rederiveFile } from '/_102021_/l2/agentDefsL1/helpers/d1Rederive.js';
+import { D1_REDERIVE_SCHEMA, readRederive, rederiveFile, writeRederive } from '/_102021_/l2/agentDefsL1/helpers/d1Rederive.js';
 import { parseFinalizeReport, type D1FinalizeReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
 import { runResolve25, type D1TestResolver } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
 import { parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
@@ -502,4 +502,43 @@ void test('d1_251: a second /rederive keeps the hashes of the first: what the un
   const second = await readRederive(PROJECT, MODULE);
   assert.equal(second?.before[portPath], first?.before[portPath], 'the first hash stays');
   assert.notEqual(second?.before[portPath], await sourceIdentityHash(changed));
+});
+
+// d1_281: the marker of a round that ended does not cross into the next one. `102047@26a042f2`: the marker (usecases50, 83 defs) was committed with the checkpoint
+// `complete`, and the `/rederive` of the l4_p4_144 reused it: 85 targets for 3 real ones.
+void test('d1_281 A: an orphan marker (the checkpoint is complete) is dropped: the new /rederive takes the hashes of the disk now', async () => {
+  const host = await readyHost(FIXTURE, MODULE);
+  const resolver = recordedResolver(FIXTURE, MODULE);
+  await runToFinalize(host, MODULE, resolver);
+  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'complete');
+  const portPath = [...l1Bytes(host, MODULE).keys()].find(path => path.includes('/ports/') && path.endsWith('.defs.ts'))!;
+  const now = await sourceIdentityHash(stored(host, portPath).content);
+  // The marker as the repository brings it back: the round that wrote it ended, and its hashes are old.
+  await writeRederive(PROJECT, MODULE, { schemaVersion: D1_REDERIVE_SCHEMA, from: 'usecases50', before: { [portPath]: 'sha256:of-days-ago' } });
+  const intents = await command('persistence40');
+  const marker = await readRederive(PROJECT, MODULE);
+  assert.equal(marker?.from, 'persistence40');
+  assert.equal(marker?.before[portPath], now, 'the hash is the one of the disk now, not the orphan one');
+  assert.match(messageOf(intents), /^stale marker of usecases50 dropped/mu);
+});
+
+void test('d1_281 B: the same round that stopped keeps the marker (d1_251), and says so', async () => {
+  const host = await readyHost(FIXTURE, MODULE);
+  const resolver = recordedResolver(FIXTURE, MODULE);
+  await runToFinalize(host, MODULE, resolver);
+  const portPath = [...l1Bytes(host, MODULE).keys()].find(path => path.includes('/ports/') && path.endsWith('.defs.ts'))!;
+  await command('persistence40');
+  const first = await readRederive(PROJECT, MODULE);
+  assert.equal(JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))].content).status, 'inProgress', 'the round is open');
+  await writeText(fileInfoFromDisplay(PROJECT, portPath)!, stored(host, portPath).content.replace('"status": "pending"', '"status": "generated"'));
+  const intents = await command('persistence40');
+  assert.equal((await readRederive(PROJECT, MODULE))?.before[portPath], first?.before[portPath]);
+  assert.match(messageOf(intents), /^continuing the rederive of persistence40/mu);
+});
+
+void test('d1_281: a /rederive with no marker says nothing about one', async () => {
+  const host = await readyHost(FIXTURE, MODULE);
+  await runToFinalize(host, MODULE, recordedResolver(FIXTURE, MODULE));
+  assert.equal(await readRederive(PROJECT, MODULE), null);
+  assert.doesNotMatch(messageOf(await command('persistence40')), /stale marker|continuing the rederive/u);
 });

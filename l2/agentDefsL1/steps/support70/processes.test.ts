@@ -144,3 +144,23 @@ void test('d1_275: data.receives names a function of the process and an arrival,
   assert.ok(workflowProcessIssues({ ...base, receives: [{ function: 'receive', arrival: 'cm.a' }, { function: 'other', arrival: 'cm.a' }] }).some(item => item.startsWith('Duplicate')));
 });
 
+
+// d1_281 s2 (measured on 102047@6b9297d7 with the generator of the HEAD): the port of AgentDraft came out without `update` and the process named no usecase for the
+// create of AgentTool, because the arrival `cm.agentDraftReady` (AgentDraft update, AgentTool create) is received by a function of the process, which owns it
+// (d1_275), and only the arrival that starts a process (d1_232) was read for what it writes.
+void test('d1_281 (on 2e3e5a1b): the process that receives cm.agentDraftReady has AgentDraft.update and AgentTool.create among its operations', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'agents-2e3e5a1b', PROJECT);
+  const selected = ['create', 'update'].map(operation => ({ usecaseId: `${operation}AgentTool`, entity: 'AgentTool', operation, status: 'toCreate' as const, existing: '', identity: `${operation}AgentTool`, routes: [] }));
+  const plan = (await processesOf(PROJECT, 'agents', selected)).find(item => item.processId === 'virtualEmployeeCreation')!;
+  assert.deepEqual(plan.receives, [{ function: 'receiveDraftOutcome', arrival: 'cm.agentDraftReady' }]);
+  const line = (operation: string) => plan.operations.find(item => item.operation === operation);
+  assert.ok(line('AgentDraft.update'), 'the arrival updates the draft');
+  assert.equal(line('AgentDraft.update')?.selected, false, 'no usecase of the pool does it: the process applies it through the port');
+  assert.equal(line('AgentTool.create')?.selected, true, 'createAgentTool is the usecase of the create');
+  assert.equal(line('AgentTool.create')?.steps.every(step => step.startsWith('task:')), true);
+  // A process that receives nothing is not touched.
+  const other = (await processesOf(PROJECT, 'agents', selected)).find(item => item.processId === 'toolCatalogRefresh')!;
+  assert.deepEqual(other.receives, []);
+  assert.equal(other.operations.some(item => item.operation === 'AgentDraft.update'), false);
+});

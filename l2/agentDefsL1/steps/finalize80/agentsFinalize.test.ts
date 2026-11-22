@@ -654,9 +654,11 @@ void test('d1_272/d1_273 (on 3a7f89d1): the requests of the process journeys are
   const done = out.find(item => item.stepId === 'result:finalize80-done');
   const result = JSON.parse(done?.trace ?? '{}') as { materializeTargets?: string[] };
   const targets = result.materializeTargets ?? [];
-  assert.ok(targets.some(target => target.includes('/layer_2_application/requests/draft_review.defs.ts')), 'draft_review is a step of reviewAndActivateDraft, which the process cites');
+  // d1_281: the fixture carries the marker of an earlier round (the checkpoint is complete): it is dropped, and the targets are the defs this run changed. The
+  // listing of the requests of the process journeys with a workflow def that changed is proved on its own in `d1RederiveReaders.test.ts` (d1_273).
   assert.equal(targets.some(target => target.includes('/layer_2_application/requests/agent_tools.defs.ts')), false, 'agent_tools is the journey adjustAgentTools, which the process does not cite');
-  assert.ok(targets.some(target => target.includes('/layer_2_application/workflows/virtualEmployeeCreation.defs.ts')));
+  assert.ok(targets.some(target => target.includes('/layer_2_application/usecases/updateAgentDraft.defs.ts')), 'a def this run changed is listed');
+  assert.equal(targets.length < 20, true, 'the hashes of an orphan marker (83 defs) are not carried over');
   const file = Object.values(host.files).find(item => item.level === 1 && item.shortName === 'updateAgentDraft' && item.extension === '.defs.ts');
   assert.match(typeof file?.content === 'string' ? file.content : '', /"stateFrom": "status"/u);
 });

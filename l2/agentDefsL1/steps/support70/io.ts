@@ -1043,6 +1043,14 @@ export async function processesOf(
     if (typeof row.processId !== 'string' || !row.processId) return [];
     return [{ journeyId: row.journeyId, processId: row.processId }];
   });
+  // d1_281: what each `serve` arrival writes, by `<connectionId>.<operationId>`, read through the one reader of the NS5.
+  const integrationText = await readLogical(project, inputPaths(moduleName).integration);
+  const integration = integrationText ? parseD1Source(integrationText, 'defs') : null;
+  const arrivalWrites = new Map<string, Array<{ entityId: string; effects: string[] }>>();
+  for (const row of isRecord(integration) ? arrayOf(integration.connections).filter(isRecord) : []) {
+    if (row.direction !== 'serve' || typeof row.connectionId !== 'string' || typeof row.operationId !== 'string') continue;
+    arrivalWrites.set(`${row.connectionId}.${row.operationId}`, ns5ArrivalEffects(row as Parameters<typeof ns5ArrivalEffects>[0], 'serve').filter(entry => entry.entityId !== ''));
+  }
   const acts = new Map<string, D1ProcessAct[]>();
   for (const journeyId of [...new Set(decisions.map(item => item.journeyId))]) {
     acts.set(journeyId, await journeyActs(project, moduleName, journeyId));
@@ -1101,6 +1109,16 @@ export async function processesOf(
         ? [{ function: item.functionId, arrival: item.receives }]
         : []
     )).sort((left, right) => left.function.localeCompare(right.function));
+    // d1_281: an arrival a function of the process receives is the process's own (d1_275: its serve has no usecase): what the arrival says it creates and
+    // updates is an operation of the process, as the arrival that starts it is (d1_232). Without it the port of the entity has no `update` and the process names
+    // no usecase for the create (`cm.agentDraftReady`: AgentDraft.update, AgentTool.create).
+    if (firstTask) {
+      for (const received of receives) {
+        for (const entry of arrivalWrites.get(received.arrival) ?? []) {
+          for (const effect of entry.effects) if (effect === 'create' || effect === 'update') add(entry.entityId, effect, '', `task:${firstTask}`);
+        }
+      }
+    }
     plans.push({
       processId: row.processId,
       trigger: triggerOf(isRecord(row.trigger) ? row.trigger : {}),

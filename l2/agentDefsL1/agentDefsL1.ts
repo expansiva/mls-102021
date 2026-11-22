@@ -167,12 +167,17 @@ async function startRederive(project: number, moduleName: string, stepText: stri
   if (issues.length) return { refusal: `Checkpoint schema refused: ${issues[0]} Nothing was changed.` };
   // d1_251: a `/rederive` that did not finish leaves its marker (the targets are printed when the run ends well). The next command keeps the hashes the
   // marker already holds: the defs the earlier attempt changed or created are still "changed since the first command", and their targets are still printed.
-  const earlier = await readRederive(project, moduleName);
+  // d1_281: only the same round, stopped before its end, keeps the marker. A checkpoint that is `complete` says the round that left the marker ended (its
+  // finalize80 ran, and the marker came back from the repository or was never removed): that marker is orphan, and the hashes it holds are of days ago, with
+  // other runs and hand edits between. The new round takes the hashes of the disk now.
+  const marker = await readRederive(project, moduleName);
+  const earlier = marker && pipeline.status !== 'complete' ? marker : null;
   const before = earlier ? earlier.before : await defHashes(project, snapshot.files.map(file => file.defPath));
+  const markerNote = marker ? (earlier ? `continuing the rederive of ${marker.from}: the hashes of its first command stay. ` : `stale marker of ${marker.from} dropped: the last run ended, the hashes are taken from the disk now. `) : '';
   await writeRederive(project, moduleName, { schemaVersion: D1_REDERIVE_SCHEMA, from: stepText, before });
   await writeJson(pipelineFile(project, moduleName), next);
   const models = Object.entries(D1_MODEL_STEPS).map(([id, why]) => `${id} (${why})`).join('; ');
-  return { note: `rederive ${moduleName} from ${stepText}: the defs of ${stepText} and of the later steps are redone. Steps that may call a model: ${models}. The @@agentMaterializeL1 target of each def that changed is printed when finalize80 ends.` };
+  return { note: `${markerNote}rederive ${moduleName} from ${stepText}: the defs of ${stepText} and of the later steps are redone. Steps that may call a model: ${models}. The @@agentMaterializeL1 target of each def that changed is printed when finalize80 ends.` };
 }
 
 async function beforePromptStep(
