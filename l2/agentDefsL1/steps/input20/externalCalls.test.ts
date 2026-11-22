@@ -337,3 +337,67 @@ void test('a call that names other entities does not serve the read of an entity
   assert.deepEqual(route(new Map([['Draft', 'entity']])), []);
   assert.deepEqual(route(new Map()), ['cm.listAgents']);
 });
+
+// d1_280: `102047@bc0fbedf`. `changeMyConduct.changeConduct` writes PersonalConduct and the L4 also lists `cm.readAgent` on it (the version read), so the one usecase
+// `updatePersonalConduct` is served by two calls. The read call used to inherit the planned `update` (usecase `readAgent`, operation `update`).
+const conductJourneys = {
+  changeMyConduct: {
+    journeyId: 'changeMyConduct',
+    business: {
+      steps: [
+        { stepId: 'findMyAgent', kind: 'locate', entity: 'Agent' },
+        { stepId: 'readMyConduct', kind: 'inspect', entity: 'PersonalConduct' },
+        { stepId: 'changeConduct', kind: 'act', entity: 'PersonalConduct', effect: 'update', affects: ['ConductChange'] },
+      ],
+    },
+  },
+};
+const conductConnections = [
+  { connectionId: 'cm', operationId: 'readAgent', direction: 'call', effect: 'read', entityRefs: ['Agent', 'AgentBehavior', 'PersonalConduct'], usedBy: ['changeMyConduct.readMyConduct', 'changeMyConduct.changeConduct'] },
+  { connectionId: 'cm', operationId: 'updateAgent', direction: 'call', effect: 'update', entityRefs: ['Agent', 'PersonalConduct'], usedBy: ['changeMyConduct.changeConduct'] },
+];
+
+void test('d1_280 (on bc0fbedf): a read call of a write usecase is a get; the write call keeps the planned update and its id', () => {
+  const planned = usecase('updatePersonalConduct', 'PersonalConduct', 'update');
+  const { usecases, splits } = splitExternalUsecases({
+    journeys: conductJourneys,
+    connections: conductConnections,
+    usecases: [planned],
+    entityKind: new Map([['PersonalConduct', 'external'], ['Agent', 'external']]),
+    taken: new Set(),
+  });
+  assert.deepEqual(usecases.map(item => [item.usecaseId, item.operation, item.call]), [
+    ['getPersonalConduct', 'get', 'cm.readAgent'],
+    ['updatePersonalConduct', 'update', 'cm.updateAgent'],
+  ]);
+  assert.equal(usecases[1].status, planned.status, 'the planned usecase stays itself');
+  assert.equal(usecases[0].status, 'toCreate');
+  assert.deepEqual(splits[0].into.map(part => part.operation), ['get', 'update']);
+});
+
+void test('d1_280: two write calls of an update usecase, and a list served by read + list, come out as before', () => {
+  const behavior = usecase('changeBehavior', 'AgentBehavior', 'update');
+  const writes = splitExternalUsecases({
+    journeys: {
+      tune: { journeyId: 'tune', business: { steps: splitJourneys.tune.business.steps.filter(step => step.stepId === 'change' || step.stepId === 'undo') } },
+    },
+    connections: splitConnections,
+    usecases: [behavior],
+    entityKind: splitKind,
+    taken: new Set(['updateAgent']),
+  });
+  assert.deepEqual(writes.usecases.map(item => [item.usecaseId, item.operation]), [['updateAgentAgentBehavior', 'update'], ['undoAgentChange', 'update']]);
+  const listed = splitExternalUsecases({ journeys: splitJourneys, connections: splitConnections, usecases: [usecase('listAgent', 'Agent', 'list')], entityKind: splitKind, taken: new Set() });
+  assert.deepEqual(listed.usecases.map(item => [item.usecaseId, item.operation]), [['listAgent', 'list'], ['getAgent', 'get']]);
+});
+
+void test('d1_280: a write usecase served by one call whose effect is a read keeps its operation (one call serves it as planned)', () => {
+  const only = splitExternalUsecases({
+    journeys: conductJourneys,
+    connections: [conductConnections[0]],
+    usecases: [usecase('updatePersonalConduct', 'PersonalConduct', 'update')],
+    entityKind: new Map([['PersonalConduct', 'external']]),
+    taken: new Set(),
+  });
+  assert.deepEqual(only.usecases.map(item => [item.usecaseId, item.operation, item.call]), [['updatePersonalConduct', 'update', 'cm.readAgent']]);
+});

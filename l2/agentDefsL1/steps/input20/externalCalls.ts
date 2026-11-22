@@ -188,9 +188,14 @@ function keyOf(call: D1ExternalCallRef): string {
   return `${call.connectionId}.${call.operationId}`;
 }
 
-/** The read operation a call's catalog-side `effect` names (`list`, `read`): it only names the action, it never pairs a step. */
-function operationOfCall(usecase: D1SelectedUsecase, effect: string): string {
-  if (usecase.operation !== 'list' && usecase.operation !== 'get') return usecase.operation;
+/**
+ * The operation of one call of a usecase served by several (d1_195, d1_280): a call whose catalog-side `effect` is a read (`list`, `read`) is a read whatever the
+ * usecase was planned as; `changeMyConduct.changeConduct` writes PersonalConduct and also reads the agent (`cm.readAgent`), and that read must not be born as an
+ * `update` (it got the repository and the rules of the write, and recorded a change with no input). A write call keeps the planned operation. A usecase with one call
+ * keeps its operation: its only call serves it as planned.
+ */
+function operationOfCall(usecase: D1SelectedUsecase, effect: string, several: boolean): string {
+  if (!several && usecase.operation !== 'list' && usecase.operation !== 'get') return usecase.operation;
   return effect === 'list' || effect === 'read' ? operationsOfEffect(effect)[0] : usecase.operation;
 }
 
@@ -224,7 +229,7 @@ export function splitExternalUsecases(args: D1ExternalCallsInput & { taken: Read
       usecases.push(usecase);
       continue;
     }
-    const parts = match.calls.map(call => ({ call: keyOf(call), operationId: call.operationId, operation: operationOfCall(usecase, effects.get(keyOf(call)) || '') }));
+    const parts = match.calls.map(call => ({ call: keyOf(call), operationId: call.operationId, operation: operationOfCall(usecase, effects.get(keyOf(call)) || '', match.calls.length > 1) }));
     if (parts.length === 1 && parts[0].operation === usecase.operation) {
       usecases.push({ ...usecase, call: parts[0].call });
       continue;
