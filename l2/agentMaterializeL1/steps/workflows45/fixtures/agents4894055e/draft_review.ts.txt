@@ -1,0 +1,294 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/draft_review.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { Draft_reviewContracts, DraftReview, DraftToolLine, ToolVerdict } from '/_102047_/l2/agents/web/contracts/draft_review.defs.js';
+import { listAgentDraft } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentDraft.js';
+import { listAgentTool } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentTool.js';
+import { listTool } from '/_102047_/l1/agents/layer_2_application/usecases/listTool.js';
+import { listOrganizationUser } from '/_102047_/l1/agents/layer_2_application/usecases/listOrganizationUser.js';
+import { getOrganizationUser } from '/_102047_/l1/agents/layer_2_application/usecases/getOrganizationUser.js';
+import { listPersonToolRestriction } from '/_102047_/l1/agents/layer_2_application/usecases/listPersonToolRestriction.js';
+import { listAgentSimulation } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.js';
+import type { ListAgentSimulationInput, ListAgentSimulationOutput } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentSimulation.js';
+import { getAgentDraft } from '/_102047_/l1/agents/layer_2_application/usecases/getAgentDraft.js';
+import { updateAgentTool } from '/_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.js';
+import { completeDraftReview } from '/_102047_/l1/agents/layer_2_application/workflows/virtualEmployeeCreation.js';
+
+type Draft = Awaited<ReturnType<typeof listAgentDraft>>['items'][number];
+type Choice = Awaited<ReturnType<typeof listAgentTool>>['items'][number];
+type Tool = Awaited<ReturnType<typeof listTool>>['items'][number];
+type SimulationLevel = Draft_reviewContracts['agents.draft_review.simulateDraft']['input']['level'];
+const toCmLevel: Record<SimulationLevel, ListAgentSimulationInput['level']> = {
+  whatItCan: 'canDo', whatItUnderstands: 'understands'
+};
+const fromCmLevel: Record<ListAgentSimulationOutput['level'], SimulationLevel> = {
+  canDo: 'whatItCan', understands: 'whatItUnderstands'
+};
+
+async function draftById(id: string, ctx: RequestContext): Promise<Draft> {
+  const result = await listAgentDraft({ id, page: 1, pageSize: 1 }, ctx);
+  const draft = result.items[0];
+  if (!draft) throw new AppError('NOT_FOUND', 'Draft not found', 404, { id });
+  return draft;
+}
+
+async function reviewDraft(draft: Draft, ctx: RequestContext): Promise<DraftReview> {
+  const requester = await getOrganizationUser({ id: draft.requestedBy }, ctx);
+  // noTechnicalIdsOnScreen: return the requester's readable name.
+  return {
+    id: draft.id, version: draft.version, name: draft.name,
+    ...(draft.summary != null ? { summary: draft.summary } : {}),
+    ...(draft.audience != null ? { audience: draft.audience } : {}),
+    ...(draft.onBehalfOf != null ? { onBehalfOf: draft.onBehalfOf } : {}),
+    ...(draft.proposedBehavior != null ? { proposedBehavior: draft.proposedBehavior } : {}),
+    prompt: draft.prompt, status: draft.status,
+    requestedBy: requester.details.identification.name, requestedAt: draft.requestedAt
+  };
+}
+
+async function choicesFor(agentId: string, ctx: RequestContext, enabled?: boolean): Promise<Choice[]> {
+  const items: Choice[] = [];
+  let page = 1;
+  for (;;) {
+    const result = await listAgentTool({ agentId, ...(enabled != null ? { enabled } : {}), page, pageSize: 200 }, ctx);
+    items.push(...result.items);
+    if (!result.hasMore) return items;
+    page++;
+  }
+}
+
+async function catalog(ctx: RequestContext): Promise<Tool[]> {
+  const items: Tool[] = [];
+  let page = 1;
+  for (;;) {
+    const result = await listTool({ page, pageSize: 200 }, ctx);
+    items.push(...result.items);
+    if (!result.hasMore) return items;
+    page++;
+  }
+}
+
+function toolFor(choice: Choice, tools: Tool[]): Tool {
+  const tool = tools.find(item => item.id === choice.toolId);
+  if (!tool) throw new AppError('NOT_FOUND', 'Catalog tool not found', 404, { id: choice.toolId });
+  return tool;
+}
+
+function toolLine(choice: Choice, tool: Tool): DraftToolLine {
+  // removedToolNeverSent: the removed flag is derived from the catalog.
+  return {
+    id: choice.id, version: choice.version, toolId: choice.toolId,
+    enabled: choice.enabled, choiceSource: choice.choiceSource,
+    details: { decidedAt: choice.details.decidedAt, toolName: tool.name, toolRemoved: tool.status === 'removed' },
+    tool: { name: tool.name, status: tool.status, details: {
+      moduleTitle: tool.details.moduleTitle, subjectTitle: tool.details.subjectTitle,
+      description: tool.details.description
+    } }
+  };
+}
+
+function compareLines(a: DraftToolLine, b: DraftToolLine): number {
+  return a.tool.details.moduleTitle.localeCompare(b.tool.details.moduleTitle) ||
+    a.tool.details.subjectTitle.localeCompare(b.tool.details.subjectTitle) || a.tool.name.localeCompare(b.tool.name);
+}
+
+function ensureReady(draft: Draft): void {
+  if (draft.status !== 'ready') {
+    throw new AppError('CONFLICT', `Draft ${draft.name} is not ready`, 409, { id: draft.id, ruleId: 'draftDecisionOnlyWhenReady' });
+  }
+}
+
+function ensureVersion(draft: Draft, version: number): void {
+  if (draft.version !== version) throw new AppError('CONFLICT', `Draft ${draft.name} has changed`, 409, { id: draft.id });
+}
+
+function normalize(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+}
+
+async function allUsers(ctx: RequestContext): Promise<Awaited<ReturnType<typeof listOrganizationUser>>['items']> {
+  const items: Awaited<ReturnType<typeof listOrganizationUser>>['items'] = [];
+  let page = 1;
+  for (;;) {
+    const result = await listOrganizationUser({ page, pageSize: 200 }, ctx);
+    items.push(...result.items);
+    if (!result.hasMore) return items;
+    page++;
+  }
+}
+
+async function restrictionsFor(personId: string, ctx: RequestContext): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let page = 1;
+  for (;;) {
+    const result = await listPersonToolRestriction({ personId, page, pageSize: 200 }, ctx);
+    for (const item of result.items) ids.add(item.toolId);
+    if (!result.hasMore) return ids;
+    page++;
+  }
+}
+
+export const requests: { [K in keyof Draft_reviewContracts]: (input: Draft_reviewContracts[K]['input'], ctx: RequestContext) => Promise<Draft_reviewContracts[K]['output']> } = {
+  'agents.draft_review.getDraftReview': async function (input, ctx) {
+    const draft = await draftById(input.draftId, ctx);
+    const [choices, tools, projected] = await Promise.all([
+      choicesFor(draft.id, ctx), catalog(ctx), reviewDraft(draft, ctx)
+    ]);
+    return { draft: projected, tools: choices.map(choice => toolLine(choice, toolFor(choice, tools))).sort(compareLines) };
+  },
+
+  'agents.draft_review.searchSimulationPeople': async function (input, ctx) {
+    const page = Number.isFinite(input.page) ? Math.max(1, Math.floor(input.page)) : 1;
+    const pageSize = Number.isFinite(input.pageSize) ? Math.min(200, Math.max(1, Math.floor(input.pageSize))) : 20;
+    const term = normalize(input.name ?? '');
+    const users = await allUsers(ctx);
+    // onlyActiveUsersRestricted: a selectable person must also have a platform login.
+    const matching = users.filter(user => user.details.identification.status === 'Active' &&
+      user.details.agents?.loginEmail != null && normalize(user.details.identification.name).includes(term));
+    matching.sort((a, b) => a.details.identification.name.localeCompare(b.details.identification.name));
+    const start = (page - 1) * pageSize;
+    // noTechnicalIdsOnScreen: personRef is an opaque selection reference, not a display name.
+    const items = matching.slice(start, start + pageSize).map(user => ({
+      personRef: user.id,
+      details: {
+        identification: { name: user.details.identification.name, status: user.details.identification.status },
+        agents: { ...(user.details.agents?.loginEmail != null ? { loginEmail: user.details.agents.loginEmail } : {}) }
+      }
+    }));
+    return { people: { items, page, pageSize, hasMore: start + pageSize < matching.length } };
+  },
+
+  'agents.draft_review.simulateDraft': async function (input, ctx) {
+    const draft = await draftById(input.draftId, ctx);
+    let personId: string | undefined;
+    let role: string | undefined;
+    if (input.level === 'whatItCan') {
+      if (input.subjectKind === 'person' && input.person) {
+        const person = await getOrganizationUser({ id: input.person }, ctx);
+        if (person.details.identification.status !== 'Active' || person.details.agents?.loginEmail == null) {
+          throw new AppError('CONFLICT', `Person ${person.details.identification.name} is not an active user with a login`, 409, { id: input.person, ruleId: 'onlyActiveUsersRestricted' });
+        }
+        personId = input.person;
+      } else if (input.subjectKind === 'role' && input.roleName?.trim()) {
+        // adminSimulatesByRole: the selected role is sent to the simulation.
+        role = input.roleName;
+      } else {
+        throw new AppError('BAD_REQUEST', 'Choose a person or a role for the simulation', 400, { ruleId: 'adminSimulatesByRole' });
+      }
+    } else if (!input.sentence?.trim()) {
+      throw new AppError('BAD_REQUEST', 'Enter a sentence for the simulation', 400);
+    }
+    // simulationSavesNothing: this usecase invokes the read-only simulation.
+    const result = await listAgentSimulation({
+      agentId: draft.id, level: toCmLevel[input.level],
+      ...(personId != null ? { asMdmId: personId } : {}),
+      ...(role != null ? { as: role } : {}),
+      ...(input.level === 'whatItUnderstands' && input.sentence != null ? { message: input.sentence } : {})
+    }, ctx);
+    const level = fromCmLevel[result.level];
+    const tools = await catalog(ctx);
+    if (level === 'whatItUnderstands') {
+      if (result.isActionRequest == null || result.actions == null) {
+        throw new AppError('UPSTREAM_ERROR', 'Simulation did not return the sentence understanding', 502);
+      }
+      const actionTools = result.actions.map(action => {
+        const tool = tools.find(item => item.toolKey === action || item.id === action);
+        if (!tool) throw new AppError('NOT_FOUND', 'Simulation action not found in the catalog', 404, { id: action });
+        return tool;
+      });
+      const pathTool = result.path?.length ? tools.find(tool =>
+        tool.moduleName === result.path?.[0] && tool.subject === result.path?.[1]) : undefined;
+      // noTechnicalIdsOnScreen: translate action and path identifiers through the catalog.
+      return { simulation: { agent: draft.name, level, understanding: {
+        asksForAction: result.isActionRequest,
+        ...(pathTool != null ? { moduleName: pathTool.details.moduleTitle, subjectName: pathTool.details.subjectTitle } : {}),
+        actions: actionTools.map(tool => ({ actionName: tool.name }))
+      } } };
+    }
+    if (result.tree == null) throw new AppError('UPSTREAM_ERROR', 'Simulation did not return tool verdicts', 502);
+    // onlyToolsOnAreConsidered: start with enabled choices, not the entire cm tree.
+    const choices = await choicesFor(draft.id, ctx, true);
+    const restricted = personId != null ? await restrictionsFor(personId, ctx) : new Set<string>();
+    const verdicts: ToolVerdict[] = choices.map(choice => {
+      const tool = toolFor(choice, tools);
+      const cmVerdict = result.tree?.find(item => item.actionId === tool.toolKey || item.actionId === tool.id);
+      let reason: ToolVerdict['reason'];
+      let canUse: boolean;
+      // removedToolNotSent and personRestrictionAppliesInRequest take precedence over the cm verdict.
+      if (tool.status === 'removed') { reason = 'removedFromRelease'; canUse = false; }
+      else if (restricted.has(tool.id)) { reason = 'restrictedForPerson'; canUse = false; }
+      else {
+        if (!cmVerdict) throw new AppError('UPSTREAM_ERROR', `Simulation has no verdict for ${tool.name}`, 502, { id: tool.id });
+        canUse = cmVerdict.allowed;
+        reason = canUse ? 'allowed' : 'notPermittedForRole';
+      }
+      return {
+        moduleName: tool.details.moduleTitle, subjectName: tool.details.subjectTitle,
+        actionName: tool.name, canUse, reason,
+        ...(cmVerdict?.reason != null && cmVerdict.reason !== '' && tool.status !== 'removed' && !restricted.has(tool.id) ? { reasonText: cmVerdict.reason } : {})
+      };
+    });
+    return { simulation: { agent: draft.name, level, toolVerdicts: verdicts } };
+  },
+
+  'agents.draft_review.saveDraftTools': async function (input, ctx) {
+    return ctx.data.moduleData.runInTransaction(async tx => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      const draft = await draftById(input.draftId, bound);
+      ensureReady(draft);
+      const actorId = bound.sessionContext.person?.mdmId ?? bound.sessionContext.actorId;
+      if (!actorId) throw new AppError('UNAUTHORIZED', 'The calling administrator is not identified', 401);
+      const [choices, tools] = await Promise.all([choicesFor(draft.id, bound), catalog(bound)]);
+      const seen = new Set<string>();
+      for (const choice of choices) {
+        if (seen.has(choice.toolId)) throw new AppError('CONFLICT', `Duplicate choice for ${toolFor(choice, tools).name}`, 409, { id: choice.id, ruleId: 'oneChoicePerAgentAndTool' });
+        seen.add(choice.toolId);
+      }
+      const changed = new Set<string>();
+      const output: DraftToolLine[] = [];
+      for (const change of input.changes) {
+        const choice = choices.find(item => item.id === change.id);
+        if (!choice) throw new AppError('NOT_FOUND', 'Draft tool choice not found', 404, { id: change.id });
+        const tool = toolFor(choice, tools);
+        if (changed.has(change.id) || choice.version !== change.version) {
+          throw new AppError('CONFLICT', `Choice for ${tool.name} has changed`, 409, { id: change.id });
+        }
+        changed.add(change.id);
+        const updated = await updateAgentTool({
+          id: choice.id, version: change.version, agentId: choice.agentId, toolId: choice.toolId,
+          enabled: change.enabled, choiceSource: 'admin', details: { decidedBy: actorId }
+        }, bound);
+        output.push(toolLine({ id: updated.id, version: updated.version, agentId: updated.agentId,
+          toolId: updated.toolId, enabled: updated.enabled, choiceSource: 'admin',
+          details: { decidedAt: updated.details.decidedAt } }, tool));
+      }
+      return { tools: output };
+    });
+  },
+
+  'agents.draft_review.activateDraft': async function (input, ctx) {
+    return ctx.data.moduleData.runInTransaction(async tx => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      const draft = await draftById(input.id, bound);
+      ensureVersion(draft, input.version);
+      ensureReady(draft);
+      const cmDraft = await getAgentDraft({ agentId: draft.id }, bound);
+      // The workflow reads the current cm version and performs activation; it also closes the review task.
+      // agentNameUniqueAmongActive: the cm's name conflict is propagated by the workflow.
+      await completeDraftReview({ id: draft.id, draftId: cmDraft.agentId, version: input.version, outcome: 'activate' }, bound);
+      return { draft: await reviewDraft(await draftById(draft.id, bound), bound) };
+    });
+  },
+
+  'agents.draft_review.discardDraft': async function (input, ctx) {
+    return ctx.data.moduleData.runInTransaction(async tx => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      const draft = await draftById(input.id, bound);
+      ensureVersion(draft, input.version);
+      ensureReady(draft);
+      const cmDraft = await getAgentDraft({ agentId: draft.id }, bound);
+      await completeDraftReview({ id: draft.id, draftId: cmDraft.agentId, version: input.version, outcome: 'discard' }, bound);
+      return { draft: await reviewDraft(await draftById(draft.id, bound), bound) };
+    });
+  }
+};

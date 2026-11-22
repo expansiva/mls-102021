@@ -23,6 +23,7 @@ import { stepCallProblems, stepCallsOf, withUsecases, type StepCall } from '/_10
 import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/engineImports.js';
 import { enumFieldValues } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
 import { processReceives } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
+import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
 import { answerTypeNames, catalogTypeBody, connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { arrivalUpsertProblems, connectionRowsOf, emptyCastProblems, emptyRequiredProblems, recordCastProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, typedResultDiscardedProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
@@ -588,6 +589,18 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     sent.add(dep.defRef);
     parts.push(section(`Usecase ${dep.unitId}`, [`Import from \`/${dep.outputRef.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(generated))].join('\n\n')));
   }
+  // d1_283: the usecase a step calls (`listAgent`, `getAgent`: it consumes a call of the cm) is not a dependency of the process def, so its signature was missing: the
+  // section above gave the input of the call and never the output the usecase returns, and the model read a field the usecase does not carry.
+  for (const call of stepCalls) {
+    const called = call.usecase ? ctx.units.find(item => item.definition.artifactType === 'usecase' && usecaseNames(item).includes(call.usecase ?? '')) : undefined;
+    if (!called || sent.has(called.defRef)) continue;
+    const generated = await readOptional(called.output);
+    if (!generated) continue;
+    sent.add(called.defRef);
+    parts.push(section(`Usecase ${called.unitId}`, [`Import from \`/${called.outputRef.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(generated))].join('\n\n')));
+  }
+  const callers = await callersSection(ctx, unit, facts, focus);
+  if (callers) parts.push(callers);
   // The entity of the occurrence and of every operation, with its port: a system transition and the occurrence
   // record are read and written through them. And every entity the prose of the process names: the daily notice
   // reads the open tasks, and without the Tarefa entity the model guessed its states (todo, inProgress).
@@ -809,6 +822,42 @@ export async function receivedInputSection(ctx: M12Context, processData: Record<
     ].filter(Boolean).join('\n'));
   }
   return blocks.length ? section('What the functions that receive an arrival are called with', blocks.join('\n')) : '';
+}
+
+/**
+ * d1_283: how the files of the module call the functions of this process today. A regeneration that gives a function another input breaks them (the
+ * `virtualEmployeeCreation` lost `draftId`, and three callers failed to compile): the call sites already say what the input is. Read from the generated files
+ * of the other units of the module (the routes, the usecases, the other processes), the first calls of each function, as written. '' when nothing calls it.
+ */
+export async function callersSection(ctx: M12Context, unit: M12Unit, facts: M12WorkflowFacts, focus?: string): Promise<string> {
+  const lines: string[] = [];
+  const others = ctx.units.filter(item => item.defRef !== unit.defRef && item.layer !== 'adapter');
+  const sources: Array<{ unitId: string; code: string }> = [];
+  for (const other of others) {
+    const code = await readOptional(other.output);
+    if (code) sources.push({ unitId: other.unitId, code: withoutComments(code) });
+  }
+  for (const fn of facts.functions) {
+    if (focus && focus !== fn) continue;
+    const found: string[] = [];
+    for (const source of sources) {
+      for (const match of source.code.matchAll(new RegExp(`(?<![\\w$.])${fn}\\s*\\(`, 'gu'))) {
+        const at = match.index ?? 0;
+        if (/\b(?:function|import)\s+[\w$\s,{}]*$/u.test(source.code.slice(Math.max(0, at - 40), at))) continue;
+        let depth = 0;
+        let end = at + match[0].length - 1;
+        for (; end < source.code.length; end += 1) {
+          if (source.code[end] === '(') depth += 1;
+          else if (source.code[end] === ')') { depth -= 1; if (depth === 0) break; }
+        }
+        found.push(`  - ${source.unitId}: \`${source.code.slice(at, end + 1).replace(/\s+/gu, ' ').trim().slice(0, 300)}\``);
+        if (found.length >= 3) break;
+      }
+      if (found.length >= 3) break;
+    }
+    if (found.length) lines.push(`- \`${fn}\` is called today as:`, ...found);
+  }
+  return lines.length ? section('How the module calls the functions of this process today (the input they pass: keep it)', ['Files of the module already call these functions. Give each function the input they pass, with the same names, or they stop compiling.', ...lines].join('\n')) : '';
 }
 
 /** d1_282: the usecases of the module with the entity and operation each runs and the names a file calls it by, for the gate of an upsert in a process. */

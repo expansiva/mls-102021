@@ -1,0 +1,14 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/usecases/listAgent.ts" enhancement="_blank"/>
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import type { CmListAgentsInput, CmListAgentsOutput } from '/_102034_/l2/shared/contracts/connections/cm.js';
+import type { CmGateway } from '/_102047_/l1/agents/layer_1_external/adapters/integration/outbound.js';
+
+export interface ListAgentInput extends CmListAgentsInput {}
+export interface ListAgentOutput extends CmListAgentsOutput {}
+
+export async function listAgent(input: ListAgentInput, ctx: RequestContext): Promise<ListAgentOutput> {
+  const gateway = resolveRepository<CmGateway>(ctx, 'CmGateway');
+  const result: CmListAgentsOutput = await gateway.listAgents(input, ctx);
+  return result;
+}

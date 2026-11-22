@@ -1,0 +1,149 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/cm.ts" enhancement="_blank"/>
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { CmAgentDraftReadyInput, CmAgentDraftReadyOutput, CmDescribeInput, CmDescribeOutput, CmRecordInput, CmRecordOutput } from '/_102034_/l2/shared/contracts/connections/cm.js';
+import { listAgentTool } from '/_102047_/l1/agents/layer_2_application/usecases/listAgentTool.js';
+import { listPersonToolRestriction } from '/_102047_/l1/agents/layer_2_application/usecases/listPersonToolRestriction.js';
+import { listTool } from '/_102047_/l1/agents/layer_2_application/usecases/listTool.js';
+import { receiveDraftOutcome } from '/_102047_/l1/agents/layer_2_application/workflows/virtualEmployeeCreation.js';
+import { recordExecutionSummary } from '/_102047_/l1/agents/layer_2_application/workflows/executionRecording.js';
+
+type CatalogItem = Extract<CmDescribeOutput, { tools: unknown }>['tools'][number]['entry'];
+
+async function collect<T>(read: (page: number) => Promise<{ items: T[]; hasMore: boolean }>): Promise<T[]> {
+  const items: T[] = [];
+  for (let page = 1; ; page += 1) {
+    const result = await read(page);
+    items.push(...result.items);
+    if (!result.hasMore) return items;
+    if (result.items.length === 0) {
+      throw new AppError('INTERNAL_ERROR', 'A list reported another page without returning any records.', 500);
+    }
+  }
+}
+
+function catalogItem(raw: string): CatalogItem {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw) as unknown;
+  } catch {
+    throw new AppError('INTERNAL_ERROR', 'A stored tool catalog item is not valid JSON.', 500);
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new AppError('INTERNAL_ERROR', 'A stored tool catalog item is not an object.', 500);
+  }
+  const item = value as { [key: string]: unknown };
+  const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string');
+  if (typeof item.route !== 'string' || typeof item.actionId !== 'string' ||
+      (item.kind !== 'cmd' && item.kind !== 'qry') || !strings(item.actors) ||
+      (item.assistant !== 'included' && item.assistant !== 'excluded') ||
+      (item.routes != null && !strings(item.routes)) ||
+      (item.module != null && typeof item.module !== 'string') ||
+      (item.title != null && typeof item.title !== 'string') ||
+      (item.risk != null && typeof item.risk !== 'string') ||
+      (item.inputs != null && (!Array.isArray(item.inputs) || !item.inputs.every((v: unknown) => {
+        if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
+        const field = v as { [key: string]: unknown };
+        return (field.path == null || typeof field.path === 'string') &&
+          (field.role == null || typeof field.role === 'string');
+      })))) {
+    throw new AppError('INTERNAL_ERROR', 'A stored tool catalog item does not have the catalog shape.', 500);
+  }
+  return item as CatalogItem;
+}
+
+export const requests: { 'agents.cm.agentDraftReady': (input: CmAgentDraftReadyInput, ctx: RequestContext) => Promise<CmAgentDraftReadyOutput>; 'agents.cm.describe': (input: CmDescribeInput, ctx: RequestContext) => Promise<CmDescribeOutput>; 'agents.cm.record': (input: CmRecordInput, ctx: RequestContext) => Promise<CmRecordOutput> } = {
+  'agents.cm.agentDraftReady': async function (input, ctx) {
+    return ctx.data.moduleData.runInTransaction(async tx => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      await receiveDraftOutcome({
+        id: input.draftId,
+        draftId: input.draftId,
+        status: input.status,
+        ...(input.refusedReason != null ? { refusalReason: input.refusedReason } : {}),
+        ...(input.suggestedTools != null ? { suggestedTools: input.suggestedTools } : {}),
+      }, bound);
+      return {};
+    });
+  },
+  'agents.cm.describe': async function (input, ctx) {
+    const personId = ctx.requestMeta?.connection?.context.actorMdmId;
+    const [choices, restrictions, catalog] = await Promise.all([
+      collect(page => listAgentTool({ agentId: input.agentId, page, pageSize: 200 }, ctx)),
+      collect(page => listPersonToolRestriction({ ...(personId != null ? { personId } : {}), page, pageSize: 200 }, ctx)),
+      collect(page => listTool({ page, pageSize: 200 }, ctx)),
+    ]);
+    const byId = new Map(catalog.map(tool => [tool.id, tool]));
+    const restricted = new Set(restrictions.filter(r => personId != null && r.personId === personId).map(r => r.toolId));
+    // onlyEnabledToolsSent and removedToolNeverSent: derive the linked catalog from current choices and tool status.
+    const linked = choices.filter(choice => choice.enabled).map(choice => {
+      const tool = byId.get(choice.toolId);
+      if (!tool) throw new AppError('NOT_FOUND', 'A linked catalog tool was not found.', 404, { toolId: choice.toolId });
+      return tool;
+    }).filter(tool => tool.status === 'available').sort((a, b) => a.id.localeCompare(b.id));
+    const version = linked.length === 0 ? 'empty' : 'tools:' + JSON.stringify(linked.map(tool => [
+      tool.id, tool.toolKey, tool.moduleName, tool.subject, tool.name,
+      tool.details.moduleTitle, tool.details.subjectTitle, tool.details.description, tool.details.catalogItem,
+    ]));
+    const described = linked.map(tool => {
+      const entry = catalogItem(tool.details.catalogItem);
+      return {
+        toolId: tool.id,
+        tool: {
+          moduleId: tool.moduleName,
+          moduleTitle: tool.details.moduleTitle,
+          subject: tool.subject,
+          subjectTitle: tool.details.subjectTitle,
+          actionId: entry.actionId,
+          ...(entry.title != null ? { title: entry.title } : {}),
+          purpose: tool.details.description,
+          kind: entry.kind,
+          entry,
+        },
+      };
+    });
+    // personRestrictionsExcludeTools: do not send a tool restricted for this person.
+    const visible = described.filter(item => !restricted.has(item.toolId));
+    const authorities = new Set(input.authorities);
+    const allowed = visible.filter(item => item.tool.entry.assistant === 'included' &&
+      item.tool.entry.actors.some((actor: string) => authorities.has(`${item.tool.moduleId}:${actor}`)))
+      .map(item => item.tool.actionId);
+    if (linked.length > 0 && input.knownVersion === version) return { version, allowed };
+    return { version, toolsMode: 'all', tools: visible.map(item => item.tool), allowed };
+  },
+  'agents.cm.record': async function (input, ctx) {
+    return ctx.data.moduleData.runInTransaction(async tx => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      const personId = ctx.requestMeta?.connection?.context.actorMdmId;
+      const workflowInput = {
+        agentId: input.agentId,
+        ...(personId != null ? { personId } : {}),
+        executionRef: input.executionId,
+        startedAt: input.startedAt,
+        executionId: input.executionId,
+        mode: input.mode,
+        usedMainModel: input.usedMainModel,
+        handedOff: input.handedOff,
+        refs: { ...input.refs },
+        details: {
+          durationMs: input.durationMs,
+          cost: String(input.costUsd),
+          tookOver: input.handedOff,
+          ...(input.refs.conversationId != null ? { conversationLink: input.refs.conversationId } : {}),
+          actions: input.actions.map(action => ({
+            toolName: action.actionId,
+            result: action.outcome === 'done' ? 'succeeded' : action.outcome === 'refused_rule' ? 'refused' : 'failed',
+            resultNote: action.outcome,
+            actionId: action.actionId,
+            outcome: action.outcome,
+          })),
+          mode: input.mode,
+          usedMainModel: input.usedMainModel,
+          refs: { ...input.refs },
+        },
+      };
+      await recordExecutionSummary(workflowInput, bound);
+      return { status: 'recorded' };
+    });
+  },
+};

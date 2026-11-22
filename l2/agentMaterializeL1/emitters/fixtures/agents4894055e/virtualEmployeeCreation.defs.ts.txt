@@ -1,0 +1,83 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/workflows/virtualEmployeeCreation.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "workflowProcess",
+  "artifactId": "virtualEmployeeCreation",
+  "moduleName": "agents",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/agents/layer_2_application/usecases/activate.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/createAgentDraft.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/createAgentTool.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/discard.defs.ts",
+    "_102047_/l1/agents/layer_2_application/usecases/updateAgentTool.defs.ts",
+    "_102047_/l4/agents/journeys/createVirtualEmployee.defs.ts",
+    "_102047_/l4/agents/journeys/reviewAndActivateDraft.defs.ts",
+    "_102047_/l4/agents/ontology/AgentDraft.defs.ts",
+    "_102047_/l4/agents/workflows.defs.ts"
+  ],
+  "data": {
+    "processId": "virtualEmployeeCreation",
+    "trigger": {
+      "kind": "manual",
+      "actorRef": "companyAdmin"
+    },
+    "functions": [
+      "startVirtualEmployeeRequest",
+      "receiveDraftOutcome",
+      "resolveDraftReviewer",
+      "completeDraftReview"
+    ],
+    "receives": [
+      {
+        "function": "receiveDraftOutcome",
+        "arrival": "cm.agentDraftReady"
+      }
+    ],
+    "operations": [
+      {
+        "operation": "AgentDraft.activate",
+        "steps": [
+          "journey:reviewAndActivateDraft/activateDraft"
+        ]
+      },
+      {
+        "operation": "AgentDraft.create",
+        "steps": [
+          "journey:createVirtualEmployee/describeAgent"
+        ]
+      },
+      {
+        "operation": "AgentDraft.discard",
+        "steps": [
+          "journey:reviewAndActivateDraft/discardDraft"
+        ]
+      },
+      {
+        "operation": "AgentDraft.update",
+        "steps": [
+          "task:describeNewAgent"
+        ]
+      },
+      {
+        "operation": "AgentTool.create",
+        "steps": [
+          "task:describeNewAgent"
+        ]
+      },
+      {
+        "operation": "AgentTool.update",
+        "steps": [
+          "journey:reviewAndActivateDraft/adjustDraftTools",
+          "task:applySuggestedTools"
+        ]
+      }
+    ],
+    "occurrence": {
+      "entityId": "AgentDraft"
+    }
+  }
+} as const;
+
+export default definition;
