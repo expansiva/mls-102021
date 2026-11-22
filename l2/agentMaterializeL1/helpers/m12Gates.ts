@@ -1102,6 +1102,7 @@ export function arrivalUpsertProblems(
   upserts: ReadonlyArray<{ entityId: string; key: readonly string[]; keyKind: string }>,
   mode: 'route' | 'process',
   where: string,
+  usecases: ReadonlyArray<{ entityId: string; operation: string; names: readonly string[] }> = [],
 ): string[] {
   if (!upserts.length) return [];
   const masked = maskCode(code);
@@ -1110,11 +1111,20 @@ export function arrivalUpsertProblems(
     const names = [...masked.matchAll(new RegExp(`([A-Za-z_$][\\w$]*)\\s*=\\s*(?:await\\s+)?resolveRepository\\s*<\\s*${entityId}Repository\\s*>`, 'gu'))].map(match => match[1]);
     return (names.length ? names : ['[A-Za-z_$][\\w$]*']).some(name => new RegExp(`(?<![\\w$])${name}\\.(?:${methods})\\s*\\(`, 'u').test(masked));
   };
+  // d1_282: a process also writes through the usecases the def lists (`createTool`, imported from the module): calling the usecase of the operation is the other way
+  // to look up (`list`/`get`) or to create. The gate accepts both; it only asks that the record is looked up and that a record that is not there is created.
+  const viaUsecase = (entityId: string, operations: readonly string[]): boolean => mode === 'process'
+    && usecases.some(item => item.entityId === entityId && operations.includes(item.operation)
+      && item.names.some(name => new RegExp(`(?<![\\w$.])${name}\\s*\\(`, 'u').test(masked)));
+  const createNames = (entityId: string): string => {
+    const names = [...new Set(usecases.filter(item => mode === 'process' && item.entityId === entityId && item.operation === 'create').flatMap(item => item.names.slice(0, 1)))];
+    return names.length ? ` or the usecase \`${names.join('`, `')}\` that the def lists` : '';
+  };
   const problems: string[] = [];
   for (const upsert of upserts) {
     const key = upsert.keyKind === 'id' ? `its id (${upsert.key[0]})` : `its unique key (${upsert.key.join(', ')})`;
-    if (!called(upsert.entityId, 'list|get')) problems.push(`ARRIVAL_UPSERT_WITHOUT_LOOKUP: ${where} creates or updates ${upsert.entityId} found by ${key}, and does not look the record up: call the port \`${upsert.keyKind === 'id' ? 'get' : 'list'}\` first, update it when it is there and create it when it is not.`);
-    if (mode === 'process' && !called(upsert.entityId, 'create')) problems.push(`ARRIVAL_UPSERT_NEVER_CREATES: ${where} creates or updates ${upsert.entityId}, and the file never calls \`create\` on its port: a record that is not there is created, not written by \`update\`.`);
+    if (!called(upsert.entityId, 'list|get') && !viaUsecase(upsert.entityId, ['list', 'get'])) problems.push(`ARRIVAL_UPSERT_WITHOUT_LOOKUP: ${where} creates or updates ${upsert.entityId} found by ${key}, and does not look the record up: call the port \`${upsert.keyKind === 'id' ? 'get' : 'list'}\` first, update it when it is there and create it when it is not.`);
+    if (mode === 'process' && !called(upsert.entityId, 'create') && !viaUsecase(upsert.entityId, ['create'])) problems.push(`ARRIVAL_UPSERT_NEVER_CREATES: ${where} creates or updates ${upsert.entityId}, and the file never creates it: call \`create\` on its port${createNames(upsert.entityId)}. A record that is not there is created, not written by \`update\`.`);
   }
   return problems;
 }

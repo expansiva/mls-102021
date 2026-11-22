@@ -310,16 +310,27 @@ export function catalogTypeBody(source: string | null, name: string): string {
   return body.length > 0 && body.length <= 700 ? body : '';
 }
 
-/** The catalog types the body of `typeName` names (`CmAgentCard` in `{ agents: CmAgentCard[] }`), the ones the catalog declares, in order, once. */
-export function answerTypeNames(source: string | null, typeName: string): string[] {
-  const body = catalogTypeBody(source, typeName);
-  if (!body || !source) return [];
-  const names = new Set<string>();
-  for (const match of body.matchAll(/\b([A-Z][A-Za-z0-9]*)\b/gu)) {
-    const name = match[1];
-    if (name !== typeName && /^[A-Z]/u.test(name) && new RegExp(`export\\s+(?:interface\\s+${name}\\b|type\\s+${name}\\s*=)`, 'u').test(source)) names.add(name);
+/**
+ * The catalog types the body of `typeName` names (`CmAgentCard` in `{ agents: CmAgentCard[] }`), the ones the catalog declares, in order, once. `depth` is how
+ * many levels down it follows (1: the types the body names; the message of an arrival is three deep: input, module catalog, action), at most `max` types.
+ */
+export function answerTypeNames(source: string | null, typeName: string, depth = 1, max = 8): string[] {
+  const found: string[] = [];
+  let level = [typeName];
+  for (let step = 0; step < depth && found.length < max; step += 1) {
+    const next: string[] = [];
+    for (const current of level) {
+      const body = catalogTypeBody(source, current);
+      if (!body || !source) continue;
+      for (const match of body.matchAll(/\b([A-Z][A-Za-z0-9]*)\b/gu)) {
+        const name = match[1];
+        if (name === typeName || found.includes(name) || found.length >= max) continue;
+        if (new RegExp(`export\\s+(?:interface\\s+${name}\\b|type\\s+${name}\\s*=)`, 'u').test(source)) { found.push(name); next.push(name); }
+      }
+    }
+    level = next;
   }
-  return [...names];
+  return found;
 }
 
 /**

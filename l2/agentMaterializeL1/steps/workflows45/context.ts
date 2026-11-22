@@ -22,7 +22,8 @@ import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js
 import { stepCallProblems, stepCallsOf, withUsecases, type StepCall } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/stepCalls.js';
 import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/engineImports.js';
 import { enumFieldValues } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
-import { connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { processReceives } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
+import { answerTypeNames, catalogTypeBody, connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { arrivalUpsertProblems, connectionRowsOf, emptyCastProblems, emptyRequiredProblems, recordCastProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, typedResultDiscardedProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -555,6 +556,8 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   // The calls this process runs (its tasks cite them in `usedBy`): the same gateway section a usecase gets.
   const gateways = await connectionGatewaySection(ctx, facts.processId, unit.definition.artifactId);
   if (gateways) parts.push(gateways);
+  const received = await receivedInputSection(ctx, unit.definition.data, focus);
+  if (received) parts.push(received);
   const stepCalls = await stepCallsFor(ctx, facts.processId);
   if (stepCalls.length) {
     const stepOf = new Map(workflowProcessSteps(readProcess).map(step => [step.stepId, step]));
@@ -777,6 +780,46 @@ async function catalogInputOf(ctx: M12Context, call: { connectionId: string; ope
   return resolved.text ? { type: operation.inputType, text: resolved.text } : null;
 }
 
+/**
+ * d1_282: the message a function of the process receives (the L4 `receives`, read by the D1 into `data.receives`). The route that serves the arrival calls the
+ * function with the message, so the function takes the catalog type of the arrival as its input: without it the model does not know the shape of what it is
+ * handed (`PlatformReleaseCatalogChangedInput`: the actions of the release) and asks for the key, the origin and the texts of the contract. The type comes from the
+ * catalog of the connection, with the catalog types its fields name, three levels down at most. Only the function in focus (every function of the file when none is). '' when
+ * no function receives an arrival.
+ */
+export async function receivedInputSection(ctx: M12Context, processData: Record<string, unknown>, focus?: string): Promise<string> {
+  const blocks: string[] = [];
+  for (const [arrival, fn] of processReceives(processData)) {
+    if (focus && focus !== fn) continue;
+    const dot = arrival.indexOf('.');
+    if (dot <= 0) continue;
+    const connectionId = arrival.slice(0, dot);
+    const operationId = arrival.slice(dot + 1);
+    const catalog = await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, connectionId);
+    const operation = catalog.source ? catalogOperations(catalog.source)?.find(item => item.operationId === operationId && item.direction !== 'call') : undefined;
+    if (!catalog.source || !operation) continue;
+    const shapes = [operation.inputType, ...answerTypeNames(catalog.source, operation.inputType, 3)].flatMap(name => {
+      const body = catalogTypeBody(catalog.source, name);
+      return body ? [`\`${name}\` is \`${body}\``] : [];
+    });
+    blocks.push([
+      `- \`${fn}\` is called with the message of the arrival \`${arrival}\`: its input is \`${operation.inputType}\`, and the route passes the whole message.`,
+      `  \`import type { ${operation.inputType} } from '${catalog.importPath}'\`; type the \`input\` parameter of \`${fn}\` as \`${operation.inputType}\`.`,
+      shapes.length ? `  The catalog types: ${shapes.join('; ')}. Read the key, the origin and the items of the message from these fields, none else.` : '',
+    ].filter(Boolean).join('\n'));
+  }
+  return blocks.length ? section('What the functions that receive an arrival are called with', blocks.join('\n')) : '';
+}
+
+/** d1_282: the usecases of the module with the entity and operation each runs and the names a file calls it by, for the gate of an upsert in a process. */
+export function moduleUsecaseCalls(units: readonly M12Unit[]): Array<{ entityId: string; operation: string; names: string[] }> {
+  return units.filter(unit => unit.definition.artifactType === 'usecase').map(unit => ({
+    entityId: String(unit.definition.data.entityId ?? ''),
+    operation: String(unit.definition.data.operation ?? ''),
+    names: usecaseNames(unit).filter(name => /^[A-Za-z_$][\w$]*$/u.test(name)),
+  })).filter(item => item.entityId && item.operation);
+}
+
 function usecaseNames(unit: M12Unit): string[] {
   const first = Array.isArray(unit.definition.data.functions) ? unit.definition.data.functions[0] : null;
   const fnName = isRecord(first) ? text(first.functionName) : '';
@@ -805,7 +848,7 @@ export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, cod
     ...workflowGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, project, moduleName), header, facts, project, moduleName, ports, gateways, targets: transitionTargets(ctx.units), llmExports, usecaseInputs: await usecaseInputsOf(ctx) }),
     ...await missingImports(ctx, code),
     ...stepCallProblems(code, await stepCallsFor(ctx, facts.processId)),
-    ...arrivalUpsertProblems(code, await processUpserts(ctx, facts), 'process', `the process ${facts.processId}`),
+    ...arrivalUpsertProblems(code, await processUpserts(ctx, facts), 'process', `the process ${facts.processId}`, moduleUsecaseCalls(ctx.units)),
   ];
 }
 
