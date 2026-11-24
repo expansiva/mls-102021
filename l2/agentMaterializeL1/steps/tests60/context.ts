@@ -173,7 +173,7 @@ export async function loadTestsContext(ctx: M12Context, controller: M12Unit, rep
   const pageId = String(controller.definition.data.pageId ?? controller.unitId);
   const service = ctx.units.find(unit => unit.layer === 'requests' && String(unit.definition.data.pageId ?? unit.unitId) === pageId);
   if (service && requestServiceServes(service.definition.data)) {
-    // d1_289: the arrival that moves a process has a contract of its own (the catalog of its connection) and a function that runs it: it gets cases. The other routes of the page stay without.
+    // d1_289: the arrival that moves a process has a contract of its own (the catalog of its connection) and a function that runs it: it gets cases. The other routes of the page, and the arrivals that come in the middle of a process, stay without.
     const arrivals = processArrivals(ctx.units, service.definition.data);
     if (arrivals.length) return arrivalTestsContext(ctx, controller, service, pageId, arrivals, repair);
     throw new Error(`${SERVE_ROUTE_NO_PAGE_TEST}: page ${pageId} serves a connection and has no page test.`);
@@ -226,7 +226,7 @@ export async function loadTestsContext(ctx: M12Context, controller: M12Unit, rep
   };
 }
 
-/** A route of a page that serves an arrival the function of a process receives. */
+/** A route of a page that serves the arrival that opens a process, received by one of its functions. */
 export interface ProcessArrival {
   route: string;
   arrival: string;
@@ -235,11 +235,19 @@ export interface ProcessArrival {
   fn: string;
 }
 
-/** The `serves` rows of a request service whose operation a process receives (`data.receives`, the L4 `functions[].receives`). A `consumes` row and a `serves` row no process receives are not here. */
+/**
+ * The `serves` rows of a request service whose operation a process receives (`data.receives`, the L4 `functions[].receives`) AND that opens the same process (`trigger: { kind: 'event', event }`):
+ * the message is the whole input of the process and a literal message is accepted (d1_290). An arrival that comes in the middle of a process (`cm.agentDraftReady`, the trigger of its process is
+ * manual) names a record that has to exist already: a case with a literal message fails on correct code (`DRAFT_NOT_FOUND`), so it gets none. A `consumes` row and a `serves` row no process
+ * receives are not here either.
+ */
 export function processArrivals(units: readonly M12Unit[], serviceData: Record<string, unknown>): ProcessArrival[] {
   const received = new Map<string, { processUnit: M12Unit; fn: string }>();
   for (const unit of units.filter(item => item.definition.artifactType === 'workflowProcess')) {
-    for (const [arrival, fn] of processReceives(unit.definition.data)) received.set(arrival, { processUnit: unit, fn });
+    const trigger = isRecord(unit.definition.data.trigger) ? unit.definition.data.trigger : {};
+    for (const [arrival, fn] of processReceives(unit.definition.data)) {
+      if (trigger.kind === 'event' && trigger.event === arrival) received.set(arrival, { processUnit: unit, fn });
+    }
   }
   const rows = Array.isArray(serviceData.requests) ? serviceData.requests.filter(isRecord) : [];
   return rows.flatMap(row => {

@@ -24,6 +24,7 @@ import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.j
 import { testsGate } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { createContext } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { loadModuleUnits, storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { processReceives } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
 import { SERVE_ROUTE_NO_PAGE_TEST, loadTestsContext, processArrivals, thrownCodes } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 
 const PROJECT = 102047;
@@ -99,11 +100,14 @@ void test('d1_289 s1: the page of the release arrival gets a context with the fi
   assert.equal(data.human.includes('## Contract'), false);
 });
 
-void test('d1_289 s1: only the arrival a process receives is covered; the other routes of the cm page are not', async () => {
-  const { ctx, controller } = await loaded();
-  const data = await loadTestsContext(ctx, controller('cm'));
-  assert.deepEqual(data.routes.map(route => route.route), ['agents.cm.agentDraftReady']);
-  assert.equal(data.human.includes('agents.cm.describe'), false, 'a route no process receives is not asked for a case');
+void test('d1_290 s1: the cm page is skipped: its arrival comes in the middle of a process (manual trigger) and a literal message names no record', async () => {
+  const { ctx, controller, units } = await loaded();
+  await assert.rejects(loadTestsContext(ctx, controller('cm')), (error: Error) => error.message.startsWith(SERVE_ROUTE_NO_PAGE_TEST));
+  const process = units.find(unit => unit.definition.artifactType === 'workflowProcess' && unit.unitId === 'virtualEmployeeCreation')!;
+  assert.equal((process.definition.data.trigger as { kind?: string }).kind, 'manual');
+  assert.deepEqual([...processReceives(process.definition.data).keys()], ['cm.agentDraftReady'], 'it does receive the arrival: the trigger is what tells them apart');
+  const service = units.find(unit => unit.layer === 'requests' && unit.unitId === 'cm')!;
+  assert.deepEqual(processArrivals(units, service.definition.data), []);
 });
 
 void test('d1_289 s1: an arrival no process receives, and an event the module consumes, are still skipped', async () => {

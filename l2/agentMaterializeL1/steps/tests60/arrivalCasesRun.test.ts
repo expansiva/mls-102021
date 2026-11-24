@@ -8,7 +8,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -159,7 +159,8 @@ const RUNNER = `import { createRequestContext } from '/_102034_/l1/server/layer_
 import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
 import { registerRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
 import '/_102047_/l1/agents/layer_1_external/adapters/persistence/registerRepositories.js';
-import { routes } from '/_102047_/l1/agents/layer_1_external/adapters/http/controllers/platform.js';
+import { routes as platformRoutes } from '/_102047_/l1/agents/layer_1_external/adapters/http/controllers/platform.js';
+import { routes as cmRoutes } from '/_102047_/l1/agents/layer_1_external/adapters/http/controllers/cm.js';
 import { readFileSync } from 'node:fs';
 
 async function main() {
@@ -169,7 +170,7 @@ async function main() {
   const ctx = createRequestContext(createMemoryDataRuntime({ sandbox: true }), { sandbox: true, sessionContext: {} });
   const out: Array<{ id: string; ok: boolean; code: string | null }> = [];
   for (const item of cases) {
-    const route = routes.find(candidate => candidate.key === item.routine);
+    const route = [...platformRoutes, ...cmRoutes].find(candidate => candidate.key === item.routine);
     try {
       const response = await route!.handler({ request: { routine: item.routine, params: item.params, meta: { source: 'test' } }, ctx } as never);
       out.push({ id: item.id, ok: response.ok === true, code: null });
@@ -236,6 +237,27 @@ export async function resolve(specifier, context, nextResolve) {
 }
 `;
 
+/**
+ * The projects directory the runtime reads (`config.json`, `mls-<id>` next to it): the config of the commit with the persistence of `agents` registered the way the other modules are (the
+ * committed `l5/config.json` is the source copy, the published one lists every module), and each `mls-<id>` a link to the bench, but `mls-102047`, which is the copy of the commit.
+ */
+function projectsDirFor(tree: string): string {
+  const dir = `${tree}-projects`;
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const config = JSON.parse(readFileSync(path.join(TREE, 'l5/config.json'), 'utf8')) as { projects: Record<string, { persistenceModules?: Array<{ moduleId: string; tableDefsDir?: string }> }> };
+  const modules = config.projects[String(PROJECT)].persistenceModules ?? [];
+  if (!modules.some(item => item.moduleId === 'agents')) modules.push({ moduleId: 'agents', tableDefsDir: './_102047_/l1/agents/layer_1_external/adapters/persistence' });
+  config.projects[String(PROJECT)].persistenceModules = modules;
+  writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config));
+  for (const entry of readdirSync(BASE)) {
+    if (!entry.startsWith('mls-') || entry === 'mls-102047' || !statSync(path.join(BASE, entry)).isDirectory()) continue;
+    symlinkSync(path.join(BASE, entry), path.join(dir, entry));
+  }
+  symlinkSync(tree, path.join(dir, 'mls-102047'));
+  return dir;
+}
+
 function runCases(tree: string, cases: unknown): Array<{ id: string; ok: boolean; code: string | null }> {
   mkdirSync(BENCH, { recursive: true });
   writeFileSync(path.join(BENCH, 'register.mjs'), REGISTER);
@@ -243,7 +265,7 @@ function runCases(tree: string, cases: unknown): Array<{ id: string; ok: boolean
   writeFileSync(path.join(BENCH, 'run.ts'), RUNNER);
   writeFileSync(path.join(BENCH, 'cases.json'), JSON.stringify(cases));
   const run = spawnSync(path.join(BASE, 'node_modules/.bin/tsx'), ['--import', path.join(BENCH, 'register.mjs'), '--import', path.join(BASE, 'test/setup-l2.ts'), path.join(BENCH, 'run.ts'), path.join(BENCH, 'cases.json')], {
-    cwd: BASE,
+    cwd: projectsDirFor(tree),
     env: { ...process.env, D1_BENCH_BASE: BASE, D1_BENCH_102047: tree },
     encoding: 'utf8',
     timeout: 120000,
@@ -266,3 +288,12 @@ void test('d1_289 s2: against the code of be5e6203 both cases fail with the refu
     { id: 'releaseCatalogChanged.again', ok: true, code: null },
   ], 'the same cases pass on a process that returns, so the refusal above is the code, not the case');
 });
+
+// d1_290 s0: the arrival that comes in the middle of a process (`cm.agentDraftReady`: the trigger of `virtualEmployeeCreation` is manual) is accepted only when the draft it names already exists.
+// A literal message with no seeded record fails on correct code: a case for it would be a false red, so the page is not asked for cases (s1).
+void test('d1_290 s0: the case "accepts the delivery" of cm.agentDraftReady with the smallest literal message fails with DRAFT_NOT_FOUND on the real code of be5e6203', () => {
+  extractCopy();
+  const cases = [{ id: 'agentDraftReady.accepts', routine: 'agents.cm.agentDraftReady', params: { draftId: 'draft-1', status: 'ready', suggestedTools: [] }, expect: { ok: true }, mutating: true }];
+  assert.deepEqual(runCases(COPY, cases), [{ id: 'agentDraftReady.accepts', ok: false, code: 'DRAFT_NOT_FOUND' }]);
+});
+
