@@ -34,5 +34,6 @@ rendered from your cases.
 - Every route of the contract: at least one positive case.
 - Each rule a route lists, when it can be broken through that route's input: one negative case.
 - Do not invent a route, a field, a rule or an error the contract and the rules do not name.
+- A page of arrivals has no contract: its Task says what its routes are and which cases to write; follow the Task.
 
 Return only the `proposeMonitorCases` tool.

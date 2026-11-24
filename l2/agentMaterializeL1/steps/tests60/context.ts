@@ -9,10 +9,15 @@ import { contractFile, fileRef, rulesFile, type M12FileInfo } from '/_102021_/l2
 import type { M12Context } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { ruleTexts } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { arrivalInputOf } from '/_102021_/l2/agentMaterializeL1/helpers/arrivalInput.js';
+import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
+import { processReceives } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
+import { serveRowOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/serveSource.js';
+import { functionProse, l4Process } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 
 export const M12_TESTS_TOOL = 'proposeMonitorCases' as const;
 
-/** A connection serve route has no L2 page, so the monitor does not propose cases for it. */
+/** A connection serve route has no L2 page, so the monitor does not propose cases for it, unless a function of a process receives the arrival (d1_289). */
 export const SERVE_ROUTE_NO_PAGE_TEST = 'SERVE_ROUTE_NO_PAGE_TEST' as const;
 
 /** True when a request-service def has a row that serves a connection operation. */
@@ -124,7 +129,8 @@ export function contractRoutes(source: string, moduleName: string, pageId: strin
 
 export interface M12TestsContext {
   pageId: string;
-  contract: M12FileInfo;
+  /** The L2 page contract; null for a page of arrivals, which has none. */
+  contract: M12FileInfo | null;
   routes: M12ContractRoute[];
   actor: string;
   entities: string[];
@@ -167,6 +173,9 @@ export async function loadTestsContext(ctx: M12Context, controller: M12Unit, rep
   const pageId = String(controller.definition.data.pageId ?? controller.unitId);
   const service = ctx.units.find(unit => unit.layer === 'requests' && String(unit.definition.data.pageId ?? unit.unitId) === pageId);
   if (service && requestServiceServes(service.definition.data)) {
+    // d1_289: the arrival that moves a process has a contract of its own (the catalog of its connection) and a function that runs it: it gets cases. The other routes of the page stay without.
+    const arrivals = processArrivals(ctx.units, service.definition.data);
+    if (arrivals.length) return arrivalTestsContext(ctx, controller, service, pageId, arrivals, repair);
     throw new Error(`${SERVE_ROUTE_NO_PAGE_TEST}: page ${pageId} serves a connection and has no page test.`);
   }
   const contract = contractFile(project, moduleName, pageId);
@@ -214,5 +223,89 @@ export async function loadTestsContext(ctx: M12Context, controller: M12Unit, rep
     entities: entities.map(unit => String(unit.definition.data.entityId ?? unit.definition.artifactId)),
     human: parts.join('\n'),
     inputs: [contractText, service?.text ?? '', requestSource ?? '', rulesSource ?? '', seeds?.text ?? '', ...entities.map(unit => unit.text)],
+  };
+}
+
+/** A route of a page that serves an arrival the function of a process receives. */
+export interface ProcessArrival {
+  route: string;
+  arrival: string;
+  kind: 'qry' | 'cmd';
+  processUnit: M12Unit;
+  fn: string;
+}
+
+/** The `serves` rows of a request service whose operation a process receives (`data.receives`, the L4 `functions[].receives`). A `consumes` row and a `serves` row no process receives are not here. */
+export function processArrivals(units: readonly M12Unit[], serviceData: Record<string, unknown>): ProcessArrival[] {
+  const received = new Map<string, { processUnit: M12Unit; fn: string }>();
+  for (const unit of units.filter(item => item.definition.artifactType === 'workflowProcess')) {
+    for (const [arrival, fn] of processReceives(unit.definition.data)) received.set(arrival, { processUnit: unit, fn });
+  }
+  const rows = Array.isArray(serviceData.requests) ? serviceData.requests.filter(isRecord) : [];
+  return rows.flatMap(row => {
+    const hit = typeof row.serves === 'string' ? received.get(row.serves) : undefined;
+    if (!hit || typeof row.route !== 'string' || !row.route) return [];
+    return [{ route: row.route, arrival: String(row.serves), kind: row.kind === 'qry' ? 'qry' as const : 'cmd' as const, ...hit }];
+  });
+}
+
+/** Every `AppError` code a file throws, once, in order. */
+export function thrownCodes(source: string): string[] {
+  return [...new Set([...withoutComments(source).matchAll(/new AppError\(\s*(['"])([^'"]+)\1/gu)].map(match => match[2]))];
+}
+
+/**
+ * d1_289: the cases of a page whose routes are arrivals a process receives. No L2 contract: the input of each route is the catalog type of its arrival, the L4 says what the
+ * arrival does and the process says what its function does with it. The cases are one delivery the route accepts and the same delivery again (the L4: the same release delivered
+ * again changes nothing): with these two the route that always refuses cannot pass.
+ */
+async function arrivalTestsContext(ctx: M12Context, controller: M12Unit, service: M12Unit, pageId: string, arrivals: readonly ProcessArrival[], repair?: { problems: string[]; previous: string | null }): Promise<M12TestsContext> {
+  const { project, module: moduleName } = ctx.run;
+  const integration = await ctx.read(`_${project}_/l4/${moduleName}/integration.defs.ts`);
+  const workflows = await ctx.read(`_${project}_/l4/${moduleName}/workflows.defs.ts`);
+  const entities = ctx.units.filter(unit => unit.definition.artifactType === 'domainEntity' && unit.definition.data.storageTarget !== 'external');
+  const requestSource = await readOptional(service.output);
+  const parts: string[] = [];
+  parts.push(section('Task', [
+    `Propose the monitor cases of page ${pageId} of module ${moduleName}: one BFF call per case, run against the generated backend in an in-memory store seeded from the definitions.`,
+    'This page has no L2 contract: each route below is a message another system sends, and the function of a process receives it. The page runs with no actor.',
+    'For each route write two cases with the same `params`: the first with id `<route name>.accepts`, the second with id `<route name>.again`, both `expect: { ok: true }` and `mutating: true`. The `params` are a literal, the smallest message that is valid for the input type below (every required field, with real values, no seed markers, no `paramFieldRefs`). The L4 says what the same message delivered again does; the second case must hold the same.',
+  ].join('\n')));
+  parts.push(section('Routes of this page', arrivals.map(item => `- ${item.route} (${item.kind}): serves ${item.arrival}; the function \`${item.fn}\` of the process \`${String(item.processUnit.definition.data.processId ?? item.processUnit.unitId)}\` receives the message.`).join('\n')));
+  const routes: M12ContractRoute[] = [];
+  const processTexts: string[] = [];
+  for (const item of arrivals) {
+    const input = await arrivalInputOf(ctx.read, project, moduleName, item.arrival);
+    const [connectionId, operationId] = [item.arrival.slice(0, item.arrival.indexOf('.')), item.arrival.slice(item.arrival.indexOf('.') + 1)];
+    const said = String(serveRowOf(integration, connectionId, operationId)?.description ?? '');
+    const processId = String(item.processUnit.definition.data.processId ?? item.processUnit.unitId);
+    const prose = functionProse(l4Process(workflows, processId), item.fn);
+    const processSource = await readOptional(item.processUnit.output);
+    processTexts.push(processSource ?? '');
+    parts.push(section(`Input of ${item.route}`, input
+      ? [`The body of the route is the message: the catalog type \`${input.inputType}\` (the params of the case are the fields of this type).`, input.shapes.length ? input.shapes.map(shape => `- ${shape}`).join('\n') : '(the catalog does not declare the body of this type)'].join('\n')
+      : `The catalog of the connection does not give the input type of ${item.arrival}.`));
+    if (said) parts.push(section(`What the L4 says the arrival ${item.arrival} does`, said));
+    if (prose) parts.push(section(`What the function ${item.fn} does (l4 process ${processId})`, prose));
+    const thrown = [...new Set([...thrownErrorCodes(requestSource ?? '').map(entry => entry.code), ...thrownCodes(requestSource ?? ''), ...thrownCodes(processSource ?? '')])];
+    if (thrown.length) parts.push(section(`Error codes the route and the process throw (${item.route})`, thrown.map(code => `- ${code}`).join('\n')));
+    routes.push({ route: item.route, kind: item.kind, inputFields: input?.inputBody ? topLevelMembers(input.inputBody) : [], actors: [], rules: [] });
+  }
+  parts.push(section(`Request service def ${service.defRef} (the routes above only)`, fence('json', JSON.stringify({ ...service.definition.data, requests: (Array.isArray(service.definition.data.requests) ? service.definition.data.requests : []).filter(row => isRecord(row) && arrivals.some(item => item.route === row.route)) }, null, 2))));
+  if (repair) {
+    parts.push(section('Repair', [
+      'The previous answer was refused. Fix exactly these problems and return every case again:',
+      ...repair.problems.map(problem => `- ${problem}`),
+      repair.previous ? `\nPrevious answer:\n${fence('json', repair.previous)}` : '',
+    ].join('\n')));
+  }
+  return {
+    pageId,
+    contract: null,
+    routes,
+    actor: '',
+    entities: entities.map(unit => String(unit.definition.data.entityId ?? unit.definition.artifactId)),
+    human: parts.join('\n'),
+    inputs: [integration ?? '', workflows ?? '', service.text, requestSource ?? '', ...processTexts, ...arrivals.map(item => item.processUnit.text)],
   };
 }

@@ -24,6 +24,7 @@ import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMateri
 import { neverReturnsProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/neverReturns.js';
 import { enumFieldValues } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
 import { processReceives } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
+import { arrivalInputOf } from '/_102021_/l2/agentMaterializeL1/helpers/arrivalInput.js';
 import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
 import { answerTypeNames, catalogTypeBody, connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { arrivalUpsertProblems, connectionRowsOf, emptyCastProblems, emptyRequiredProblems, recordCastProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, typedResultDiscardedProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
@@ -807,23 +808,14 @@ export async function receivedInputSection(ctx: M12Context, processData: Record<
   const blocks: string[] = [];
   for (const [arrival, fn] of processReceives(processData)) {
     if (focus && focus !== fn) continue;
-    const dot = arrival.indexOf('.');
-    if (dot <= 0) continue;
-    const connectionId = arrival.slice(0, dot);
-    const operationId = arrival.slice(dot + 1);
-    const catalog = await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, connectionId);
-    const operation = catalog.source ? catalogOperations(catalog.source)?.find(item => item.operationId === operationId && item.direction !== 'call') : undefined;
-    if (!catalog.source || !operation) continue;
-    const shapes = [operation.inputType, ...answerTypeNames(catalog.source, operation.inputType, 3)].flatMap(name => {
-      const body = catalogTypeBody(catalog.source, name);
-      return body ? [`\`${name}\` is \`${body}\``] : [];
-    });
+    const input = await arrivalInputOf(ctx.read, ctx.run.project, ctx.run.module, arrival);
+    if (!input) continue;
     const said = text(arrivalLineOf(await ctx.read(`_${ctx.run.project}_/l4/${ctx.run.module}/integration.defs.ts`), arrival)?.row.description);
     blocks.push([
-      `- \`${fn}\` is called with the message of the arrival \`${arrival}\`: its input is \`${operation.inputType}\`, and the route passes the whole message.`,
+      `- \`${fn}\` is called with the message of the arrival \`${arrival}\`: its input is \`${input.inputType}\`, and the route passes the whole message.`,
       said ? `  The L4 says what this arrival does (the source; follow it, including which items of the message count): ${clip(said, 2400)}` : '',
-      `  \`import type { ${operation.inputType} } from '${catalog.importPath}'\`; type the \`input\` parameter of \`${fn}\` as \`${operation.inputType}\`.`,
-      shapes.length ? `  The catalog types: ${shapes.join('; ')}. Read the key, the origin and the items of the message from these fields, none else.` : '',
+      `  \`import type { ${input.inputType} } from '${input.importPath}'\`; type the \`input\` parameter of \`${fn}\` as \`${input.inputType}\`.`,
+      input.shapes.length ? `  The catalog types: ${input.shapes.join('; ')}. Read the key, the origin and the items of the message from these fields, none else.` : '',
     ].filter(Boolean).join('\n'));
   }
   return blocks.length ? section('What the functions that receive an arrival are called with', blocks.join('\n')) : '';
@@ -977,7 +969,7 @@ async function readProcess(ctx: M12Context, unit: M12Unit): Promise<string> {
   return l4Process(await ctx.read(l4Ref), workflowFacts(unit).processId);
 }
 
-function functionProse(processJson: string, name: string): string {
+export function functionProse(processJson: string, name: string): string {
   let row: unknown;
   try { row = JSON.parse(processJson); } catch { return ''; }
   if (!isRecord(row) || !Array.isArray(row.functions)) return '';
