@@ -38,6 +38,23 @@ export const M12_CODE_SCHEMA: Record<string, unknown> = {
   },
 };
 
+/** d1_288: a thing the source does not give and the code needs, as the model lists it in `sourceGaps`. */
+export interface M12SourceGap {
+  needs: string;
+  why: string;
+}
+
+/** The `sourceGaps` of an answer: a list the unit stops on, never repairs. Absent or empty: no gap. An item that is not `{ needs, why }` still counts, as text. */
+export function readSourceGaps(value: unknown): M12SourceGap[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(item => {
+    const row = typeof item === 'object' && item !== null ? item as { needs?: unknown; why?: unknown } : {};
+    const needs = typeof row.needs === 'string' ? row.needs.trim() : typeof item === 'string' ? item.trim() : '';
+    const why = typeof row.why === 'string' ? row.why.trim() : '';
+    return { needs: needs || 'unnamed', why };
+  });
+}
+
 export interface M12Repair {
   problems: string[];
   previous: string | null;
@@ -302,8 +319,17 @@ export function modelWorkerAgent(description: string, spec: M12ModelLayerSpec): 
       const { ctx, unit } = await unitOf(args);
       defRef = unit.defRef;
       inputHash = await unitInputHash(ctx, unit);
-      const payload = (m12ToolPayload(step, spec.toolName) ?? {}) as { code?: unknown; notApplicable?: unknown };
+      const payload = (m12ToolPayload(step, spec.toolName) ?? {}) as { code?: unknown; notApplicable?: unknown; sourceGaps?: unknown };
       const code = typeof payload.code === 'string' ? payload.code : '';
+      // d1_288: the model says the source does not give what the code needs. The unit stops refused with the list; a repair cannot create what the source lacks,
+      // and the file already on disk is left as it was (a sequence writes the file only when every function is accepted).
+      const gaps = readSourceGaps(payload.sourceGaps);
+      if (gaps.length) {
+        await writeDraft(args.project, args.module, spec.layer, args.unitId, DRAFT, code);
+        const diagnostic = gaps.map(gap => `${gap.needs}${gap.why ? `: ${gap.why}` : ''}`).map(line => clip(line, 600)).slice(0, 20).join('\n');
+        await writeUnitStatus(args.project, args.module, { layer: spec.layer, unitId: args.unitId, defRef, status: 'failed', code: 'SOURCE_GAP', attempt: args.attempt, diagnostic, inputHash, outputs: {} });
+        return [updateM12Status(context, parentStep, step, hookSequential, 'completed', clip(`M12_FAILED: SOURCE_GAP ${args.unitId}: ${diagnostic.replace(/\n/gu, ' | ')}`), 'input')];
+      }
       // Always overwrite: the repair must never read the draft of an older run.
       await writeDraft(args.project, args.module, spec.layer, args.unitId, DRAFT, code);
       if (spec.sequence) {

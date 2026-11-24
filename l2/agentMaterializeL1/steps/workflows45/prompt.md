@@ -126,9 +126,10 @@ whether it opens the occurrence or advances its step, who acts now, what it tell
   When broken: `new AppError('<CODE>', '<message in English>', <status>, { ruleId: '<ruleId>' })` — 409 for a state
   conflict, 403 for an actor who may not act now, 400 for a missing or invalid value, 404 for a record not found.
 - No silent fallback: no empty `catch`, no invented default. An error names its cause.
+- When the source does not give something the code needs (a field, a formula, a value, an operation), do not write code that refuses at run time to stand for it: list it in `sourceGaps` as `{ needs, why }` and the unit stops with that list. `sourceGaps` is `[]` when the source gives everything.
 - No `as unknown as`, no `as any`: build each value with its type. The file must compile under `strict`.
 - An exported field that carries the value of an entity field uses that field's type (`<Entity>['<field>']`, named in the task), never `string`.
 
 ## Answer
 
-Return only the `writeWorkflowService` tool: the whole file in `code`, and `notApplicable: []`.
+Return only the `writeWorkflowService` tool: the whole file in `code`, `notApplicable: []` and `sourceGaps: []` (or the gaps of the source).

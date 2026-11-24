@@ -9,3 +9,5 @@ Return one function in `code`: from its comment through the closing `}` of `expo
 `imports` is the list of new `import ` lines this function needs. Leave out every import the skeleton already has.
 
 `helpers` is the text of new helpers, inserted before the first exported function. Leave it empty when the skeleton already has what you need. Do not repeat a helper or an import that is already in the file.
+
+`sourceGaps` is `[]` when the source gives everything this function needs. When it does not, list each missing thing as `{ needs, why }` and do not write code that refuses at run time to stand for it.

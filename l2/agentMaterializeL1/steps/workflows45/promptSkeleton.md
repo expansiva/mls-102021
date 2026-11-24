@@ -11,3 +11,5 @@ Return the whole file once, as the skeleton:
 - the exported input and output interfaces of those functions.
 
 Do not fill in a real body. Later calls replace one function at a time. Do not repeat a helper or an import you already placed here.
+
+`sourceGaps` is `[]` when the source gives what the signatures and interfaces need. When it does not, list each missing thing as `{ needs, why }`.

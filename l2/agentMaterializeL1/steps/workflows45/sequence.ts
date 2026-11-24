@@ -119,7 +119,7 @@ export function calledFunctions(prose: string, names: readonly string[], written
   return names.filter(name => written.has(name) && new RegExp(`(?<![\\w$])${name}(?![\\w$])`, 'u').test(prose));
 }
 
-interface ExportedFn {
+export interface ExportedFn {
   name: string;
   start: number;
   bodyOpen: number;
@@ -133,7 +133,7 @@ function oneFunction(source: string, name: string): ExportedFn {
   return found[0];
 }
 
-function exportedFunctions(source: string): ExportedFn[] {
+export function exportedFunctions(source: string): ExportedFn[] {
   const out: ExportedFn[] = [];
   const pattern = new RegExp(`export\\s+async\\s+function\\s+(${IDENT})\\s*\\(`, 'gu');
   for (const match of source.matchAll(pattern)) {

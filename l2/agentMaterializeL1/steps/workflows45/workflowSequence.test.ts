@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_USECASES_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
-import { writeDraft } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { readUnitStatus, writeDraft } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { buildM12Report, summarizeM12Report } from '/_102021_/l2/agentMaterializeL1/steps/finalize80/agentM12Finalize.js';
 import { modelDispatcherAgent, modelWorkerAgent } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import { fileRef, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { USECASE_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
@@ -591,3 +592,51 @@ test('d1_198: a name of the engine the answer uses and does not import is import
   assert.ok(after.includes("import { occurrenceRecordId } from '/_102034_/l1/workflow/index.js';"), after);
   assert.equal((after.match(/TaskOccurrenceSnapshot \}/gu) ?? []).length, 1);
 });
+
+// d1_288 s2: the model says what the source does not give instead of writing code that refuses at run time. The unit stops refused, with the list; no repair; the file on disk stays.
+test('d1_288: a function answer with sourceGaps stops the unit refused SOURCE_GAP, with the list, no repair, the file kept', async () => {
+  const previous = 'export const previous = 1;\n';
+  seed({ kind: 'event', event: 'pedido' }, previous);
+  await answer(skeleton(), 'skeleton', 1, { sourceGaps: [] });
+  const gap = { needs: 'the formula of the key of the tool', why: 'the l4 names the key and not the fields of the delivery it is made of' };
+  const stopped = await answer(decl('resolverGerente', 'ResolverGerente', "return { gerenteId: 'g1' };"), 'fn:resolverGerente', 1, { sourceGaps: [gap] });
+  assert.equal(stopped.some(item => item.type === 'add-step'), false, 'no next function, no repair');
+  assert.equal(outputFile()?.content, previous, 'the file that was there stays');
+  const status = await readUnitStatus(PROJECT, MODULE, 'workflows', PROCESS);
+  assert.equal(status?.status, 'failed');
+  assert.equal(status?.code, 'SOURCE_GAP');
+  assert.match(status?.diagnostic ?? '', /the formula of the key of the tool: the l4 names the key/u);
+  const trace = JSON.stringify(stopped);
+  assert.match(trace, /M12_FAILED: SOURCE_GAP compra/u);
+  // The finalize80 report shows the unit as not generated, with the code and the list.
+  const report = buildM12Report(PROJECT, MODULE, [status!], [], [], null);
+  assert.equal(report.status, 'partial');
+  assert.deepEqual(report.open.map(item => [item.layer, item.unitId, item.status, item.code]), [['workflows', PROCESS, 'failed', 'SOURCE_GAP']]);
+  assert.match(summarizeM12Report(report), /workflows\/compra: failed SOURCE_GAP — the formula of the key of the tool/u);
+});
+
+test('d1_288: the skeleton and the final answer can stop on a gap too; an empty sourceGaps is the path of before', async () => {
+  seed({ kind: 'event', event: 'pedido' });
+  const skeletonStopped = await answer(skeleton(), 'skeleton', 1, { sourceGaps: [{ needs: 'an actor', why: 'none in the l4' }] });
+  assert.equal(skeletonStopped.some(item => item.type === 'add-step'), false);
+  assert.equal((await readUnitStatus(PROJECT, MODULE, 'workflows', PROCESS))?.code, 'SOURCE_GAP');
+  const finalStopped = await answer(skeleton(), 'final', 1, { sourceGaps: [{ needs: 'a value', why: 'not in the source' }] });
+  assert.equal(finalStopped.some(item => item.type === 'add-step'), false);
+  seed({ kind: 'event', event: 'pedido' });
+  const next = await answer(skeleton(), 'skeleton', 1, { sourceGaps: [] });
+  assert.equal(nextWorker(next).phase, 'fn:resolverGerente');
+  const withoutField = await answer(skeleton(), 'skeleton', 1);
+  assert.equal(nextWorker(withoutField).phase, 'fn:resolverGerente', 'an answer with no field is the answer of before');
+});
+
+test('d1_288: the three answer schemas of a process require sourceGaps, and the prompts tell the model when to use it', () => {
+  for (const phase of ['skeleton', 'fn:resolverGerente', 'final']) {
+    const parameters = workflowSequence.parameters(phase) as { required: string[]; properties: Record<string, { type?: string; items?: { required?: string[] } }> };
+    assert.ok(parameters.required.includes('sourceGaps'), phase);
+    assert.equal(parameters.properties.sourceGaps.type, 'array');
+    assert.deepEqual(parameters.properties.sourceGaps.items?.required, ['needs', 'why']);
+  }
+  for (const name of ['prompt', 'promptFunction', 'promptSkeleton']) assert.match(md(name), /sourceGaps/u, name);
+  assert.match(md('prompt'), /do not write code that refuses at run time/u);
+});
+

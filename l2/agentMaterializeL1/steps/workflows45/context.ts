@@ -21,6 +21,7 @@ import { usecaseInputsOf, type M12InputField } from '/_102021_/l2/agentMateriali
 import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import { stepCallProblems, stepCallsOf, withUsecases, type StepCall } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/stepCalls.js';
 import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/engineImports.js';
+import { neverReturnsProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/neverReturns.js';
 import { enumFieldValues } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
 import { processReceives } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
 import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
@@ -559,6 +560,8 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   if (gateways) parts.push(gateways);
   const received = await receivedInputSection(ctx, unit.definition.data, focus);
   if (received) parts.push(received);
+  const transaction = await transactionSection(ctx, unit, facts, focus);
+  if (transaction) parts.push(transaction);
   const stepCalls = await stepCallsFor(ctx, facts.processId);
   if (stepCalls.length) {
     const stepOf = new Map(workflowProcessSteps(readProcess).map(step => [step.stepId, step]));
@@ -815,13 +818,37 @@ export async function receivedInputSection(ctx: M12Context, processData: Record<
       const body = catalogTypeBody(catalog.source, name);
       return body ? [`\`${name}\` is \`${body}\``] : [];
     });
+    const said = text(arrivalLineOf(await ctx.read(`_${ctx.run.project}_/l4/${ctx.run.module}/integration.defs.ts`), arrival)?.row.description);
     blocks.push([
       `- \`${fn}\` is called with the message of the arrival \`${arrival}\`: its input is \`${operation.inputType}\`, and the route passes the whole message.`,
+      said ? `  The L4 says what this arrival does (the source; follow it, including which items of the message count): ${clip(said, 2400)}` : '',
       `  \`import type { ${operation.inputType} } from '${catalog.importPath}'\`; type the \`input\` parameter of \`${fn}\` as \`${operation.inputType}\`.`,
       shapes.length ? `  The catalog types: ${shapes.join('; ')}. Read the key, the origin and the items of the message from these fields, none else.` : '',
     ].filter(Boolean).join('\n'));
   }
   return blocks.length ? section('What the functions that receive an arrival are called with', blocks.join('\n')) : '';
+}
+
+/**
+ * d1_288: the functions of this process that a route of the module calls inside its transaction. The route of an arrival (`receives`) is a command and runs in
+ * `ctx.data.moduleData.runInTransaction` (the gate of the request service requires it); a generated route that calls a function and holds `runInTransaction` says
+ * the same. The L4 asks the rebuild of a catalog to be all or nothing, and the model, not seeing that the route already does it, wrote code that refused for want of
+ * a transaction. A function no route calls (the scheduled `onTick`) gets nothing. '' when no function in focus is called by a route.
+ */
+export async function transactionSection(ctx: M12Context, unit: M12Unit, facts: M12WorkflowFacts, focus?: string): Promise<string> {
+  const receiving = new Set(processReceives(unit.definition.data).values());
+  const routes: string[] = [];
+  for (const other of ctx.units.filter(item => item.layer === 'requests')) {
+    const code = await readOptional(other.output);
+    if (code) routes.push(withoutComments(code));
+  }
+  const inRoute = (fn: string): boolean => routes.some(code => code.includes('runInTransaction') && new RegExp(`(?<![\\w$.])${fn}\\s*\\(`, 'u').test(code));
+  const names = facts.functions.filter(fn => (!focus || focus === fn) && (receiving.has(fn) || inRoute(fn)));
+  if (!names.length) return '';
+  return section('The transaction of the route', [
+    `The route that calls ${names.map(fn => `\`${fn}\``).join(', ')} already runs ${names.length > 1 ? 'them' : 'it'} inside \`ctx.data.moduleData.runInTransaction\` and passes ${names.length > 1 ? 'them' : 'it'} the context bound to that transaction, as \`ctx\`.`,
+    'Every write through the ports and the usecases with that `ctx` is all or nothing. Write the function as one pass over that `ctx`; open no transaction of your own, and take the L4 requirement of all or nothing as met by this.',
+  ].join('\n'));
 }
 
 /**
@@ -895,17 +922,37 @@ export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, cod
   const llmExports = workflowLlmExportNames(facts.processId, workflowProcessSteps(l4Process(await ctx.read(l4Ref), facts.processId)));
   return [
     ...workflowGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, project, moduleName), header, facts, project, moduleName, ports, gateways, targets: transitionTargets(ctx.units), llmExports, usecaseInputs: await usecaseInputsOf(ctx) }),
+    ...neverReturnsProblems(code),
     ...await missingImports(ctx, code),
     ...stepCallProblems(code, await stepCallsFor(ctx, facts.processId)),
     ...arrivalUpsertProblems(code, await processUpserts(ctx, facts), 'process', `the process ${facts.processId}`, moduleUsecaseCalls(ctx.units)),
   ];
 }
 
+/** d1_288: what the source does not give. Each item: what the code needs and why the source does not carry it. Empty in the normal case. */
+const SOURCE_GAPS_SCHEMA: Record<string, unknown> = {
+  type: 'array',
+  description: 'What the source (the l4 process, the definition, the catalog) does not give and the code needs. Empty when the source gives everything. Never write code that refuses at run time in its place.',
+  items: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['needs', 'why'],
+    properties: { needs: { type: 'string' }, why: { type: 'string' } },
+  },
+};
+
+const WORKFLOW_FILE_SCHEMA: Record<string, unknown> = {
+  ...M12_CODE_SCHEMA,
+  required: ['code', 'notApplicable', 'sourceGaps'],
+  properties: { ...(M12_CODE_SCHEMA.properties as Record<string, unknown>), sourceGaps: SOURCE_GAPS_SCHEMA },
+};
+
 const WORKFLOW_FUNCTION_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
-  required: ['code', 'notApplicable'],
+  required: ['code', 'notApplicable', 'sourceGaps'],
   properties: {
+    sourceGaps: SOURCE_GAPS_SCHEMA,
     code: { type: 'string', description: 'One function, from its comment through the closing brace of `export async function`.' },
     imports: { type: 'array', items: { type: 'string' }, description: 'New import lines this function needs. Omit a line the file already has.' },
     helpers: { type: 'string', description: 'New helper declarations inserted before the first exported function. Empty when none.' },
@@ -985,6 +1032,7 @@ export function functionTextProblems(code: string, project: number, moduleName: 
   problems.push(...gatewayBypassProblems(code));
   if (/\blocalStorage\b|\bsessionStorage\b/u.test(code)) problems.push('No browser storage.');
   if (/catch\s*(\([^)]*\))?\s*\{\s*\}/u.test(code)) problems.push('No empty catch: an error names its cause.');
+  problems.push(...neverReturnsProblems(code));
   return problems;
 }
 
@@ -1013,7 +1061,7 @@ export const workflowSequence: M12SequenceSpec = {
     return (await ctx.read(fileRef(info))) ?? '';
   },
   parameters(phase) {
-    return phase === 'skeleton' || phase === 'final' ? M12_CODE_SCHEMA : WORKFLOW_FUNCTION_SCHEMA;
+    return phase === 'skeleton' || phase === 'final' ? WORKFLOW_FILE_SCHEMA : WORKFLOW_FUNCTION_SCHEMA;
   },
   async context(ctx, unit, phase, assembled, repair) {
     if (phase === 'final') return (await loadWorkflowContext(ctx, unit, repair)).human;
