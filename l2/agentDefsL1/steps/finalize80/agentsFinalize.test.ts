@@ -616,13 +616,14 @@ void test('d1_266 (b): on 7c4030ec-like state the usecase defs written when Agen
   assert.deepEqual(before, { activate: false, discard: false, createAgentDraft: false }, 'the fixture defs predate the port');
 });
 
-void test('d1_266 (a): on 30f16c8e the usecase of the step changeConduct records the ConductChange the step affects', async () => {
+// d1_266 said the usecase of the step records the entity the step affects; d1_291 replaced it: the route of the step writes it, so the request def of the page, not the usecase, names the port.
+void test('d1_266/d1_291 (a): on 30f16c8e the request of the step changeConduct names the port of the ConductChange the step affects; the usecase of the step does not', async () => {
   const host = await seedA30Ready();
   assert.deepEqual(failedOf(await rederiveRun(host, 'controllers60')), []);
-  const def = Object.values(host.files).find(item => item.shortName === 'updatePersonalConduct' && item.extension === '.defs.ts' && item.folder.endsWith('layer_2_application/usecases'))!;
-  assert.match(def.content, /ports\/conductChangeRepository\.defs\.ts/u, 'updatePersonalConduct names the port of ConductChange');
-  const other = Object.values(host.files).find(item => item.shortName === 'updateAgent' && item.extension === '.defs.ts' && item.folder.endsWith('layer_2_application/usecases'))!;
-  assert.equal(other.content.includes('conductChangeRepository'), false, 'the usecase of another entity does not');
+  const defOf = (name: string, folder: string) => Object.values(host.files).find(item => item.shortName === name && item.extension === '.defs.ts' && item.folder.endsWith(folder))!;
+  assert.equal(defOf('updatePersonalConduct', 'layer_2_application/usecases').content.includes('conductChangeRepository'), false, 'the usecase of the step does not write the affected entity');
+  assert.match(defOf('my_conduct', 'layer_2_application/requests').content, /ports\/conductChangeRepository\.defs\.ts/u, 'the request of the page of the step names the port of ConductChange');
+  assert.equal(defOf('updateAgent', 'layer_2_application/usecases').content.includes('conductChangeRepository'), false, 'the usecase of another entity does not');
 });
 
 // d1_267: `agents` at mls-102047@7c4030ec (git show): the ConductChange port the D1 wrote has `list` only, and the usecase of the step that affects it records the row.

@@ -2,8 +2,9 @@
 
 // d1_221: the entity the L4 says is written by its parent. The rule is the one of the NS5 (`ns5ResolveEntityWriter`, a pure file of the
 // platform), not a copy: this file only hands it the L4 of the module and reads its answer. An entity whose writer resolves as `parent`
-// is recorded inside the usecase that writes the parent (for an `external` parent: after the call to the connection). d1_266: so is an entity an act step
-// lists in `affects` (its `parentId` is the entity of that step).
+// is recorded inside the usecase that writes the parent (for an `external` parent: after the call to the connection). d1_266 listed here an entity an act step lists in `affects`
+// (its `parentId` is the entity of that step, `relationshipId` empty); d1_291: the usecase does not write it, the route of the step does (`childPortsOf` skips it). It stays in this
+// list because its port still has to create (`recordedWithParent` of persistence40).
 //
 // What the NS5 answers is what counts: an entity another writer owns (an inbound line, a serve route, a process) does not resolve `parent`, because the
 // resolver is given the map of what is written outside the journeys (`ns5WrittenOutsideJourneys`, from the L4 workflows and integration).
@@ -55,7 +56,7 @@ export function childWritersOf(
   for (const view of views) {
     const resolved = ns5ResolveEntityWriter(ns5WriterViewOfEntity(view), plan, read, outside);
     if (resolved.kind === 'affects') {
-      // d1_266: an entity an act step lists in `affects` is written by the usecase of that step: there is no relationship to a parent, the step is the link.
+      // d1_266/d1_291: an entity an act step lists in `affects` is written by that step: there is no relationship to a parent, the step is the link.
       const parentId = affectingEntity(journeys, view.entityId);
       if (parentId) out.push({ childId: view.entityId, parentId, relationshipId: '' });
       continue;

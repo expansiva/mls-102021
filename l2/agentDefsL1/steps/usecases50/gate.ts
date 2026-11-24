@@ -517,12 +517,15 @@ function pipelineFor(request: D1UsecaseRequest, item: D1UsecaseItem): D1Pipeline
 /**
  * d1_221: the ports of the entities the L4 says the parent writes. A usecase that writes the parent (any operation but a read) records them
  * in the same unit of work, so their port is one of its dependencies. A child that is not in the module database has no port: nothing to add.
+ * d1_291: not the entity a step lists in `affects` (`relationshipId` empty): the step, not the usecase of its entity, writes it. A usecase serves every step of its entity and
+ * operation (the manual choice of a tool and the suggestion both call `createAgentTool`), so hanging the write on it recorded the mark for a step that does not cite it; the route
+ * of the step that lists the entity writes it, through its port.
  */
-function childPortsOf(request: D1UsecaseRequest, item: D1UsecaseItem): D1UsecasePort[] {
+export function childPortsOf(request: D1UsecaseRequest, item: D1UsecaseItem): D1UsecasePort[] {
   if (READ_OPERATIONS.has(item.operation)) return [];
   const out: D1UsecasePort[] = [];
   for (const child of request.childWriters ?? []) {
-    if (child.parentId !== item.entityId) continue;
+    if (child.parentId !== item.entityId || child.relationshipId === '') continue;
     const entity = request.entities.find(entry => entry.entityId === child.childId);
     const port = request.ports.find(entry => entry.entityId === child.childId);
     if (port && entity?.storageTarget === 'moduleDatabase' && !out.some(entry => entry.portId === port.portId)) out.push(port);

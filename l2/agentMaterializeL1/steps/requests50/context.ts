@@ -22,8 +22,9 @@ import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTok
 import { pageJourneyIds, processReceives, routeReachableOperations, processStartEvent, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
 import { moduleSpecifier, workflowFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { routeChildWrites } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
+import { affectedWritesOf, l4RecordOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/affectedWrites.js';
 import { childRecordsOf, usecaseStringVersion } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
-import { recipeDraft, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
+import { dependencyUnits, recipeDraft, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { MDM_FACADE_REF, MDM_MODULE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdmContextSection, mdmPlatformApiSection, ruleTexts, sessionCompanyAnchor } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
@@ -968,6 +969,40 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
       generated ? fence('ts', exportSignatures(generated)) : '',
       entitySource ? fence('ts', exportSignatures(entitySource)) : '',
     ].join('\n')));
+  }
+  // d1_291: the entity a step lists in `affects` is written by the command of that step, through its port, not by a usecase. Only the commands whose step lists it get the section.
+  const portEntities = new Map<string, M12Unit>();
+  for (const dep of dependencyUnits(ctx, unit)) {
+    if (dep.definition.artifactType === 'repositoryPort') portEntities.set(String(dep.definition.data.entityId ?? ''), dep);
+  }
+  const affected = await affectedWritesOf({
+    routes: routes.map(route => ({ route: route.route, kind: route.kind })),
+    shared: await ctx.read(`_${project}_/l2/${moduleName}/web/shared/${pageId}.defs.ts`),
+    portEntities: new Set(portEntities.keys()),
+    readJourney: journeyId => ctx.read(`_${project}_/l4/${moduleName}/journeys/${journeyId}.defs.ts`),
+  });
+  for (const entityId of [...new Set(affected.map(item => item.entityId))].sort()) {
+    const port = portEntities.get(entityId)!;
+    const portName = String(port.definition.data.interfaceName ?? '');
+    const entity = ctx.units.find(item => item.definition.artifactType === 'domainEntity' && String(item.definition.data.entityId ?? '') === entityId);
+    const ontologyText = await ctx.read(`_${project}_/l4/${moduleName}/ontology/${entityId}.defs.ts`);
+    const l4: Record<string, unknown> = l4RecordOf(ontologyText) ?? {};
+    const capabilities = isRecord(l4.capabilities) ? Object.entries(l4.capabilities).filter((pair): pair is [string, string] => typeof pair[1] === 'string') : [];
+    const uniqueKeys = Array.isArray(l4.uniqueKeys) ? l4.uniqueKeys.filter(Array.isArray).map(key => `(${key.join(', ')})`) : [];
+    const ruleIds = Array.isArray(l4.rules) ? l4.rules.filter((item): item is string => typeof item === 'string') : [];
+    const entityRules = ruleTexts(await readOptional(rulesFile(project, moduleName)), ruleIds);
+    const generatedPort = await readOptional(port.output);
+    const entitySource = entity ? await readOptional(entity.output) : null;
+    parts.push(section(`${entityId} written by the step of the route (no usecase writes it: through its port)`, [
+      ...affected.filter(item => item.entityId === entityId).map(item => `- ${item.route}: the step \`${item.journeyId}/${item.stepId}\`${item.title ? ` (${item.title})` : ''} lists ${entityId} in \`affects\`: this route writes it, no usecase does.${item.description ? ` The step says: ${item.description}` : ''}`),
+      '',
+      `Write it inside the command transaction through \`resolveRepository<${portName}>(bound, '${portName}')\`, importing the port from \`/${port.outputRef.replace(/\.ts$/u, '.js')}\` and typing the record with the entity. The l4 text of its write below says when it is made and what a repeat does: follow it.`,
+      capabilities.length ? `What the l4 says about ${entityId}:\n${capabilities.map(([name, text]) => `- ${name}: ${text}`).join('\n')}` : '',
+      uniqueKeys.length ? `Unique keys: ${uniqueKeys.join(', ')}.` : '',
+      entityRules.length ? `Rules of ${entityId}:\n${entityRules.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')}` : '',
+      generatedPort ? fence('ts', exportSignatures(generatedPort)) : '',
+      entitySource ? fence('ts', exportSignatures(entitySource)) : '',
+    ].filter(Boolean).join('\n')));
   }
   const access = accessSection(routes, contractText, scopeGrants);
   if (access) parts.push(section('Access of the routes (source: the contract access and the module access scope)', access));

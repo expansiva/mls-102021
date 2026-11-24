@@ -637,6 +637,10 @@ function fillService(request: D1ControllerRequest, item: D1RequestServiceItem, p
     if (!usecase?.defPath) continue;
     dependencies.push(qualifyDefPath(request.project, usecase.defPath));
   }
+  // d1_291: the ports of the entities a step of this page lists in `affects`; the route of that step writes them.
+  for (const port of request.affectedPorts?.[item.pageId] ?? []) {
+    if (port.defPath) dependencies.push(qualifyDefPath(request.project, port.defPath));
+  }
   dependencies.sort();
   const definition = pendingDefinition('requestService', item.pageId, request.moduleName, {
     pageId: item.pageId,
@@ -666,6 +670,10 @@ function emitServices(
       if (!usecase?.defPath) continue;
       dependsOn.push(pipelineId(request.project, request.moduleName, 'usecase', usecaseId));
       dependsFiles.push(qualifyDefPath(request.project, usecase.defPath));
+    }
+    for (const port of request.affectedPorts?.[item.pageId] ?? []) {
+      dependsOn.push(pipelineId(request.project, request.moduleName, 'repositoryPort', port.portId));
+      if (port.defPath) dependsFiles.push(qualifyDefPath(request.project, port.defPath));
     }
     const qualified = qualifyDefPath(request.project, item.defPath);
     const pipeline: D1PipelineItem = {

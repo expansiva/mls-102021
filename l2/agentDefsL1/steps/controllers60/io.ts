@@ -22,6 +22,8 @@ import {
   type D1RemovedRoute,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { serviceSourceOf } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
+import { affectedPortsByPage } from '/_102021_/l2/agentDefsL1/steps/controllers60/affectedPorts.js';
+import { childWritersOf, loadWriterJourneys } from '/_102021_/l2/agentDefsL1/steps/usecases50/childWriters.js';
 import { isMarkedRoute, serveControllerGrants, technicalCaller, type D1RouteMark } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
 import { D1_USECASE_VERSION } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { resolveAllowedFields } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
@@ -148,6 +150,7 @@ async function controllerRequest(
   }
   const ontology = await ontologyOf(project, moduleName, index);
   const accessGrants = accessGrantsOf(access, ontology, selectedRequests);
+  const affectedPorts = await affectedPortsOf(project, moduleName, needs, ontology, selectedRequests);
   return {
     disclosureProblems: accessGrants.problems,
     request: {
@@ -177,8 +180,34 @@ async function controllerRequest(
       plannedActions: Object.fromEntries(snapshot.files.filter(file => file.artifactType === 'httpController').map(file => [file.identity, file.action])),
       serviceRequests: selectedRequests.map(serviceSourceOf),
       ontology,
+      affectedPorts,
     },
   };
+}
+
+/**
+ * d1_291: the ports a page depends on for the entities a step of it lists in `affects` (a step, not the usecase of its entity, writes them). The writers are the ones the usecases50 step reads
+ * (journeys by id); the ports are the ones persistence40 planned. Nothing when the module has none.
+ */
+async function affectedPortsOf(
+  project: number,
+  moduleName: string,
+  needs: unknown,
+  ontology: Record<string, unknown>,
+  requests: readonly D1SelectedRequest[],
+): Promise<Record<string, Array<{ entityId: string; portId: string; defPath: string }>>> {
+  const { index, journeys, outside } = await loadWriterJourneys(moduleName, logical => readLogical(project, logical));
+  const childWriters = childWritersOf(index, ontology, [...journeys].sort((left, right) => left.journeyId.localeCompare(right.journeyId)), outside);
+  if (!childWriters.some(child => child.relationshipId === '')) return {};
+  const text = await readText(draftFile(project, moduleName, 'persistence40'));
+  let draft: unknown = null;
+  try { draft = text ? JSON.parse(text) : null; } catch { draft = null; }
+  const ports = isRecord(draft) && Array.isArray(draft.ports)
+    ? draft.ports.filter(isRecord).flatMap(port => typeof port.portId === 'string' && typeof port.entityId === 'string' && typeof port.defPath === 'string'
+      ? [{ portId: port.portId, entityId: port.entityId, defPath: port.defPath }]
+      : [])
+    : [];
+  return affectedPortsByPage({ needs, journeys, childWriters, requests: requests.map(request => ({ route: request.route, pageId: request.pageId, kind: request.kind, writes: request.writes })), ports });
 }
 
 async function ontologyOf(project: number, moduleName: string, index: unknown): Promise<Record<string, unknown>> {

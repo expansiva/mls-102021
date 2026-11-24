@@ -36,6 +36,13 @@ export interface D1ControllerEnumeration {
   reason: typeof ENUMERATION_REASON;
 }
 
+/** The port of an entity a step lists in `affects` (d1_291): the request def of a page whose command serves that step depends on it. */
+export interface D1AffectedPort {
+  entityId: string;
+  portId: string;
+  defPath: string;
+}
+
 export interface D1ControllerPage {
   pageId: string;
   actors: string[];
@@ -184,6 +191,8 @@ export interface D1ControllerRequest {
   serviceRequests?: readonly D1ServiceRequestSource[];
   /** Ontology entities keyed by entity id. Absent when the plan has no v2 request. */
   ontology?: Readonly<Record<string, unknown>>;
+  /** `pageId` → the ports its commands write for (d1_291). Absent or empty: none. */
+  affectedPorts?: Readonly<Record<string, readonly D1AffectedPort[]>>;
 }
 
 export interface D1ScopeRelationship {

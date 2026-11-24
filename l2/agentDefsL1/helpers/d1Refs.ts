@@ -35,7 +35,7 @@ export const DEPENDS_ALLOWED: Record<D1ArtifactType, readonly D1ArtifactType[]> 
   repositoryAdapter: ['repositoryPort', 'table'],
   usecase: ['domainEntity', 'repositoryPort', 'accessScope', 'valueObject'],
   httpController: ['usecase', 'requestService', 'accessScope', 'authorityMap'],
-  requestService: ['usecase'],
+  requestService: ['usecase', 'repositoryPort'],
   accessScope: [],
   authorityMap: ['accessScope'],
   repositoryRegistration: ['repositoryAdapter', 'integrationOutbound'],
