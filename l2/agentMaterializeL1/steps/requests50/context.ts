@@ -976,7 +976,8 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
     if (dep.definition.artifactType === 'repositoryPort') portEntities.set(String(dep.definition.data.entityId ?? ''), dep);
   }
   const affected = await affectedWritesOf({
-    routes: routes.map(route => ({ route: route.route, kind: route.kind })),
+    // A route that goes through the workflow service of a process is run by the function of the process, which writes the entity through its port: the command does not (it would be written twice).
+    routes: routes.filter(route => !flows.some(item => item.route === route.route)).map(route => ({ route: route.route, kind: route.kind })),
     shared: await ctx.read(`_${project}_/l2/${moduleName}/web/shared/${pageId}.defs.ts`),
     portEntities: new Set(portEntities.keys()),
     readJourney: journeyId => ctx.read(`_${project}_/l4/${moduleName}/journeys/${journeyId}.defs.ts`),

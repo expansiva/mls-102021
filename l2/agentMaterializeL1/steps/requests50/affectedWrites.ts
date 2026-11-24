@@ -95,11 +95,14 @@ export async function affectedWritesOf(input: {
     const trigger = typeof request.trigger === 'string' ? request.trigger : '';
     let hit = pageSteps.find(item => item.step.stepId === trigger);
     if (!hit && typeof request.writes === 'string') {
-      try {
-        const write = parseD2WriteKey(request.writes);
-        const same = pageSteps.filter(item => item.step.kind === 'act' && item.step.entity === write.entity && servesEffect(item.step.effect, write.operation));
-        if (same.length === 1) hit = same[0];
-      } catch { /* a key that does not parse ties the command to no step */ }
+      let write: { entity: string; operation: string } | null = null;
+      try { write = parseD2WriteKey(request.writes); } catch { write = null; /* a key that does not parse ties the command to no step */ }
+      const same = write ? pageSteps.filter(item => item.step.kind === 'act' && item.step.entity === write.entity && servesEffect(item.step.effect, write.operation)) : [];
+      if (same.length === 1) hit = same[0];
+      // Two steps of that kind that list a written entity and a trigger that names neither: the command could be either, and a guess would write the entity for the wrong step. Said, never left out.
+      else if (same.length > 1 && same.some(item => item.step.affects.some(entityId => input.portEntities.has(entityId)))) {
+        throw new Error(`AFFECTED_WRITE_UNRESOLVED: the command ${row.route} writes ${request.writes} and its trigger "${trigger}" is no step of the page; the steps ${same.map(item => `${item.journeyId}/${item.step.stepId}`).join(', ')} fit and list an entity the request depends on the port of. Name the step in the trigger of the shared page.`);
+      }
     }
     if (!hit || hit.step.kind !== 'act') continue;
     for (const entityId of hit.step.affects) {

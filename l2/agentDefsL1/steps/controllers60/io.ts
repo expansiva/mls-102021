@@ -150,9 +150,9 @@ async function controllerRequest(
   }
   const ontology = await ontologyOf(project, moduleName, index);
   const accessGrants = accessGrantsOf(access, ontology, selectedRequests);
-  const affectedPorts = await affectedPortsOf(project, moduleName, needs, ontology, selectedRequests);
+  const affected = await affectedPortsOf(project, moduleName, needs, ontology, selectedRequests);
   return {
-    disclosureProblems: accessGrants.problems,
+    disclosureProblems: [...accessGrants.problems, ...affected.problems],
     request: {
       project,
       moduleName,
@@ -180,7 +180,7 @@ async function controllerRequest(
       plannedActions: Object.fromEntries(snapshot.files.filter(file => file.artifactType === 'httpController').map(file => [file.identity, file.action])),
       serviceRequests: selectedRequests.map(serviceSourceOf),
       ontology,
-      affectedPorts,
+      affectedPorts: affected.ports,
     },
   };
 }
@@ -195,10 +195,10 @@ async function affectedPortsOf(
   needs: unknown,
   ontology: Record<string, unknown>,
   requests: readonly D1SelectedRequest[],
-): Promise<Record<string, Array<{ entityId: string; portId: string; defPath: string }>>> {
+): Promise<{ ports: Record<string, Array<{ entityId: string; portId: string; defPath: string }>>; problems: D1ControllerProblem[] }> {
   const { index, journeys, outside } = await loadWriterJourneys(moduleName, logical => readLogical(project, logical));
   const childWriters = childWritersOf(index, ontology, [...journeys].sort((left, right) => left.journeyId.localeCompare(right.journeyId)), outside);
-  if (!childWriters.some(child => child.relationshipId === '')) return {};
+  if (!childWriters.some(child => child.relationshipId === '')) return { ports: {}, problems: [] };
   const text = await readText(draftFile(project, moduleName, 'persistence40'));
   let draft: unknown = null;
   try { draft = text ? JSON.parse(text) : null; } catch { draft = null; }
@@ -207,7 +207,19 @@ async function affectedPortsOf(
       ? [{ portId: port.portId, entityId: port.entityId, defPath: port.defPath }]
       : [])
     : [];
-  return affectedPortsByPage({ needs, journeys, childWriters, requests: requests.map(request => ({ route: request.route, pageId: request.pageId, kind: request.kind, writes: request.writes })), ports });
+  const workflows = (outside as { workflows?: unknown }).workflows;
+  const decisions = isRecord(workflows) && Array.isArray(workflows.journeyDecisions) ? workflows.journeyDecisions.filter(isRecord) : [];
+  const inProcess = new Set(decisions.flatMap(row => (row.inProcess === true && typeof row.journeyId === 'string' ? [row.journeyId] : [])));
+  const found = affectedPortsByPage({ needs, journeys, childWriters, requests: requests.map(request => ({ route: request.route, pageId: request.pageId, kind: request.kind, writes: request.writes })), ports, inProcess });
+  return {
+    ports: found.byPage,
+    problems: found.unserved.map(item => ({
+      severity: 'error' as const,
+      code: 'AFFECTED_STEP_UNSERVED',
+      path: `${item.journeyId}/${item.stepId}`,
+      message: `The step ${item.journeyId}/${item.stepId} lists ${item.entityId} in affects, no process runs it and no command of any page serves it: nobody would write ${item.entityId}.`,
+    })),
+  };
 }
 
 async function ontologyOf(project: number, moduleName: string, index: unknown): Promise<Record<string, unknown>> {

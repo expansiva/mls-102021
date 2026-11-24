@@ -93,7 +93,7 @@ void test('d1_291 s3: usecases50 rebuilt from the stored request: only the three
   });
 });
 
-void test('d1_291 s3: controllers60 from the drafts and the L4 of the tree: only the request defs of the four pages gain the port, with the same data, and the run has no error', async () => {
+void test('d1_291 s3: controllers60 from the drafts and the L4 of the tree: only the request defs of the three pages whose command writes the affected entity gain the port (not draft_review: the process writes the mark), with the same data, and the run has no error', async () => {
   extract();
   const host = installStudio(PROJECT);
   for (const abs of walk(ROOT)) put(host, fixtureLogicalRel(path.relative(ROOT, abs).split(path.sep).join('/')), readFileSync(abs, 'utf8'), COMMIT);
@@ -113,7 +113,6 @@ void test('d1_291 s3: controllers60 from the drafts and the L4 of the tree: only
   assert.deepEqual(changed, {
     agent_configuration: { added: ['agentConfigurationMarkRepository.defs.ts'], removed: [], sameData: true },
     agent_tools: { added: ['agentConfigurationMarkRepository.defs.ts'], removed: [], sameData: true },
-    draft_review: { added: ['agentConfigurationMarkRepository.defs.ts'], removed: [], sameData: true },
     my_conduct: { added: ['conductChangeRepository.defs.ts'], removed: [], sameData: true },
   });
 });

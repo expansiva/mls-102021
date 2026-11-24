@@ -48,27 +48,40 @@ async function real() {
   const requests = ((json('l1/agents/pipeline/agentDefsL1/input.json').selection as { requests: Array<{ route: string; pageId: string; kind: string; writes: string }> }).requests);
   const ports = (json('l1/agents/pipeline/agentDefsL1/drafts/persistence40.json').ports as Array<{ entityId: string; portId: string; defPath: string }>);
   const needs = json('l4/agents/pool/l1/web/needs.json');
-  return { needs, journeys: sorted, childWriters, requests, ports };
+  const decisions = ((await parseD1Source(readFileSync(path.join(ROOT, 'l4/agents/workflows.defs.ts'), 'utf8'), 'defs')) as { journeyDecisions?: Array<{ journeyId: string; inProcess?: boolean }> }).journeyDecisions ?? [];
+  const inProcess = new Set(decisions.filter(row => row.inProcess === true).map(row => row.journeyId));
+  return { needs, journeys: sorted, childWriters, requests, ports, inProcess };
 }
 
-void test('d1_291 s2: on the real agents, the pages whose command serves a step that affects the mark or the record of the change depend on their port', async () => {
+void test('d1_291 s2: on the real agents, the pages whose command serves a step that affects the mark or the record of the change depend on their port; the step the process runs does not', async () => {
   const input = await real();
-  const byPage = affectedPortsByPage(input);
+  assert.deepEqual([...input.inProcess].sort(), ['createVirtualEmployee', 'reviewAndActivateDraft']);
+  const { byPage, unserved } = affectedPortsByPage(input);
   const ids = (pageId: string) => (byPage[pageId] ?? []).map(port => port.portId);
   assert.deepEqual(ids('agent_tools'), ['AgentConfigurationMarkRepository'], 'suggestTools affects the mark');
   assert.deepEqual(ids('agent_configuration'), ['AgentConfigurationMarkRepository'], 'saveConfiguration affects the mark (and AgentTool, which has a writer of its own)');
-  assert.deepEqual(ids('draft_review'), ['AgentConfigurationMarkRepository'], 'activateDraft affects the mark');
   assert.deepEqual(ids('my_conduct'), ['ConductChangeRepository'], 'changeConduct affects the record of the change');
-  // The pages whose steps include one of these but no command serves it get nothing (the hub page lists the steps of every journey).
-  assert.deepEqual(Object.keys(byPage).sort(), ['agent_configuration', 'agent_tools', 'draft_review', 'my_conduct']);
+  // activateDraft affects the mark too, but its journey is in the process, whose function writes the mark through the port: no dependency for draft_review (it would be written twice).
+  // The hub page lists the steps of every journey and has no command that serves them.
+  assert.deepEqual(Object.keys(byPage).sort(), ['agent_configuration', 'agent_tools', 'my_conduct']);
   assert.equal(byPage.agent_tools[0].defPath, 'l1/agents/layer_2_application/ports/agentConfigurationMarkRepository.defs.ts');
+  assert.deepEqual(unserved, [], 'every step that lists an affected entity is run by a process or served by a command');
+  // Without the decision of the L4 the page of the activation would depend on the port.
+  assert.deepEqual(Object.keys(affectedPortsByPage({ ...input, inProcess: new Set() }).byPage).sort(), ['agent_configuration', 'agent_tools', 'draft_review', 'my_conduct']);
+});
+
+void test('d1_291 s2: a step that lists an entity, that no process runs and no command serves, is said (never left out)', async () => {
+  const input = await real();
+  const found = affectedPortsByPage({ ...input, requests: input.requests.filter(request => request.pageId !== 'my_conduct') });
+  assert.deepEqual(found.unserved, [{ journeyId: 'changeMyConduct', stepId: 'changeConduct', entityId: 'ConductChange' }]);
+  assert.equal(found.byPage.my_conduct, undefined);
 });
 
 void test('d1_291 s2: no step-written entity, no command, or no port: no dependency', async () => {
   const input = await real();
-  assert.deepEqual(affectedPortsByPage({ ...input, childWriters: input.childWriters.map(child => ({ ...child, relationshipId: 'rel' })) }), {}, 'a child of a relationship is the usecase\'s');
-  assert.deepEqual(affectedPortsByPage({ ...input, requests: input.requests.filter(request => request.kind === 'qry') }), {});
-  assert.deepEqual(affectedPortsByPage({ ...input, ports: [] }), {});
+  assert.deepEqual(affectedPortsByPage({ ...input, childWriters: input.childWriters.map(child => ({ ...child, relationshipId: 'rel' })) }), { byPage: {}, unserved: [] }, 'a child of a relationship is the usecase\'s');
+  assert.deepEqual(affectedPortsByPage({ ...input, requests: input.requests.filter(request => request.kind === 'qry') }).byPage, {});
+  assert.deepEqual(affectedPortsByPage({ ...input, ports: [] }), { byPage: {}, unserved: [] });
 });
 
 void test('d1_291 s2: the request def and its pipeline item of that page list the port; the other pages keep what they had', () => {

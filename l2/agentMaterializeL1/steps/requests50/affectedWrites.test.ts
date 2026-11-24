@@ -56,7 +56,7 @@ function put(host: TestHost, rel: string, text: string, tag: string): void {
   if (info) seed(host, info, text, tag);
 }
 
-/** What the defs step now gives each request def: the port of the entity a step of its page lists in `affects` (d1_291 s2). */
+/** What the defs step gives each request def: the port of the entity a step of its page lists in `affects` (d1_291 s2). `draft_review` is here as a stale def would have it (the defs step no longer gives it): the route goes through the process, so it gets no section. */
 const PORTS: Record<string, string> = {
   agent_tools: 'agentConfigurationMarkRepository',
   agent_configuration: 'agentConfigurationMarkRepository',
@@ -104,10 +104,13 @@ void test('d1_291 s2: the command of the step that affects the mark gets the sec
   assert.match(text, /export interface AgentConfigurationMarkRepository/u, 'the signature of the port');
 });
 
-void test('d1_291 s2: the commands of the saveConfiguration, activateDraft and changeConduct steps get their section; a page with no port dependency gets none', async () => {
+void test('d1_291 s2: the commands of the saveConfiguration and changeConduct steps get their section; the route of activateDraft (through the process) and a page with no port dependency get none', async () => {
   const { context } = await loaded();
   assert.match(sectionOf(await context('agent_configuration'), 'AgentConfigurationMark'), /agents\.agent_configuration\.saveAgentConfiguration: the step `configureAgent\/saveConfiguration`/u);
-  assert.match(sectionOf(await context('draft_review'), 'AgentConfigurationMark'), /agents\.draft_review\.activateDraft: the step `reviewAndActivateDraft\/activateDraft`/u);
+  // activateDraft goes through the workflow service of the process, whose function writes the mark through its port: the route does not (twice).
+  const review = await context('draft_review');
+  assert.match(review, /Workflow service of process virtualEmployeeCreation/u, 'the route goes through the process');
+  assert.doesNotMatch(review, SECTION);
   const conduct = sectionOf(await context('my_conduct'), 'ConductChange');
   assert.match(conduct, /agents\.my_conduct\.sendConductChange: the step `changeMyConduct\/changeConduct`/u, 'tied by what it writes: its trigger is not the id of the step');
   assert.doesNotMatch(await context('agents'), SECTION);
@@ -124,9 +127,24 @@ void test('d1_291 s2: affectedWritesOf ties a command to its step by the trigger
   const run = (requests: unknown, steps: string[]) => affectedWritesOf({ routes: [{ route: 'm.p.go', kind: 'cmd' }], shared: shared(requests, steps), portEntities: new Set(['M']), readJourney: async () => journey });
   assert.deepEqual((await run({ go: { trigger: 'b', writes: 'E.update' } }, ['j/a', 'j/b'])).map(item => item.stepId), ['b'], 'the trigger is the step');
   assert.deepEqual((await run({ go: { trigger: 'x', writes: 'F.create' } }, ['j/a', 'j/c'])).map(item => item.stepId), ['c'], 'what it writes');
-  assert.deepEqual(await run({ go: { trigger: 'x', writes: 'E.update' } }, ['j/a', 'j/b']), [], 'two steps of that kind: no guess');
+  await assert.rejects(run({ go: { trigger: 'x', writes: 'E.update' } }, ['j/a', 'j/b']), /AFFECTED_WRITE_UNRESOLVED/u, 'two steps of that kind: no guess, and not silent');
   assert.deepEqual(await run({ go: { trigger: 'a', writes: 'E.update' } }, ['j/a']).then(list => list.map(item => item.entityId)), ['M']);
   assert.deepEqual(await affectedWritesOf({ routes: [{ route: 'm.p.go', kind: 'qry' }], shared: shared({ go: { trigger: 'a' } }, ['j/a']), portEntities: new Set(['M']), readJourney: async () => journey }), [], 'a query writes nothing');
   assert.deepEqual(await affectedWritesOf({ routes: [{ route: 'm.p.go', kind: 'cmd' }], shared: shared({ go: { trigger: 'a' } }, ['j/a']), portEntities: new Set(), readJourney: async () => journey }), [], 'no port dependency: nothing');
   assert.equal(journeySteps(journey).get('a')?.affects[0], 'M');
 });
+
+void test('d1_291 s2: a command whose trigger is no step and whose write fits two steps that list the entity is an error, never a section left out', async () => {
+  const shared = `export const definition = ${JSON.stringify({ requests: { go: { trigger: 'x', writes: 'E.update' } }, journeys: [{ step: 'j/a' }, { step: 'j/b' }] })} as const;\n`;
+  const journey = `export const journey = ${JSON.stringify({ business: { steps: [
+    { stepId: 'a', kind: 'act', entity: 'E', effect: 'update', affects: ['M'] },
+    { stepId: 'b', kind: 'act', entity: 'E', effect: 'update', affects: ['M'] },
+  ] } })} as const;\n`;
+  await assert.rejects(
+    affectedWritesOf({ routes: [{ route: 'm.p.go', kind: 'cmd' }], shared, portEntities: new Set(['M']), readJourney: async () => journey }),
+    (error: Error) => error.message.startsWith('AFFECTED_WRITE_UNRESOLVED') && /j\/a, j\/b/u.test(error.message),
+  );
+  // Two steps that list nothing the request depends on: nothing to write, nothing to say.
+  assert.deepEqual(await affectedWritesOf({ routes: [{ route: 'm.p.go', kind: 'cmd' }], shared, portEntities: new Set(['Other']), readJourney: async () => journey }), []);
+});
+
