@@ -234,6 +234,8 @@ export function splitExternalUsecases(args: D1ExternalCallsInput & { taken: Read
   const used = new Set([...args.taken, ...args.usecases.map(item => item.usecaseId)]);
   const usecases: D1SelectedUsecase[] = [];
   const splits: D1ExternalSplit[] = [];
+  /** The ids the division itself created (not the ones the plan named). */
+  const born = new Set<string>();
   for (const usecase of args.usecases) {
     const match = matches.get(usecase.usecaseId);
     // d1_269: an entity the module stores is split too when more than one call serves its usecase (RepositoryEntry: `listarConteudo` lists, `lerArquivo` reads, and
@@ -259,6 +261,7 @@ export function splitExternalUsecases(args: D1ExternalCallsInput & { taken: Read
       else usecaseId = used.has(part.operationId) ? `${part.operationId}${entity}` : part.operationId;
       used.add(usecaseId);
       into.push({ usecaseId, operation: part.operation, call: part.call });
+      if (usecaseId !== usecase.usecaseId) born.add(usecaseId);
       usecases.push({
         ...usecase,
         usecaseId,
@@ -271,7 +274,40 @@ export function splitExternalUsecases(args: D1ExternalCallsInput & { taken: Read
     }
     splits.push({ from: usecase.usecaseId, into });
   }
-  return { usecases, splits };
+  return dropSplitDuplicates(usecases, splits, born);
+}
+
+/**
+ * d1_286: the division gives a call a usecase of its own, and the entity may already have one for that (entity, operation, transition, call): `updateAgent` served by
+ * `cm.readAgent` too is split, its read part is born as `readAgent`, and the planned `getAgent` already reads the agent by that call. Two usecases of one pair are the same
+ * usecase, and a route that needs it can take neither (`EXTERNAL_ROUTE_CALL_UNRESOLVED`). Only a usecase the division itself created is dropped: a planned one stays, and when
+ * every one of the pair was born here the first by `usecaseId` stays. `into` points to the one that stayed.
+ */
+function dropSplitDuplicates(usecases: D1SelectedUsecase[], splits: D1ExternalSplit[], born: ReadonlySet<string>): { usecases: D1SelectedUsecase[]; splits: D1ExternalSplit[] } {
+  const groups = new Map<string, D1SelectedUsecase[]>();
+  for (const item of usecases) {
+    if (!item.call) continue;
+    const key = [item.entity, item.operation, item.transitionRef ?? '', item.call].join('\0');
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
+  const dropped = new Map<string, string>();
+  const byId = (left: D1SelectedUsecase, right: D1SelectedUsecase): number => left.usecaseId.localeCompare(right.usecaseId);
+  for (const group of groups.values()) {
+    if (group.length < 2 || !group.some(item => born.has(item.usecaseId))) continue;
+    const keeper = [...group].sort(byId).find(item => !born.has(item.usecaseId)) ?? [...group].sort(byId)[0];
+    for (const item of group) if (item !== keeper && born.has(item.usecaseId)) dropped.set(item.usecaseId, keeper.usecaseId);
+  }
+  if (dropped.size === 0) return { usecases, splits };
+  return {
+    usecases: usecases.filter(item => !dropped.has(item.usecaseId)),
+    splits: splits.map(split => {
+      const seen = new Set<string>();
+      const into = split.into
+        .map(part => ({ ...part, usecaseId: dropped.get(part.usecaseId) ?? part.usecaseId }))
+        .filter(part => !seen.has(part.usecaseId) && !!seen.add(part.usecaseId));
+      return { from: split.from, into };
+    }),
+  };
 }
 
 /**
