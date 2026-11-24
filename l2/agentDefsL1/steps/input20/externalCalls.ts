@@ -42,23 +42,33 @@ export function externalCallsOf(args: D1ExternalCallsInput): D1ExternalCallMatch
   for (const usecase of args.usecases) {
     if (!args.allEntities && args.entityKind.get(usecase.entity) !== 'external') continue;
     if (usecase.operation === 'custom') continue;
-    const serving = steps.filter(step => stepServes(step, usecase, reads));
+    // d1_264: a call that names the entities it reads (`entityRefs`) does not serve the read (`list`/`get`) of another entity: the read of an entity
+    // the module stores itself stays on its repository, even when a step of that entity cites the call (the cm list of agents shows the drafts' situation only).
+    // A usecase that names its call (a split, below) serves only that call.
+    const accepts = (row: Record<string, unknown>): boolean => {
+      if ((usecase.operation === 'list' || usecase.operation === 'get') && storedByModule(args.entityKind, usecase.entity)) {
+        const refs = strings(row.entityRefs);
+        if (refs.length > 0 && !refs.includes(usecase.entity)) return false;
+      }
+      return !usecase.call || usecase.call === `${text(row.connectionId)}.${text(row.operationId)}`;
+    };
+    let serving = steps.filter(step => stepServes(step, usecase, reads));
+    // d1_285: steps of one entity and effect that cite different calls are not one group. On an entity the module stores, the steps that cite no call keep
+    // the usecase the plan named, and the calls of the other steps are not its: the usecase stays local (no `call`, never the consumer of those calls).
+    // The routes of the other steps use the usecase of the call's own entity (`externalUsecaseForCall`). Steps that all cite a call stay one group (d1_269).
+    if (!usecase.call && isLocalEntity(args.entityKind, usecase.entity)) {
+      const bare = serving.filter(step => !calls.some(row => accepts(row) && strings(row.usedBy).includes(step.ref)));
+      if (bare.length > 0 && bare.length < serving.length) serving = bare;
+    }
     const refs = serving.map(step => step.ref);
     const matched: D1ExternalCallRef[] = [];
     const seen = new Set<string>();
     for (const row of calls) {
       const cited = new Set(strings(row.usedBy));
       if (!refs.some(ref => cited.has(ref))) continue;
+      if (!accepts(row)) continue;
       const connectionId = text(row.connectionId);
       const operationId = text(row.operationId);
-      // d1_264: a call that names the entities it reads (`entityRefs`) does not serve the read (`list`/`get`) of another entity: the read of an entity
-      // the module stores itself stays on its repository, even when a step of that entity cites the call (the cm list of agents shows the drafts' situation only).
-      if ((usecase.operation === 'list' || usecase.operation === 'get') && storedByModule(args.entityKind, usecase.entity)) {
-        const refs = strings(row.entityRefs);
-        if (refs.length > 0 && !refs.includes(usecase.entity)) continue;
-      }
-      // A usecase that names its call (a split, below) serves only that call.
-      if (usecase.call && usecase.call !== `${connectionId}.${operationId}`) continue;
       const key = `${connectionId}\0${operationId}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -73,6 +83,11 @@ export function externalCallsOf(args: D1ExternalCallsInput): D1ExternalCallMatch
 function storedByModule(kinds: ReadonlyMap<string, string> | undefined, entity: string): boolean {
   const kind = kinds?.get(entity);
   return kind !== undefined && kind !== '' && kind !== 'external';
+}
+
+/** An entity the module keeps and decides for itself (not `external`, not an MDM role): its usecase is never born per call by the groups of d1_285. */
+function isLocalEntity(kinds: ReadonlyMap<string, string> | undefined, entity: string): boolean {
+  return storedByModule(kinds, entity) && kinds?.get(entity) !== 'role';
 }
 
 interface JourneyStep {
@@ -294,4 +309,58 @@ export function routeCallsOf(args: {
     if (strings(row.usedBy).some(ref => cited.has(ref))) out.add(`${text(row.connectionId)}.${text(row.operationId)}`);
   }
   return [...out].sort();
+}
+
+/** One `operationId` of a route's write suffix that no single `call` line names (d1_285). `candidates` are the `<connectionId>.<operationId>` lines that could be meant. */
+export interface D1RouteCallUnresolved {
+  operationId: string;
+  candidates: string[];
+}
+
+/**
+ * The calls a contract route runs (d1_285), from the suffix of its `writes` (`Entity.operation+operationId+operationId`, read by the one reader of the L2):
+ * - a suffix names exactly those calls; each `operationId` is the one `call` line of the L4 that has it, and none or more than one connection is `unresolved`;
+ * - no suffix, on a page where another route writes the same `Entity.operation` with a suffix: the route runs no call;
+ * - no suffix and no such sibling: `pageCalls`, what the steps of the page cite (`routeCallsOf`), as before.
+ */
+export function routeWriteCalls(args: {
+  suffix: readonly string[];
+  siblingSuffixed: boolean;
+  connections: readonly unknown[];
+  pageCalls: readonly string[];
+}): { calls: string[]; unresolved: D1RouteCallUnresolved[] } {
+  if (args.suffix.length === 0) return { calls: args.siblingSuffixed ? [] : [...args.pageCalls], unresolved: [] };
+  const lines = args.connections.map(rec).filter(row => text(row.direction) === 'call');
+  const keys = [...new Set(lines.map(row => `${text(row.connectionId)}.${text(row.operationId)}`))].sort();
+  const calls = new Set<string>();
+  const unresolved: D1RouteCallUnresolved[] = [];
+  for (const operationId of [...new Set(args.suffix)].sort()) {
+    const found = keys.filter(key => key.slice(key.indexOf('.') + 1) === operationId);
+    if (found.length === 1) calls.add(found[0]);
+    else unresolved.push({ operationId, candidates: found.length ? found : keys });
+  }
+  return { calls: [...calls].sort(), unresolved };
+}
+
+/**
+ * The usecase a route of a module entity uses for one call of its write suffix (d1_285): a usecase of an `external` entity that has that `call`. Several:
+ * the entity that comes first in the `entityRefs` of the call line, then the first `usecaseId`; one whose entity the line does not name comes after those that it does.
+ * None: null (the call is cited only by steps of entities the module keeps).
+ */
+export function externalUsecaseForCall(args: {
+  call: string;
+  usecases: readonly D1SelectedUsecase[];
+  entityKind: ReadonlyMap<string, string>;
+  connections: readonly unknown[];
+}): D1SelectedUsecase | null {
+  const line = args.connections.map(rec).find(row => text(row.direction) === 'call' && `${text(row.connectionId)}.${text(row.operationId)}` === args.call);
+  const refs = strings(line?.entityRefs);
+  const rank = (entity: string): number => {
+    const index = refs.indexOf(entity);
+    return index < 0 ? refs.length : index;
+  };
+  const found = args.usecases
+    .filter(item => item.call === args.call && args.entityKind.get(item.entity) === 'external')
+    .sort((left, right) => rank(left.entity) - rank(right.entity) || left.usecaseId.localeCompare(right.usecaseId));
+  return found[0] ?? null;
 }

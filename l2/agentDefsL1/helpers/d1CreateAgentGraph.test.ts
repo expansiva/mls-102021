@@ -69,6 +69,8 @@ function forbiddenImportReason(spec: string): string | null {
   if (spec === '/_102035_/l2/solution/lifecycleInitial.js') return null;
   // d1_233: the versions the NS5 accepts for each artifact (a list of constants and type exports; its imports are types only).
   if (spec === '/_102035_/l2/solution/types.js') return null;
+  // d1_285: the one reader of the write key of a contract route, `Entity.operation+operationId` (types and pure functions, no import), read by the L1, not copied.
+  if (spec === '/_102020_/l2/helpers/defsInput/writeKey.js') return null;
   if (spec.startsWith('/_102035_/') || spec.startsWith('/_102020_/')) return `static import outside this agent (${spec})`;
   return null;
 }

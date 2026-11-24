@@ -39,7 +39,8 @@ import { consumeLinesOf, deriveConsumeRequests } from '/_102021_/l2/agentDefsL1/
 import { deriveProcessUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/deriveProcess.js';
 import { deriveServeRequests, processTriggerServes, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
 import { callInputGaps, callInputsOf } from '/_102021_/l2/agentDefsL1/steps/input20/callInputs.js';
-import { externalCallsOf, routeCallsOf, splitExternalUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
+import { externalCallsOf, externalUsecaseForCall, routeCallsOf, routeWriteCalls, splitExternalUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
+import { parseD2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import type {
   PoolBackendEndpoint,
   PoolBackendFile,
@@ -305,6 +306,7 @@ export function buildD1InputSnapshot(
       operation,
       transitionRef: transitionKey,
     }),
+    rows(integration.connections),
   );
   const pageIds = new Set(contractPageIds(artifacts));
   const serveLines: D1ServeLine[] = [];
@@ -1125,6 +1127,7 @@ function contractRequests(
   roleEntities: ReadonlySet<string>,
   entityKind: ReadonlyMap<string, string>,
   routeCalls: (pageId: string, entity: string, operation: string, transitionKey: string) => readonly string[] = () => [],
+  connections: readonly unknown[] = [],
 ): D1SelectedRequest[] {
   const requests: D1SelectedRequest[] = [];
   // Planner pool only. A get/list created later in this pass is not a planned read. An MDM role keeps its get (read through the facade).
@@ -1137,7 +1140,7 @@ function contractRequests(
     const path = contractPath(moduleName, pageId);
     for (const route of definition.routes) {
       noteContractAccess(problems, path, route, access);
-      requests.push(oneRequest(problems, path, pageId, route, definition, usecases, entities, planned, colliding, answers.get(route.route) || [], poolReads, entityKind, routeCalls));
+      requests.push(oneRequest(problems, path, pageId, route, definition, usecases, entities, planned, colliding, answers.get(route.route) || [], poolReads, entityKind, routeCalls, connections));
     }
   }
   requests.sort((left, right) => left.route.localeCompare(right.route));
@@ -1152,13 +1155,22 @@ function transitionWrites(pages: Map<string, D2ContractV2Definition>, usecases: 
   for (const definition of pages.values()) {
     for (const route of definition.routes) {
       if (route.kind !== 'cmd' || !route.writes) continue;
-      const split = route.writes.indexOf('.');
-      if (split < 0) continue;
-      const written = route.writes.slice(split + 1);
-      if (!P1_OPERATION_SET.has(written)) writes.push({ entity: route.writes.slice(0, split), transitionRef: written });
+      // The suffix of the calls (`+operationId`) is not part of the transition: the one reader of the L2 key splits it off.
+      const write = readRouteWrite(route.writes);
+      if (write && !P1_OPERATION_SET.has(write.written)) writes.push({ entity: write.entity, transitionRef: write.written });
     }
   }
   return writes;
+}
+
+/** `writes` of a contract route read by the one reader of the L2 key; `written` is the operation, or the transitionRef of a transition. Null when it is not `Entity.operation`. */
+function readRouteWrite(writes: string): { entity: string; written: string; calls: string[] } | null {
+  try {
+    const parsed = parseD2WriteKey(writes);
+    return { entity: parsed.entity, written: parsed.operation, calls: [...(parsed.calls ?? [])] };
+  } catch {
+    return null;
+  }
 }
 
 function oneRequest(
@@ -1175,6 +1187,7 @@ function oneRequest(
   poolReads: ReadonlySet<string>,
   entityKind: ReadonlyMap<string, string>,
   routeCalls: (pageId: string, entity: string, operation: string, transitionKey: string) => readonly string[] = () => [],
+  connections: readonly unknown[] = [],
 ): D1SelectedRequest {
   // d1_60/d1_62: the route is derived from its types, the ontology and the resolve25 answers. `meta` is not read.
   const derived = applyResolutions({ route, definition, entities }, answers);
@@ -1183,7 +1196,7 @@ function oneRequest(
     review(problems, 'OUTPUT_UNRESOLVED', path, `Route ${route.route} ${gap.path} is not derived: ${gap.reason}`, route.route);
   }
   const uses: string[] = [];
-  const take = (entity: string, operation: string, transitionKey = ''): void => {
+  const take = (entity: string, operation: string, transitionKey = '', calls?: readonly string[]): void => {
     takeUsecase({
       problems,
       path,
@@ -1195,7 +1208,7 @@ function oneRequest(
       uses,
       colliding,
       refusalOf: usecaseId => contractUsecaseRefusal(entity, operation, usecaseId, entities, planned, entityKind, transitionKey),
-      routeCalls: routeCalls(pageId, entity, operation, transitionKey),
+      routeCalls: calls ?? routeCalls(pageId, entity, operation, transitionKey),
     });
   };
   // Unique output: planned get, else planned list (locate picks the row). Neither: get, as before. many stays list.
@@ -1205,16 +1218,38 @@ function oneRequest(
     if (poolReads.has(`${entity}\0list`)) return 'list';
     return 'get';
   };
-  if (route.kind === 'cmd' && route.writes) {
-    const split = route.writes.indexOf('.');
-    const entity = split < 0 ? route.writes : route.writes.slice(0, split);
-    const written = split < 0 ? '' : route.writes.slice(split + 1);
+  const write = route.kind === 'cmd' && route.writes ? readRouteWrite(route.writes) : null;
+  if (route.kind === 'cmd' && route.writes && !write) {
+    error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} writes '${route.writes}', which is not \`Entity.operation\` (with an optional \`+operationId\` for each call).`, route.route);
+  } else if (route.kind === 'cmd' && route.writes && write) {
+    const { entity, written, calls: suffix } = write;
     const namedTransition = !P1_OPERATION_SET.has(written);
     const operation = namedTransition ? 'transition' : written;
     if (namedTransition && entityKind.get(entity) !== 'external' && !lifecycleHas(entities, entity, written)) {
       error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. Transition '${written}' is not in the L4 lifecycle of ${entity}.`, route.route);
     } else {
-      take(entity, operation, namedTransition ? written : '');
+      // d1_285: the calls of the route are the ones its write names; a route without a suffix beside a sibling that has one runs none (the key says which).
+      const baseKey = `${entity}.${written}`;
+      const siblingSuffixed = suffix.length === 0 && definition.routes.some(other => {
+        const otherWrite = other !== route && other.kind === 'cmd' && other.writes ? readRouteWrite(other.writes) : null;
+        return !!otherWrite && `${otherWrite.entity}.${otherWrite.written}` === baseKey && otherWrite.calls.length > 0;
+      });
+      const resolved = routeWriteCalls({ suffix, siblingSuffixed, connections, pageCalls: routeCalls(pageId, entity, operation, namedTransition ? written : '') });
+      for (const item of resolved.unresolved) {
+        error(problems, 'EXTERNAL_ROUTE_CALL_UNRESOLVED', path, `Route ${route.route} writes '${route.writes}', and '${item.operationId}' is not one call of the L4 (${item.candidates.length ? item.candidates.join(', ') : 'no call line'}).`, route.route);
+      }
+      take(entity, operation, namedTransition ? written : '', resolved.calls);
+      // An entity the module keeps has no usecase per call: its route also uses the usecase of the entity each call belongs to.
+      if (suffix.length > 0 && entityKind.get(entity) !== 'external') {
+        for (const call of resolved.calls) {
+          const found = externalUsecaseForCall({ call, usecases, entityKind, connections });
+          if (!found) {
+            error(problems, 'EXTERNAL_ROUTE_CALL_UNRESOLVED', path, `Route ${route.route} runs ${call}, and no usecase of an external entity has that call: only steps of entities the module keeps cite it.`, route.route);
+          } else if (!uses.includes(found.usecaseId)) {
+            uses.push(found.usecaseId);
+          }
+        }
+      }
     }
     for (const output of outputs) {
       if (output.entity === entity) continue;
