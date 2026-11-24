@@ -24,6 +24,7 @@ import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMateri
 import { neverReturnsProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/neverReturns.js';
 import { enumFieldValues } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
 import { processReceives } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
+import { l4RecordOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/affectedWrites.js';
 import { arrivalInputOf } from '/_102021_/l2/agentMaterializeL1/helpers/arrivalInput.js';
 import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
 import { answerTypeNames, catalogTypeBody, connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
@@ -625,7 +626,14 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     ].join('\n\n')));
     if (kind === 'domainEntity') {
       const entityId = String(item.definition.data.entityId ?? '');
-      if (touched && !touched.has(entityId)) continue;
+      if (touched && !touched.has(entityId)) {
+        // d1_292: an entity the process writes through its port (an operation with no usecase) keeps what the l4 says about that write, whichever function writes it: the task that names the
+        // entity is tied to no function, so the narrow context would leave out the capability (`upserting by agent`) and the unique key the function needs.
+        const written = core.has(entityId) && facts.operations.some(row => row.operation.split('.')[0] === entityId && !operationUsecase(ctx.units, row.operation) && !externalEntityIds(ctx.units).has(entityId));
+        const compact = written ? portWriteSection(entityId, await ctx.read(ontologyRef(item.definition, item.outputRef))) : '';
+        if (compact) parts.push(compact);
+        continue;
+      }
       const ontology = await ctx.read(ontologyRef(item.definition, item.outputRef));
       if (ontology) {
         const cited = !core.has(entityId);
@@ -819,6 +827,22 @@ export async function receivedInputSection(ctx: M12Context, processData: Record<
     ].filter(Boolean).join('\n'));
   }
   return blocks.length ? section('What the functions that receive an arrival are called with', blocks.join('\n')) : '';
+}
+
+/**
+ * d1_292: what the l4 says about the write of an entity the process applies through its port: the capability texts of the entity (when the write is made, what a repeat does, the transaction)
+ * and its unique keys. '' when the ontology has neither. Read with the reader of the d1_291 (`l4RecordOf`).
+ */
+export function portWriteSection(entityId: string, ontologySource: string | null): string {
+  const l4 = l4RecordOf(ontologySource);
+  if (!l4) return '';
+  const capabilities = isRecord(l4.capabilities) ? Object.entries(l4.capabilities).filter((pair): pair is [string, string] => typeof pair[1] === 'string') : [];
+  const uniqueKeys = Array.isArray(l4.uniqueKeys) ? l4.uniqueKeys.filter(Array.isArray).map(key => `(${key.join(', ')})`) : [];
+  if (!capabilities.length && !uniqueKeys.length) return '';
+  return section(`What the l4 says about ${entityId} (the process writes it through its port)`, [
+    ...capabilities.map(([name, text]) => `- ${name}: ${text}`),
+    uniqueKeys.length ? `Unique keys: ${uniqueKeys.join(', ')}.` : '',
+  ].filter(Boolean).join('\n'));
 }
 
 /**
