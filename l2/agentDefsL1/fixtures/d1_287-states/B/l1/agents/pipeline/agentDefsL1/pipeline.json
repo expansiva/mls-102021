@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "2026-09-21-d1-pipeline-v1",
+  "flowId": "agentDefsL1",
+  "flowVersion": "2026-09-21-d1-flow-v1",
+  "project": 102047,
+  "moduleName": "agents",
+  "status": "inProgress",
+  "command": "run",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-11-24T02:22:30.260Z",
+      "artifactPaths": [
+        "_102047_/l1/agents/pipeline/agentDefsL1/pipeline.json"
+      ]
+    },
+    "input20": {
+      "status": "approved",
+      "updatedAt": "2026-11-24T02:22:30.624Z",
+      "artifactPaths": [
+        "_102047_/l1/agents/pipeline/agentDefsL1/input20.json"
+      ]
+    },
+    "resolve25": {
+      "status": "failed",
+      "updatedAt": "2026-11-24T02:23:26.279Z",
+      "artifactPaths": [
+        "_102047_/l1/agents/pipeline/agentDefsL1/resolve25.json"
+      ],
+      "error": "EXTERNAL_ROUTE_CALL_UNRESOLVED:1 (agents.agent_simulation.getSimulationPage)"
+    }
+  },
+  "updatedAt": "2026-11-24T02:33:53.124Z"
+}

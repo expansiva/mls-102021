@@ -357,8 +357,9 @@ export function buildD1InputSnapshot(
       .map(request => request.route);
   }
   selectedUsecases.sort((left, right) => left.usecaseId.localeCompare(right.usecaseId));
+  const present = new Map(artifacts.presentDefs.map(item => [item.path, item.sha256]));
   noteExternalEffects(problems, paths.integration, integration, entityKind, selectedUsecases, artifacts.journeys);
-  noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0, previous);
+  noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0, previous, present);
   noteContracts(problems, moduleName, artifacts.contracts, artifacts.contractTexts, contractV2);
   // The usecases the plan removed that a route (a page, a serve, an arrival, a process) now needs: created from the contract above, no longer removed.
   const revived = new Set([...removedByPlan].filter(id => !planned.ids.has(id) && selectedUsecases.some(usecase => usecase.usecaseId === id)));
@@ -371,7 +372,7 @@ export function buildD1InputSnapshot(
   const generatedUsecases = contractV2.size > 0
     ? selectedUsecases.filter(usecase => usecase.routes.length > 0)
     : selectedUsecases;
-  notePrunedRemovals(removed, previous, selectedUsecases, generatedUsecases, contractV2.size > 0);
+  notePrunedRemovals(removed, previous, present, selectedUsecases, generatedUsecases, contractV2.size > 0);
   const entityClosure = closeEntities(generatedUsecases, relationships, new Set(entityIds));
   const closedIds = new Set(entityClosure.ids);
   // An active port or table whose entity has no generated usecase and no relationship into the closure is not planned.
@@ -386,7 +387,6 @@ export function buildD1InputSnapshot(
     return false;
   });
 
-  const present = new Map(artifacts.presentDefs.map(item => [item.path, item.sha256]));
   const receipts = indexWriterReceipts(artifacts.writerReceipts);
   const files = stampHashes(rederiveActions(planFiles({
     moduleName,
@@ -1324,13 +1324,19 @@ function noteContractAccess(
   review(problems, 'CONTRACT_ACCESS_DIVERGENT', path, `Route ${route.route} access does not match the L4 access artifact. L4 stays the source.`, route.route);
 }
 
-function previousUsecaseFile(previous: D1InputSnapshot | null, usecaseId: string) {
-  return previous?.files.find(file => file.identity === usecaseId || file.ownerRefs.includes(`usecase:${usecaseId}`));
+/**
+ * The file of the previous inventory a usecase was written to. d1_287: an entry of a round that was held (input20 or resolve25) is a plan, not a file: its def never
+ * reached the disk, so there is nothing to remove or to inventory. Such an entry counts only when it carries the hash of the bytes it inventoried, or the def is on the
+ * disk now (a complete round's `input.json` has no hash for what a later step wrote).
+ */
+function previousUsecaseFile(previous: D1InputSnapshot | null, usecaseId: string, present: ReadonlyMap<string, string>) {
+  return previous?.files.find(file => (file.identity === usecaseId || file.ownerRefs.includes(`usecase:${usecaseId}`)) && (!!file.contentHash || present.has(file.defPath)));
 }
 
 function notePrunedRemovals(
   removed: D1RemovedItem[],
   previous: D1InputSnapshot | null,
+  present: ReadonlyMap<string, string>,
   selected: D1SelectedUsecase[],
   generated: D1SelectedUsecase[],
   sawContract: boolean,
@@ -1340,7 +1346,7 @@ function notePrunedRemovals(
   const seen = new Set(removed.map(item => `${item.kind}:${item.id}`));
   for (const usecase of selected) {
     if (kept.has(usecase.usecaseId)) continue;
-    if (!previousUsecaseFile(previous, usecase.usecaseId)) continue;
+    if (!previousUsecaseFile(previous, usecase.usecaseId, present)) continue;
     const key = `usecase:${usecase.usecaseId}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -1355,12 +1361,13 @@ function noteUnrequested(
   requests: D1SelectedRequest[],
   sawContract: boolean,
   previous: D1InputSnapshot | null,
+  present: ReadonlyMap<string, string>,
 ): void {
   if (!sawContract) return;
   const used = new Set(requests.flatMap(request => request.uses));
   for (const usecase of usecases) {
     if (used.has(usecase.usecaseId) || usecase.routes.length > 0) continue;
-    const fate = previousUsecaseFile(previous, usecase.usecaseId) ? 'removed' : 'not generated';
+    const fate = previousUsecaseFile(previous, usecase.usecaseId, present) ? 'removed' : 'not generated';
     review(problems, 'USECASE_WITHOUT_REQUEST', path, `Usecase ${usecase.usecaseId} is in the pool and no contract request calls it. It is ${fate}.`, usecase.usecaseId);
   }
 }

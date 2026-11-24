@@ -495,6 +495,32 @@ void test('a pruned usecase with a previous receipt is removed and inventoried',
   assert.equal(report.findings.some(finding => finding.code === 'EXTRA_FILE'), false);
 });
 
+// d1_287: a round held at input20 or resolve25 leaves an `input.json` whose files are a plan (no hash): their defs never reached the disk. The next round must not read
+// them as defs a pruned usecase left behind (`REMOVE_WITHOUT_RECEIPT`: "no inventoried path and hash"), and must not stop at input20 for it.
+void test('d1_287: a pruned usecase whose previous entry is a plan that never reached the disk is not removed', () => {
+  const spare: PoolRow = { usecaseId: 'spareNote', entity: 'DeskNote', operation: 'custom', status: 'toCreate', existing: '' };
+  const priorArtifacts = deskOf([listNote, spare], null);
+  priorArtifacts.contractTexts = {};
+  const prior = deskBuild(priorArtifacts);
+  const planned = prior.files.find(file => file.identity === 'spareNote' || file.ownerRefs.includes('usecase:spareNote'));
+  assert.ok(planned);
+  assert.equal(planned.contentHash, undefined, 'the held round inventoried a plan: no hash');
+  const artifacts = deskOf([listNote, spare], [qryRoute('ledgerDesk.board.load', 'notes', 'DeskNote', true)]);
+  const snapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, artifacts, prior, resolverAnswers(artifacts));
+  assert.equal(snapshot.removed.some(item => item.id === 'spareNote'), false, 'nothing was written, nothing is removed');
+  assert.equal(snapshot.problems.some(item => item.code === 'REMOVE_WITHOUT_RECEIPT'), false);
+  assert.equal(snapshot.consumersReleased, true);
+  const unrequested = snapshot.problems.find(item => item.code === 'USECASE_WITHOUT_REQUEST' && item.ownerRef === 'spareNote');
+  assert.ok(unrequested?.message.includes('not generated'), unrequested?.message);
+
+  // The same entry with its def on the disk (the unit wrote it after the snapshot): still a def to remove, as before.
+  const written = deskOf([listNote, spare], [qryRoute('ledgerDesk.board.load', 'notes', 'DeskNote', true)]);
+  written.presentDefs = [{ path: planned.defPath, sha256: 'sha256:written-later' }];
+  const stillRemoved = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, written, prior, resolverAnswers(written));
+  assert.equal(stillRemoved.removed.some(item => item.kind === 'usecase' && item.id === 'spareNote'), true);
+  assert.ok(stillRemoved.problems.find(item => item.code === 'USECASE_WITHOUT_REQUEST' && item.ownerRef === 'spareNote')?.message.includes('removed'));
+});
+
 /**
  * d1_62: a contract without meta goes through the derivation and the answers, and controllers60 checks only the
  * entity fields: a list with total, an N:1 field, a readonly value and a nested relation are classified, not refused.
