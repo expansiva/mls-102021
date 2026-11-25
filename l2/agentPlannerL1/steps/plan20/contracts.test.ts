@@ -752,3 +752,23 @@ void test('resolution tool schema is provider-clean and has no optional single-v
   assert.deepEqual(requiredIncludesAllProperties(schema), []);
   assert.deepEqual(requiredIncludesAllProperties(tool.function.parameters), []);
 });
+
+void test('d1_294: a time series with a declared writer is tdm; without one it stays ddm', () => {
+  const message = {
+    entityId: 'Message',
+    kind: 'entity',
+    writer: 'inbound',
+    storage: { target: 'moduleDatabase', kind: 'timeSeries', table: 'telegram_message' },
+  };
+  assert.equal(parseP1Entity(message)?.family, 'tdm');
+  assert.equal(parseP1Entity({ ...message, writer: 'journey' })?.family, 'tdm');
+  assert.equal(parseP1Entity({ ...message, writer: 'crud' })?.family, 'tdm');
+  const panel = parseP1Entity({ ...message, entityId: 'PainelRecebiveis', writer: undefined });
+  assert.equal(panel?.family, 'ddm');
+  assert.equal(parseP1Entity({ ...message, family: 'ddm' })?.family, 'tdm');
+  assert.equal(parseP1Entity({
+    entityId: 'Painel',
+    storage: { target: 'moduleDatabase', kind: 'relational' },
+    capabilities: { 'aggregate.byWindow': true },
+  })?.family, 'ddm');
+});

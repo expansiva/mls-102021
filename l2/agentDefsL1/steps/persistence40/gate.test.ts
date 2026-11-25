@@ -620,3 +620,93 @@ void test('d1_232: the port of an entity an arrival upserts by id has get; one f
   const other = buildD1Persistence({ ...planned(asked), findById: ['SomethingElse'] });
   assert.deepEqual(other.ports[0].methods.map(method => method.name), ['create', 'list', 'update']);
 });
+
+const messageEntity = {
+  Message: {
+    entityId: 'Message',
+    kind: 'entity',
+    writer: 'inbound',
+    storage: { target: 'moduleDatabase', kind: 'timeSeries', table: 'telegram_message' },
+    record: {
+      fields: {
+        id: { type: 'uuid', required: true, derived: true, indexed: true },
+        text: { type: 'text', required: true },
+      },
+    },
+  },
+};
+
+void test('d1_294: a written time series is a hypertable def that only appends', () => {
+  const build = buildD1Persistence(planned({
+    moduleName: 'telegram',
+    entityId: 'Message',
+    tableId: 'message',
+    portId: 'MessageRepository',
+    entities: messageEntity,
+    operations: ['create', 'list'],
+  }));
+  assert.equal(build.ok, true, JSON.stringify(build.problems));
+  const table = build.tables[0].definition!.data as D1TableData;
+  assert.equal(table.timeSeries, true);
+  assert.deepEqual(table.primaryKey, ['id', 'occurredAt']);
+  assert.deepEqual(table.uniqueKeys, []);
+  const names = build.adapters[0].methods.map(method => method.name);
+  assert.deepEqual(names, ['create', 'list']);
+  assert.equal(names.includes('update') || names.includes('delete'), false);
+  assert.equal(build.adapters[0].bindings.some(binding => binding.field === 'occurredAt'), false);
+});
+
+void test('d1_294: a time series unique key without the time, or an update, is a visible error', () => {
+  const keyed = {
+    Message: {
+      ...messageEntity.Message,
+      uniqueKeys: [['channelId', 'direction', 'telegramId']],
+      record: {
+        fields: {
+          ...messageEntity.Message.record.fields,
+          channelId: { type: 'text', required: true },
+          direction: { type: 'text', required: true },
+          telegramId: { type: 'text', required: true },
+        },
+      },
+    },
+  };
+  const unique = buildD1Persistence(planned({
+    moduleName: 'telegram',
+    entityId: 'Message',
+    tableId: 'message',
+    portId: 'MessageRepository',
+    entities: keyed,
+    uniqueKeys: [['channelId', 'direction', 'telegramId']],
+    operations: ['create'],
+  }));
+  assert.equal(unique.ok, false);
+  assert.equal(unique.problems.some(problem => problem.code === 'TIMESERIES_UNIQUE_KEY' && problem.path === 'Message'), true);
+  assert.equal(unique.tables.length, 0);
+
+  const update = buildD1Persistence(planned({
+    moduleName: 'telegram',
+    entityId: 'Message',
+    tableId: 'message',
+    portId: 'MessageRepository',
+    entities: messageEntity,
+    operations: ['create', 'update', 'delete'],
+  }));
+  assert.equal(update.ok, false);
+  assert.equal(update.problems.some(problem => problem.code === 'TIMESERIES_APPEND_ONLY'), true);
+
+  const unread = buildD1Persistence(planned({
+    moduleName: 'telegram',
+    entityId: 'Message',
+    tableId: 'message',
+    portId: 'MessageRepository',
+    entities: {
+      Message: { ...messageEntity.Message, writer: undefined },
+    },
+    operations: ['create'],
+  }));
+  assert.equal(unread.ok, true, JSON.stringify(unread.problems));
+  const plain = unread.tables[0].definition!.data as D1TableData;
+  assert.equal(plain.timeSeries, undefined);
+  assert.deepEqual(plain.primaryKey, ['id']);
+});

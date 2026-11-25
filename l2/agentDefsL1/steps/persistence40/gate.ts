@@ -213,6 +213,26 @@ function planEntity(
   if (!methods || !bindings || blocked.has(entityId)) return;
   const indexes = indexesFor(physical, keys, leaves, primaryKey, problems, normalizations);
   if (blocked.has(entityId)) return;
+  const series = writtenTimeSeries(body);
+  if (series) {
+    if (leaves.some(leaf => leaf.path === TIME_COLUMN)) {
+      error(problems, 'COLUMN_COLLISION', `${entityId}.${TIME_COLUMN}`, `Field ${TIME_COLUMN} is the time column of a series. It is not a field of the entity.`);
+      blocked.add(entityId);
+    }
+    for (const key of keys) {
+      if (!key.includes(TIME_COLUMN)) {
+        error(problems, 'TIMESERIES_UNIQUE_KEY', entityId, `Entity ${entityId} is a time series and unique key ${key.join('+')} does not contain ${TIME_COLUMN}. The time was not added to the key.`);
+        blocked.add(entityId);
+      }
+    }
+    const forbidden = methods.filter(method => method.name === 'update' || method.name === 'delete').map(method => method.name);
+    if (forbidden.length > 0) {
+      error(problems, 'TIMESERIES_APPEND_ONLY', entityId, `Entity ${entityId} is a time series and only appends. ${forbidden.join(', ')} was not planned.`);
+      blocked.add(entityId);
+    }
+  }
+  if (blocked.has(entityId)) return;
+  const tablePrimaryKey = series ? [...primaryKey, TIME_COLUMN] : primaryKey;
 
   // d1_267: the port the D1 wrote and kept lacks an operation a usecase asks of it now (the ConductChange port had `list` only, and the usecase of the step
   // that affects it records the row): the port is written again with the union of its methods and the planned ones, as a usecase def whose dependencies changed.
@@ -243,9 +263,10 @@ function planEntity(
     tableId,
     entityId,
     physicalName: physical,
-    primaryKey,
+    primaryKey: tablePrimaryKey,
     uniqueKeys: keys,
     indexes,
+    ...(series ? { timeSeries: true } : {}),
   });
   const adapterDefinition = definitionFor(request, 'repositoryAdapter', portId, {
     entityId,
@@ -536,6 +557,16 @@ function walkFields(
     leaves.push({ path, indexed: raw.indexed === true, required: raw.required === true });
   }
   return failed;
+}
+
+const TIME_COLUMN = 'occurredAt';
+const SERIES_WRITERS = new Set(['journey', 'crud', 'inbound']);
+
+/** `timeSeries` plus a writer declared on the entity file. A journey step alone is not a writer (d1_294). */
+function writtenTimeSeries(body: Record<string, unknown>): boolean {
+  const storage = isRecord(body.storage) ? body.storage : null;
+  const kind = storage ? text(storage.kind) : '';
+  return kind === 'timeSeries' && SERIES_WRITERS.has(text(body.writer));
 }
 
 function primaryKeyOf(

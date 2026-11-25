@@ -75,7 +75,7 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
   domainEntity: { required: ['entityId', 'storageTarget', 'fields', 'lifecycle', 'invariants', 'imports'], optional: [], nonempty: [] },
   valueObject: { required: ['valueObjectId', 'fields', 'referencedBy'], optional: [], nonempty: ['referencedBy'] },
   repositoryPort: { required: ['entityId', 'interfaceName', 'methods'], optional: [], nonempty: ['methods'] },
-  table: { required: ['tableId', 'entityId', 'physicalName', 'primaryKey', 'uniqueKeys', 'indexes'], optional: [], nonempty: ['primaryKey'] },
+  table: { required: ['tableId', 'entityId', 'physicalName', 'primaryKey', 'uniqueKeys', 'indexes'], optional: ['timeSeries'], nonempty: ['primaryKey'] },
   repositoryAdapter: { required: ['entityId', 'portId', 'tableId', 'columns'], optional: [], nonempty: ['columns'] },
   usecase: {
     required: ['usecaseId', 'entityId', 'operation', 'rulesApplied', 'effects'],

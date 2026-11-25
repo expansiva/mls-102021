@@ -55,6 +55,8 @@ const NAMED_OPS = L1_OPERATIONS.filter(operation => NAMED[operation]);
 const LIST_FROM = /\b(list|summary|highlights|locate)\b/;
 const GET_FROM = /\b(detail|inspect)\b/;
 const RELATIONAL_KIND = /^(relational|timeSeries)$/;
+/** Declared on the entity file. A writer that exists only as a journey step does not count (d1_294). */
+const SERIES_WRITERS = new Set(['journey', 'crud', 'inbound']);
 
 /**
  * needs.json as plan20 reads it (`parseP1Needs`): no `menuSchema`/`meta`, and `scope`/`operation` as tolerant as the parse.
@@ -268,9 +270,10 @@ export function parseP1Entity(value: unknown, indexRow?: unknown): P1EntityView 
   const storageTarget = text(storage.target);
   const storageKind = text(storage.kind);
   const familyField = text(file.family);
+  const writer = text(file.writer);
   return {
     entityId,
-    family: familyOf({ kind, storageTarget, storageKind, familyField, capabilities: Object.keys(capabilities) }),
+    family: familyOf({ kind, storageTarget, storageKind, familyField, writer, capabilities: Object.keys(capabilities) }),
     storageKind,
     storageTarget,
     transitions: list(file.transitions).map(item => text(record(item).transitionId)).filter(Boolean),
@@ -944,10 +947,13 @@ function familyOf(input: {
   storageTarget: string;
   storageKind: string;
   familyField: string;
+  writer: string;
   capabilities: string[];
 }): P1EntityFamily {
   // NS5 v3 `external` has `kind` and no `storage`. A family field must not put it back in tdm.
   if (classifyEntityKind({ kind: input.kind, storage: { target: input.storageTarget } }) === 'external') return 'external';
+  // d1_294: a time series somebody writes is a table, not a recomputed read. A declared family does not keep it as ddm.
+  if (input.storageKind === 'timeSeries' && SERIES_WRITERS.has(input.writer)) return 'tdm';
   if (input.familyField && isP1NeedsFamily(input.familyField)) return input.familyField;
   if (input.kind === 'role' || input.storageTarget === 'mdm') return 'mdm';
   if (input.storageKind === 'timeSeries' || input.capabilities.includes('aggregate.byWindow')) return 'ddm';

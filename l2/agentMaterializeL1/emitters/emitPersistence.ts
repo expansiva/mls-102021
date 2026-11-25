@@ -32,6 +32,7 @@ const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryR
 const WORKFLOW_ENGINE = '/_102034_/l1/workflow/index.js';
 const JSON_COLUMN = 'details';
 const JSON_PREFIX = 'json:';
+const TIME_COLUMN = 'occurredAt';
 const LOCAL_STORAGE = 'moduleDatabase';
 const PLAN_FORMAT = '102034-schema-snapshot';
 
@@ -570,7 +571,11 @@ export function buildLocalTable(definition: M1Definition, entity: M1Definition):
   }
   const indexes = normalizeIndexes(definition.data.indexes, physical);
   if (isFailure(indexes)) return indexes;
+  const series = definition.data.timeSeries === true;
   const leaves = leavesOf(entity);
+  if (series && leaves.some(leaf => leaf.name === TIME_COLUMN)) {
+    return { code: 'COLUMN_COLLISION', detail: `Field ${TIME_COLUMN} is the time column of a series. It is not a field of the entity.` };
+  }
   const columnPaths = new Set<string>(primaryKey);
   for (const key of uniqueKeys) for (const field of key) columnPaths.add(field);
   for (const index of indexes) for (const field of index.columns) columnPaths.add(field);
@@ -578,6 +583,7 @@ export function buildLocalTable(definition: M1Definition, entity: M1Definition):
     if (leaf.indexed && !leaf.name.includes('.')) columnPaths.add(leaf.name);
   }
   for (const field of columnPaths) {
+    if (series && field === TIME_COLUMN) continue;
     if (!leaves.some(leaf => leaf.name === field)) {
       return { code: 'KEY_FIELD', detail: `Key field ${field} is not a field of ${text(entity.data.entityId) || entity.artifactId}.` };
     }
@@ -610,6 +616,9 @@ export function buildLocalTable(definition: M1Definition, entity: M1Definition):
   if (bindings.some(binding => binding.placement === 'json')) {
     columns.push({ name: JSON_COLUMN, postgresType: 'JSONB', defaultSql: `'{}'::jsonb` });
   }
+  if (series) {
+    columns.push({ name: TIME_COLUMN, postgresType: 'TIMESTAMPTZ', defaultSql: 'now()' });
+  }
   const definitionBody: TableDefinition = {
     moduleId: definition.moduleName,
     repositoryName: tableId,
@@ -622,6 +631,7 @@ export function buildLocalTable(definition: M1Definition, entity: M1Definition):
     columns,
     primaryKey: [...primaryKey],
     indexes,
+    ...(series ? { timescale: { hypertable: { timeColumn: TIME_COLUMN } } } : {}),
     version: 1,
   };
   return { definition: definitionBody, bindings, planned: plannedOf(definitionBody) };
