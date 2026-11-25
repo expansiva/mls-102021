@@ -898,4 +898,35 @@ test('a reshaped field marks a transition that carries a payload', async (t) => 
   assert.match(result, /usecase listTarefa: igual /);
 });
 
+test('d1_294: /compare names the table when the series mark changes', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const plain = {
+    schemaVersion: '2026-09-24-d1-definition-v2',
+    artifactType: 'table',
+    artifactId: 'message',
+    moduleName: 'tarefas',
+    status: 'pending',
+    dependencies: [] as string[],
+    data: {
+      tableId: 'message',
+      entityId: 'Message',
+      physicalName: 'telegram_message',
+      primaryKey: ['id'],
+      uniqueKeys: [] as string[][],
+      indexes: [] as unknown[],
+    },
+  };
+  const series = structuredClone(plain);
+  series.data = { ...plain.data, timeSeries: true, primaryKey: ['id', 'occurredAt'] };
+  stor.add(1, 'tarefas_old/layer_1_external/adapters/persistence', 'message', '.defs.ts', defText(plain));
+  stor.add(1, 'tarefas_old/layer_1_external/adapters/persistence', 'message', '.ts', 'OLD\n');
+  stor.add(1, 'tarefas/layer_1_external/adapters/persistence', 'message', '.defs.ts', defText(series));
+  stor.add(1, 'tarefas/layer_1_external/adapters/persistence', 'message', '.ts', 'NEW\n');
+  const result = await run();
+  assert.match(result, /table message: mudou l1\/tarefas\/layer_1_external\/adapters\/persistence\/message\.defs\.ts/);
+});
+
 });
