@@ -231,6 +231,7 @@ function planEntity(
       blocked.add(entityId);
     }
   }
+  const retentionDays = retentionDaysOf(entityId, body, series, problems, blocked);
   if (blocked.has(entityId)) return;
   const tablePrimaryKey = series ? [...primaryKey, TIME_COLUMN] : primaryKey;
 
@@ -267,6 +268,7 @@ function planEntity(
     uniqueKeys: keys,
     indexes,
     ...(series ? { timeSeries: true } : {}),
+    ...(retentionDays !== undefined ? { retentionDays } : {}),
   });
   const adapterDefinition = definitionFor(request, 'repositoryAdapter', portId, {
     entityId,
@@ -567,6 +569,29 @@ function writtenTimeSeries(body: Record<string, unknown>): boolean {
   const storage = isRecord(body.storage) ? body.storage : null;
   const kind = storage ? text(storage.kind) : '';
   return kind === 'timeSeries' && SERIES_WRITERS.has(text(body.writer));
+}
+
+/** Integer greater than 0, and only on a written time series. Absent stays off the def. */
+function retentionDaysOf(
+  entityId: string,
+  body: Record<string, unknown>,
+  series: boolean,
+  problems: D1PersistenceProblem[],
+  blocked: Set<string>,
+): number | undefined {
+  const storage = isRecord(body.storage) ? body.storage : null;
+  if (!storage || !Object.prototype.hasOwnProperty.call(storage, 'retentionDays')) return undefined;
+  const value = storage.retentionDays;
+  const whole = typeof value === 'number' && Number.isInteger(value) && value > 0;
+  if (!whole) {
+    error(problems, 'RETENTION_DAYS', entityId, `Entity ${entityId} retentionDays is not an integer greater than 0.`);
+    blocked.add(entityId);
+  }
+  if (!series) {
+    error(problems, 'RETENTION_NOT_SERIES', entityId, `Entity ${entityId} declares retentionDays and is not a written time series.`);
+    blocked.add(entityId);
+  }
+  return whole && series ? value : undefined;
 }
 
 function primaryKeyOf(

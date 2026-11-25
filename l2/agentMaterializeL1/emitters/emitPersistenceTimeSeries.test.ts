@@ -64,6 +64,19 @@ test('d1_294: a series table def emits a hypertable on occurredAt and does not b
   assert.equal(built.bindings.some(binding => binding.field === 'occurredAt'), false);
 });
 
+test('d1_293: retentionDays is copied onto the table and the series still emits occurredAt', () => {
+  const built = buildLocalTable(table({ timeSeries: true, retentionDays: 90, primaryKey: ['id', 'occurredAt'] }), entity(fields));
+  assert.equal('code' in built, false);
+  if ('code' in built) return;
+  assert.equal(built.definition.retentionDays, 90);
+  const column = built.definition.columns.find(item => item.name === 'occurredAt');
+  assert.deepEqual(column, { name: 'occurredAt', postgresType: 'TIMESTAMPTZ', defaultSql: 'now()' });
+  const source = JSON.stringify(built.definition, null, 2);
+  assert.equal(source.includes('"retentionDays": 90'), true);
+  assert.equal(source.includes('"name": "occurredAt"'), true);
+  assert.equal(built.planned.columns.some(item => item.name === 'retentionDays'), false);
+});
+
 test('d1_294: a table without the series mark is unchanged', () => {
   const built = buildLocalTable(table({}), entity(fields));
   assert.equal('code' in built, false);

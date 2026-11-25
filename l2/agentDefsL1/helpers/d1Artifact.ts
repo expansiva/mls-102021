@@ -146,6 +146,8 @@ export interface D1TableData {
   indexes: Array<{ name: string; columns: string[]; unique: boolean }>;
   /** d1_294: written time series. The emitter turns this into a hypertable on `occurredAt`. */
   timeSeries?: boolean;
+  /** Days the runtime keeps a written time series. Absent when the L4 did not set it. */
+  retentionDays?: number;
 }
 
 export interface D1RepositoryAdapterData {

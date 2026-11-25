@@ -572,6 +572,8 @@ export function buildLocalTable(definition: M1Definition, entity: M1Definition):
   const indexes = normalizeIndexes(definition.data.indexes, physical);
   if (isFailure(indexes)) return indexes;
   const series = definition.data.timeSeries === true;
+  const retentionRaw = definition.data.retentionDays;
+  const retentionDays = typeof retentionRaw === 'number' && Number.isInteger(retentionRaw) && retentionRaw > 0 ? retentionRaw : undefined;
   const leaves = leavesOf(entity);
   if (series && leaves.some(leaf => leaf.name === TIME_COLUMN)) {
     return { code: 'COLUMN_COLLISION', detail: `Field ${TIME_COLUMN} is the time column of a series. It is not a field of the entity.` };
@@ -632,6 +634,7 @@ export function buildLocalTable(definition: M1Definition, entity: M1Definition):
     primaryKey: [...primaryKey],
     indexes,
     ...(series ? { timescale: { hypertable: { timeColumn: TIME_COLUMN } } } : {}),
+    ...(retentionDays !== undefined ? { retentionDays } : {}),
     version: 1,
   };
   return { definition: definitionBody, bindings, planned: plannedOf(definitionBody) };

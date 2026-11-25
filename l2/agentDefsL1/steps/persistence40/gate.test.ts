@@ -710,3 +710,61 @@ void test('d1_294: a time series unique key without the time, or an update, is a
   assert.equal(plain.timeSeries, undefined);
   assert.deepEqual(plain.primaryKey, ['id']);
 });
+
+void test('d1_293: retentionDays on a written time series reaches the table def', () => {
+  const build = buildD1Persistence(planned({
+    moduleName: 'telegram',
+    entityId: 'Message',
+    tableId: 'message',
+    portId: 'MessageRepository',
+    entities: {
+      Message: {
+        ...messageEntity.Message,
+        storage: { ...messageEntity.Message.storage, retentionDays: 90 },
+      },
+    },
+    operations: ['create', 'list'],
+  }));
+  assert.equal(build.ok, true, JSON.stringify(build.problems));
+  const table = build.tables[0].definition!.data as D1TableData;
+  assert.equal(table.retentionDays, 90);
+  assert.equal(table.timeSeries, true);
+});
+
+void test('d1_293: retentionDays on an entity that is not a written time series is a visible error', () => {
+  const build = buildD1Persistence(planned({
+    moduleName: 'sampleModule',
+    entityId: 'Note',
+    tableId: 'note',
+    portId: 'NoteRepository',
+    entities: {
+      Note: {
+        ...noteEntity.Note,
+        storage: { ...noteEntity.Note.storage, retentionDays: 90 },
+      },
+    },
+    operations: ['create'],
+  }));
+  assert.equal(build.ok, false);
+  assert.equal(build.problems.some(problem => problem.code === 'RETENTION_NOT_SERIES' && problem.path === 'Note'), true);
+  assert.equal(build.tables.length, 0);
+});
+
+void test('d1_293: retentionDays that is not an integer greater than 0 is a visible error', () => {
+  const build = buildD1Persistence(planned({
+    moduleName: 'telegram',
+    entityId: 'Message',
+    tableId: 'message',
+    portId: 'MessageRepository',
+    entities: {
+      Message: {
+        ...messageEntity.Message,
+        storage: { ...messageEntity.Message.storage, retentionDays: 0 },
+      },
+    },
+    operations: ['create'],
+  }));
+  assert.equal(build.ok, false);
+  assert.equal(build.problems.some(problem => problem.code === 'RETENTION_DAYS' && problem.path === 'Message'), true);
+  assert.equal(build.tables.length, 0);
+});
