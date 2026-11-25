@@ -985,4 +985,94 @@ test('d1_293: /compare names only the table whose retentionDays changed', async 
   assert.equal(result.match(/: mudou /g)?.length ?? 0, 1);
 });
 
+test('d1_295: /compare names the table whose timeField changed, and only that table', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const series = {
+    schemaVersion: '2026-09-24-d1-definition-v2',
+    artifactType: 'table',
+    artifactId: 'message',
+    moduleName: 'tarefas',
+    status: 'pending',
+    dependencies: [] as string[],
+    data: {
+      tableId: 'message',
+      entityId: 'Message',
+      physicalName: 'telegram_message',
+      primaryKey: ['id', 'sentAt'],
+      uniqueKeys: [['botId', 'telegramMessageId', 'sentAt']],
+      indexes: [] as unknown[],
+      timeSeries: true,
+      timeField: 'sentAt',
+    },
+  };
+  const kept = {
+    schemaVersion: '2026-09-24-d1-definition-v2',
+    artifactType: 'table',
+    artifactId: 'channel',
+    moduleName: 'tarefas',
+    status: 'pending',
+    dependencies: [] as string[],
+    data: {
+      tableId: 'channel',
+      entityId: 'Channel',
+      physicalName: 'telegram_channel',
+      primaryKey: ['id'],
+      uniqueKeys: [] as string[][],
+      indexes: [] as unknown[],
+    },
+  };
+  const next = structuredClone(series);
+  next.data = { ...series.data, timeField: 'editedAt', primaryKey: ['id', 'editedAt'] };
+  const keptText = defText(kept);
+  stor.add(1, 'tarefas_old/layer_1_external/adapters/persistence', 'message', '.defs.ts', defText(series));
+  stor.add(1, 'tarefas_old/layer_1_external/adapters/persistence', 'message', '.ts', 'OLD\n');
+  stor.add(1, 'tarefas/layer_1_external/adapters/persistence', 'message', '.defs.ts', defText(next));
+  stor.add(1, 'tarefas/layer_1_external/adapters/persistence', 'message', '.ts', 'NEW\n');
+  stor.add(1, 'tarefas_old/layer_1_external/adapters/persistence', 'channel', '.defs.ts', keptText);
+  stor.add(1, 'tarefas_old/layer_1_external/adapters/persistence', 'channel', '.ts', 'SAME\n');
+  stor.add(1, 'tarefas/layer_1_external/adapters/persistence', 'channel', '.defs.ts', keptText);
+  stor.add(1, 'tarefas/layer_1_external/adapters/persistence', 'channel', '.ts', 'SAME\n');
+  const result = await run();
+  assert.match(result, /table message: mudou l1\/tarefas\/layer_1_external\/adapters\/persistence\/message\.defs\.ts/);
+  assert.match(result, /table channel: igual /);
+  assert.equal(result.match(/: mudou /g)?.length ?? 0, 1);
+});
+
+test('d1_295: /compare names the table whose unique key changed, and only that table', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const series = {
+    schemaVersion: '2026-09-24-d1-definition-v2',
+    artifactType: 'table',
+    artifactId: 'message',
+    moduleName: 'tarefas',
+    status: 'pending',
+    dependencies: [] as string[],
+    data: {
+      tableId: 'message',
+      entityId: 'Message',
+      physicalName: 'telegram_message',
+      primaryKey: ['id', 'sentAt'],
+      uniqueKeys: [['botId', 'telegramMessageId', 'sentAt']],
+      indexes: [] as unknown[],
+      timeSeries: true,
+      timeField: 'sentAt',
+    },
+  };
+  const next = structuredClone(series);
+  next.data = { ...series.data, uniqueKeys: [['botId', 'chatId', 'telegramMessageId', 'sentAt']] };
+  stor.add(1, 'tarefas_old/layer_1_external/adapters/persistence', 'message', '.defs.ts', defText(series));
+  stor.add(1, 'tarefas_old/layer_1_external/adapters/persistence', 'message', '.ts', 'OLD\n');
+  stor.add(1, 'tarefas/layer_1_external/adapters/persistence', 'message', '.defs.ts', defText(next));
+  stor.add(1, 'tarefas/layer_1_external/adapters/persistence', 'message', '.ts', 'NEW\n');
+  const result = await run();
+  assert.match(result, /table message: mudou l1\/tarefas\/layer_1_external\/adapters\/persistence\/message\.defs\.ts/);
+  assert.equal(result.match(/: mudou /g)?.length ?? 0, 1);
+});
+
 });

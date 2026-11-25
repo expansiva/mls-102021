@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/emitters/emitPersistenceReplay.test.ts" enhancement="_blank"/>
 
-// d1_294 s2 and d1_293 s2: replay of the generated trees at fixed commits (git show, never the bench).
-// PainelRecebiveis stays ddm. Recorded tables have neither timeSeries nor retentionDays.
+// d1_294 s2, d1_293 s2 and d1_295 s2: replay of the generated trees at fixed commits (git show, never the bench).
+// PainelRecebiveis stays ddm. Recorded tables have neither timeSeries, retentionDays nor timeField.
 // Every recorded table def re-renders to the same bytes, and every recorded table file re-emits to the same bytes, with no error.
 
 import assert from 'node:assert/strict';
@@ -82,9 +82,10 @@ void test('d1_294 s2: PainelRecebiveis stays ddm and recorded tables replay byte
         assert.equal('code' in emitted, false, `${output} ${'code' in emitted ? `${emitted.code} ${emitted.detail}` : ''}`);
         if (!('code' in emitted)) assert.equal(emitted.source, recorded, `${tree.repo}/${output}`);
       }
-      const data = definition.data as { timeSeries?: unknown; retentionDays?: unknown };
+      const data = definition.data as { timeSeries?: unknown; retentionDays?: unknown; timeField?: unknown };
       assert.equal(data.timeSeries, undefined, file);
       assert.equal(data.retentionDays, undefined, file);
+      assert.equal(data.timeField, undefined, file);
       seenTables.push(`${tree.repo}/${file}`);
     }
   }
