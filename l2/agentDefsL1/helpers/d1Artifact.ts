@@ -148,6 +148,8 @@ export interface D1TableData {
   timeSeries?: boolean;
   /** Days the runtime keeps a written time series. Absent when the L4 did not set it. */
   retentionDays?: number;
+  /** Field the L4 names as the series time. Absent when the series keeps the generated time column. */
+  timeField?: string;
 }
 
 export interface D1RepositoryAdapterData {

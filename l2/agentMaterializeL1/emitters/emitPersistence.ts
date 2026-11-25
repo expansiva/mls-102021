@@ -572,10 +572,13 @@ export function buildLocalTable(definition: M1Definition, entity: M1Definition):
   const indexes = normalizeIndexes(definition.data.indexes, physical);
   if (isFailure(indexes)) return indexes;
   const series = definition.data.timeSeries === true;
+  const declaredTime = definition.data.timeField;
+  const timeField = series && typeof declaredTime === 'string' && declaredTime ? declaredTime : '';
+  const syntheticTime = series && !timeField;
   const retentionRaw = definition.data.retentionDays;
   const retentionDays = typeof retentionRaw === 'number' && Number.isInteger(retentionRaw) && retentionRaw > 0 ? retentionRaw : undefined;
   const leaves = leavesOf(entity);
-  if (series && leaves.some(leaf => leaf.name === TIME_COLUMN)) {
+  if (syntheticTime && leaves.some(leaf => leaf.name === TIME_COLUMN)) {
     return { code: 'COLUMN_COLLISION', detail: `Field ${TIME_COLUMN} is the time column of a series. It is not a field of the entity.` };
   }
   const columnPaths = new Set<string>(primaryKey);
@@ -585,7 +588,7 @@ export function buildLocalTable(definition: M1Definition, entity: M1Definition):
     if (leaf.indexed && !leaf.name.includes('.')) columnPaths.add(leaf.name);
   }
   for (const field of columnPaths) {
-    if (series && field === TIME_COLUMN) continue;
+    if (syntheticTime && field === TIME_COLUMN) continue;
     if (!leaves.some(leaf => leaf.name === field)) {
       return { code: 'KEY_FIELD', detail: `Key field ${field} is not a field of ${text(entity.data.entityId) || entity.artifactId}.` };
     }
@@ -611,14 +614,14 @@ export function buildLocalTable(definition: M1Definition, entity: M1Definition):
     const leaf = leaves.find(item => item.name === binding.field);
     columns.push({
       name: binding.column,
-      postgresType: postgresType(leaf?.type || 'string'),
+      postgresType: timeField && binding.field === timeField ? 'TIMESTAMPTZ' : postgresType(leaf?.type || 'string'),
       ...(binding.nullable ? { nullable: true } : {}),
     });
   }
   if (bindings.some(binding => binding.placement === 'json')) {
     columns.push({ name: JSON_COLUMN, postgresType: 'JSONB', defaultSql: `'{}'::jsonb` });
   }
-  if (series) {
+  if (syntheticTime) {
     columns.push({ name: TIME_COLUMN, postgresType: 'TIMESTAMPTZ', defaultSql: 'now()' });
   }
   const definitionBody: TableDefinition = {
@@ -633,7 +636,7 @@ export function buildLocalTable(definition: M1Definition, entity: M1Definition):
     columns,
     primaryKey: [...primaryKey],
     indexes,
-    ...(series ? { timescale: { hypertable: { timeColumn: TIME_COLUMN } } } : {}),
+    ...(series ? { timescale: { hypertable: { timeColumn: timeField || TIME_COLUMN } } } : {}),
     ...(retentionDays !== undefined ? { retentionDays } : {}),
     version: 1,
   };

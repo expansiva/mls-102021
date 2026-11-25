@@ -768,3 +768,144 @@ void test('d1_293: retentionDays that is not an integer greater than 0 is a visi
   assert.equal(build.problems.some(problem => problem.code === 'RETENTION_DAYS' && problem.path === 'Message'), true);
   assert.equal(build.tables.length, 0);
 });
+
+const timedMessage = {
+  Message: {
+    ...messageEntity.Message,
+    uniqueKeys: [['robotId', 'telegramId', 'sentAt']],
+    storage: { ...messageEntity.Message.storage, timeField: 'sentAt' },
+    record: {
+      fields: {
+        ...messageEntity.Message.record.fields,
+        robotId: { type: 'text', required: true },
+        telegramId: { type: 'text', required: true },
+        sentAt: { type: 'datetime', required: true },
+        editedAt: { type: 'datetime', required: false },
+      },
+    },
+  },
+};
+
+void test('d1_295: a written series with timeField uses that field as the time column and unique index', () => {
+  const build = buildD1Persistence(planned({
+    moduleName: 'telegram',
+    entityId: 'Message',
+    tableId: 'message',
+    portId: 'MessageRepository',
+    entities: timedMessage,
+    uniqueKeys: [['robotId', 'telegramId', 'sentAt']],
+    operations: ['create', 'list'],
+  }));
+  assert.equal(build.ok, true, JSON.stringify(build.problems));
+  const table = build.tables[0].definition!.data as D1TableData;
+  assert.equal(table.timeField, 'sentAt');
+  assert.equal(table.timeSeries, true);
+  assert.deepEqual(table.primaryKey, ['id', 'sentAt']);
+  assert.equal(table.primaryKey.includes('occurredAt'), false);
+  assert.deepEqual(table.uniqueKeys, [['robotId', 'telegramId', 'sentAt']]);
+  assert.deepEqual(table.indexes.filter(index => index.unique), [{
+    name: 'telegram_message_robotId_telegramId_sentAt',
+    columns: ['robotId', 'telegramId', 'sentAt'],
+    unique: true,
+  }]);
+});
+
+void test('d1_295: timeField that is missing, optional, or not a date and time is a visible error', () => {
+  const withField = (sentAt: Record<string, unknown> | undefined, timeField: unknown) => buildD1Persistence(planned({
+    moduleName: 'telegram',
+    entityId: 'Message',
+    tableId: 'message',
+    portId: 'MessageRepository',
+    entities: {
+      Message: {
+        ...messageEntity.Message,
+        storage: { ...messageEntity.Message.storage, timeField },
+        record: {
+          fields: {
+            ...messageEntity.Message.record.fields,
+            ...(sentAt ? { sentAt } : {}),
+          },
+        },
+      },
+    },
+    operations: ['create'],
+  }));
+  const missing = withField(undefined, 'sentAt');
+  assert.equal(missing.ok, false);
+  assert.equal(missing.problems.some(problem => problem.code === 'TIME_FIELD' && problem.path === 'Message' && problem.message.includes('not a field')), true);
+  const optional = withField({ type: 'datetime', required: false }, 'sentAt');
+  assert.equal(optional.problems.some(problem => problem.code === 'TIME_FIELD' && problem.path === 'Message' && problem.message.includes('not required')), true);
+  const text = withField({ type: 'text', required: true }, 'sentAt');
+  assert.equal(text.problems.some(problem => problem.code === 'TIME_FIELD' && problem.path === 'Message' && problem.message.includes('not a date and time')), true);
+  const date = withField({ type: 'date', required: true }, 'sentAt');
+  assert.equal(date.problems.some(problem => problem.code === 'TIME_FIELD' && problem.path === 'Message' && problem.message.includes('not a date and time')), true);
+});
+
+void test('d1_295: timeField on an entity that is not a written time series is a visible error', () => {
+  const build = buildD1Persistence(planned({
+    moduleName: 'sampleModule',
+    entityId: 'Note',
+    tableId: 'note',
+    portId: 'NoteRepository',
+    entities: {
+      Note: {
+        ...noteEntity.Note,
+        storage: { ...noteEntity.Note.storage, timeField: 'sentAt' },
+        record: {
+          fields: {
+            ...noteEntity.Note.record.fields,
+            sentAt: { type: 'datetime', required: true },
+          },
+        },
+      },
+    },
+    operations: ['create'],
+  }));
+  assert.equal(build.ok, false);
+  assert.equal(build.problems.some(problem => problem.code === 'TIME_NOT_SERIES' && problem.path === 'Note'), true);
+  assert.equal(build.tables.length, 0);
+});
+
+void test('d1_295: a unique key that omits timeField is refused, and a series without timeField still requires occurredAt', () => {
+  const missing = buildD1Persistence(planned({
+    moduleName: 'telegram',
+    entityId: 'Message',
+    tableId: 'message',
+    portId: 'MessageRepository',
+    entities: {
+      Message: {
+        ...timedMessage.Message,
+        uniqueKeys: [['robotId', 'telegramId']],
+      },
+    },
+    uniqueKeys: [['robotId', 'telegramId']],
+    operations: ['create'],
+  }));
+  assert.equal(missing.ok, false);
+  const refused = missing.problems.find(problem => problem.code === 'TIMESERIES_UNIQUE_KEY' && problem.path === 'Message');
+  assert.equal(refused?.message.includes('sentAt'), true);
+  assert.equal(refused?.message.includes('was not added'), true);
+
+  const legacy = buildD1Persistence(planned({
+    moduleName: 'telegram',
+    entityId: 'Message',
+    tableId: 'message',
+    portId: 'MessageRepository',
+    entities: {
+      Message: {
+        ...messageEntity.Message,
+        uniqueKeys: [['channelId']],
+        record: {
+          fields: {
+            ...messageEntity.Message.record.fields,
+            channelId: { type: 'text', required: true },
+          },
+        },
+      },
+    },
+    uniqueKeys: [['channelId']],
+    operations: ['create'],
+  }));
+  const legacyProblem = legacy.problems.find(problem => problem.code === 'TIMESERIES_UNIQUE_KEY');
+  assert.equal(legacyProblem?.message.includes('occurredAt'), true);
+});

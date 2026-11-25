@@ -85,6 +85,45 @@ test('d1_294: a table without the series mark is unchanged', () => {
   assert.equal(built.definition.columns.some(column => column.name === 'occurredAt'), false);
 });
 
+test('d1_295: a series timeField is the hypertable column and is TIMESTAMPTZ; other datetime fields stay TEXT', () => {
+  const built = buildLocalTable(
+    table({
+      timeSeries: true,
+      timeField: 'sentAt',
+      primaryKey: ['id', 'sentAt'],
+      uniqueKeys: [['robotId', 'telegramId', 'sentAt']],
+      indexes: [{ name: 'telegram_message_robotId_telegramId_sentAt', columns: ['robotId', 'telegramId', 'sentAt'], unique: true }],
+    }),
+    entity([
+      ...fields,
+      { name: 'robotId', type: 'text' },
+      { name: 'telegramId', type: 'text' },
+      { name: 'sentAt', type: 'datetime' },
+      { name: 'editedAt', type: 'datetime', indexed: true },
+    ]),
+  );
+  assert.equal('code' in built, false);
+  if ('code' in built) return;
+  assert.equal(built.definition.columns.some(column => column.name === 'occurredAt'), false);
+  assert.deepEqual(built.definition.columns.find(column => column.name === 'sentAt'), {
+    name: 'sentAt',
+    postgresType: 'TIMESTAMPTZ',
+  });
+  assert.deepEqual(built.definition.columns.find(column => column.name === 'editedAt'), {
+    name: 'editedAt',
+    postgresType: 'TEXT',
+    nullable: true,
+  });
+  const source = JSON.stringify(built.definition, null, 2);
+  assert.equal(source.includes('"timeColumn": "sentAt"'), true);
+  assert.equal(source.includes('"name": "occurredAt"'), false);
+  assert.deepEqual(built.definition.indexes.filter(index => index.unique), [{
+    name: 'telegram_message_robotId_telegramId_sentAt',
+    columns: ['robotId', 'telegramId', 'sentAt'],
+    unique: true,
+  }]);
+});
+
 test('d1_294: an entity field named occurredAt collides with the time column', () => {
   const built = buildLocalTable(
     table({ timeSeries: true, primaryKey: ['id', 'occurredAt'] }),

@@ -58,6 +58,7 @@ const LOCAL_BAN: Record<string, { table: string; port: string; label: string }> 
 
 interface Leaf {
   path: string;
+  type: string;
   indexed: boolean;
   required: boolean;
 }
@@ -214,14 +215,17 @@ function planEntity(
   const indexes = indexesFor(physical, keys, leaves, primaryKey, problems, normalizations);
   if (blocked.has(entityId)) return;
   const series = writtenTimeSeries(body);
+  const timeField = timeFieldOf(entityId, body, leaves, series, problems, blocked);
+  if (blocked.has(entityId)) return;
   if (series) {
-    if (leaves.some(leaf => leaf.path === TIME_COLUMN)) {
+    const timeColumn = timeField ?? TIME_COLUMN;
+    if (!timeField && leaves.some(leaf => leaf.path === TIME_COLUMN)) {
       error(problems, 'COLUMN_COLLISION', `${entityId}.${TIME_COLUMN}`, `Field ${TIME_COLUMN} is the time column of a series. It is not a field of the entity.`);
       blocked.add(entityId);
     }
     for (const key of keys) {
-      if (!key.includes(TIME_COLUMN)) {
-        error(problems, 'TIMESERIES_UNIQUE_KEY', entityId, `Entity ${entityId} is a time series and unique key ${key.join('+')} does not contain ${TIME_COLUMN}. The time was not added to the key.`);
+      if (!key.includes(timeColumn)) {
+        error(problems, 'TIMESERIES_UNIQUE_KEY', entityId, `Entity ${entityId} is a time series and unique key ${key.join('+')} does not contain ${timeColumn}. The time was not added to the key.`);
         blocked.add(entityId);
       }
     }
@@ -233,7 +237,7 @@ function planEntity(
   }
   const retentionDays = retentionDaysOf(entityId, body, series, problems, blocked);
   if (blocked.has(entityId)) return;
-  const tablePrimaryKey = series ? [...primaryKey, TIME_COLUMN] : primaryKey;
+  const tablePrimaryKey = series ? [...primaryKey, timeField ?? TIME_COLUMN] : primaryKey;
 
   // d1_267: the port the D1 wrote and kept lacks an operation a usecase asks of it now (the ConductChange port had `list` only, and the usecase of the step
   // that affects it records the row): the port is written again with the union of its methods and the planned ones, as a usecase def whose dependencies changed.
@@ -269,6 +273,7 @@ function planEntity(
     indexes,
     ...(series ? { timeSeries: true } : {}),
     ...(retentionDays !== undefined ? { retentionDays } : {}),
+    ...(timeField ? { timeField } : {}),
   });
   const adapterDefinition = definitionFor(request, 'repositoryAdapter', portId, {
     entityId,
@@ -556,7 +561,7 @@ function walkFields(
       failed = true;
       continue;
     }
-    leaves.push({ path, indexed: raw.indexed === true, required: raw.required === true });
+    leaves.push({ path, type, indexed: raw.indexed === true, required: raw.required === true });
   }
   return failed;
 }
@@ -592,6 +597,36 @@ function retentionDaysOf(
     blocked.add(entityId);
   }
   return whole && series ? value : undefined;
+}
+
+/** The L4 field that is the series time. Absent means the generated time column. */
+function timeFieldOf(
+  entityId: string,
+  body: Record<string, unknown>,
+  leaves: Leaf[],
+  series: boolean,
+  problems: D1PersistenceProblem[],
+  blocked: Set<string>,
+): string | undefined {
+  const storage = isRecord(body.storage) ? body.storage : null;
+  if (!storage || !Object.prototype.hasOwnProperty.call(storage, 'timeField')) return undefined;
+  const name = typeof storage.timeField === 'string' ? storage.timeField : '';
+  const leaf = name && !name.includes('.') ? leaves.find(item => item.path === name) : undefined;
+  if (!leaf) {
+    error(problems, 'TIME_FIELD', entityId, `Entity ${entityId} timeField ${name || '(missing)'} is not a field of the entity.`);
+    blocked.add(entityId);
+  } else if (!leaf.required) {
+    error(problems, 'TIME_FIELD', entityId, `Entity ${entityId} timeField ${name} is not required.`);
+    blocked.add(entityId);
+  } else if (leaf.type !== 'datetime') {
+    error(problems, 'TIME_FIELD', entityId, `Entity ${entityId} timeField ${name} is not a date and time.`);
+    blocked.add(entityId);
+  }
+  if (!series) {
+    error(problems, 'TIME_NOT_SERIES', entityId, `Entity ${entityId} declares timeField and is not a written time series.`);
+    blocked.add(entityId);
+  }
+  return blocked.has(entityId) ? undefined : name;
 }
 
 function primaryKeyOf(
