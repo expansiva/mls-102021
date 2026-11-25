@@ -7,6 +7,7 @@ import type { EffortAnswer, EffortInput, EffortPromptRequest, EffortUnitRef } fr
 const MASTER = { project: '102021', kind: 'l1', device: 'web' } as const;
 
 const NO_DEFS = 'módulo sem defs gerados';
+const NOTHING_IN_LAYER = 'nada gerado nesta camada';
 const NOT_FORECAST = 'not forecast: the comparison decides';
 const NO_DEF_CITES = 'no def cites the rule';
 
@@ -1291,6 +1292,7 @@ export function describeEffortFrom(
   defs: Record<string, string>,
   sources?: Record<string, string>,
   contracts?: Record<string, string>,
+  layerEmpty = false,
 ): EffortAnswer {
   const item = input.item.changeId;
   if (input.item.kind === 'inbound' && !consumesMarkOf(input.item)) return notForecast(item);
@@ -1302,7 +1304,13 @@ export function describeEffortFrom(
     console.info(item, JOURNEY_INDEX_REASON);
     return computed(item, []);
   }
-  if (Object.keys(defs).length === 0) return abend(item, NO_DEFS);
+  if (Object.keys(defs).length === 0) {
+    if (layerEmpty) {
+      console.info(item, NOTHING_IN_LAYER);
+      return computed(item, []);
+    }
+    return abend(item, NO_DEFS);
+  }
   const entity = entityEffort(input, defs);
   if (entity) return entity;
   const { kind, op } = input.item;
@@ -1369,6 +1377,26 @@ function contractPageId(file: StorFile, moduleName: string): string | null {
   if (file.status === 'deleted' || file.extension !== '.defs.ts' || !file.shortName) return null;
   if (String(file.folder || '') !== `${moduleName}/web/contracts`) return null;
   return file.shortName;
+}
+
+/** Same project filter as `productPath`, any extension. */
+function moduleFileInLayer(file: StorFile, moduleName: string): boolean {
+  const appProject = typeof mls.actualProject === 'number' ? mls.actualProject : Number.NaN;
+  if (Number(file.project) !== appProject || Number(file.level) !== 1) return false;
+  if (file.status === 'deleted' || !file.shortName) return false;
+  const folder = String(file.folder || '');
+  const prefix = `${moduleName}/`;
+  if (folder !== moduleName && !folder.startsWith(prefix)) return false;
+  const parts = folder.split('/');
+  return !parts.includes('pipeline') && !parts.includes('materialization');
+}
+
+function layerIsEmpty(moduleName: string): boolean {
+  const files = (mls.stor?.files ?? {}) as Record<string, StorFile | undefined>;
+  for (const file of Object.values(files)) {
+    if (file && moduleFileInLayer(file, moduleName)) return false;
+  }
+  return true;
 }
 
 function productPath(file: StorFile, moduleName: string, extension: '.defs.ts' | '.ts' = '.defs.ts'): string | null {
@@ -1640,6 +1668,7 @@ export async function describeEffort(input: EffortInput): Promise<EffortAnswer> 
     defs,
     await loadModuleSources(input.module, defs),
     await loadModuleContracts(input.module),
+    layerIsEmpty(input.module),
   );
 }
 

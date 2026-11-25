@@ -201,8 +201,9 @@ void test('describeEffort lê o .defs.ts do actualProject e ignora o do master',
     assert.equal(answer.status, 'computed');
     file.project = 102021;
     const masterCopy = await describeEffort(item);
-    assert.equal(masterCopy.status, 'abend');
-    assert.equal(masterCopy.abend?.reason, 'módulo sem defs gerados');
+    assert.equal(masterCopy.status, 'computed');
+    assert.deepEqual(masterCopy.materialize, []);
+    assert.equal(masterCopy.abend, undefined);
   } finally {
     (globalThis as { mls?: unknown }).mls = previous;
   }
@@ -239,9 +240,60 @@ void test('describeEffort lê defs de persistência sob l1 e ignora pipeline', a
   }
 });
 
-void test('describeEffort sem arquivos de produto abend', async () => {
+void test('describeEffort sem arquivo na camada devolve computed vazio', async () => {
   const previous = (globalThis as { mls?: unknown }).mls;
-  (globalThis as { mls?: unknown }).mls = { stor: { files: {} } };
+  (globalThis as { mls?: unknown }).mls = { actualProject: 102047, stor: { files: {} } };
+  const logged: unknown[][] = [];
+  const info = mock.method(console, 'info', (...args: unknown[]) => {
+    logged.push(args);
+  });
+  try {
+    const answer = await describeEffort(input(rule('anotacaoObrigatoriaNoAtendimento')));
+    assert.equal(answer.status, 'computed');
+    assert.deepEqual(answer.materialize, []);
+    assert.deepEqual(answer.create, []);
+    assert.deepEqual(answer.regenerateDefs, []);
+    assert.deepEqual(answer.remove, []);
+    assert.equal(answer.abend, undefined);
+    assert.deepEqual(logged, [['rule:anotacaoObrigatoriaNoAtendimento', 'nada gerado nesta camada']]);
+  } finally {
+    info.mock.restore();
+    (globalThis as { mls?: unknown }).mls = previous;
+  }
+});
+
+void test('describeEffort com arquivo na camada e sem defs abend', async () => {
+  const previous = (globalThis as { mls?: unknown }).mls;
+  (globalThis as { mls?: unknown }).mls = {
+    actualProject: 102047,
+    stor: {
+      files: {
+        note: {
+          project: 102047,
+          level: 1,
+          folder: 'agendaClinica',
+          shortName: 'nota',
+          extension: '.json',
+          getContent: async () => '{}',
+        },
+        gone: {
+          project: 102047,
+          level: 1,
+          folder: 'agendaClinica',
+          shortName: 'apagado',
+          extension: '.json',
+          status: 'deleted',
+        },
+        pipe: {
+          project: 102047,
+          level: 1,
+          folder: 'agendaClinica/pipeline',
+          shortName: 'rascunho',
+          extension: '.txt',
+        },
+      },
+    },
+  };
   try {
     const answer = await describeEffort(input(rule('anotacaoObrigatoriaNoAtendimento')));
     assert.equal(answer.status, 'abend');
