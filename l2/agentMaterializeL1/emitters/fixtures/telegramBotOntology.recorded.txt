@@ -1,0 +1,383 @@
+/// <mls fileReference="_102047_/l4/telegram/ontology/TelegramBot.defs.ts" enhancement="_blank"/>
+
+import type { Ns5OntologyEntityV3, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const telegramEntityTelegramBot = {
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "telegram",
+  "entityId": "TelegramBot",
+  "title": "Telegram bot",
+  "description": "A Telegram bot of the company, with its name, audience, the cm agent that answers, the access key Telegram gave, the last check with Telegram and its situation (not configured, active, paused, deactivated). Never deleted; deactivated when no longer used. Keeps who paused it, when and why.",
+  "displayField": "name",
+  "relationships": {
+    "agent": {
+      "relationshipId": "botAgent",
+      "to": "CmAgent",
+      "via": "TelegramBot.agentId",
+      "cardinality": "N:1",
+      "title": "Answering agent",
+      "mode": "fk",
+      "required": true
+    },
+    "conversations": {
+      "relationshipId": "conversationBot",
+      "to": "TelegramConversation",
+      "via": "TelegramConversation.botId",
+      "cardinality": "1:N",
+      "title": "Conversations of the bot",
+      "mode": "fk",
+      "direction": "to",
+      "required": true
+    },
+    "auditRecords": {
+      "relationshipId": "auditBot",
+      "to": "MessageAudit",
+      "via": "MessageAudit.botId",
+      "cardinality": "1:N",
+      "title": "Audit records of the bot",
+      "mode": "fk",
+      "direction": "to",
+      "required": true
+    }
+  },
+  "capabilities": {
+    "read.byId": "Opens one bot by its id so the admin can review its check, its pause and its agent; used by the bot screen and by the message processes.",
+    "locate.byColumn": "Lists the bots filtered by situation and audience, ordered by name; the first screen of the company admin.",
+    "locate.byText": "Finds a bot by part of its name from the search box of the bots screen.",
+    "count": "Counts the bots so the first screen can show the welcome and 'register the first bot' when there is none.",
+    "listByForeignKey": "Lists the bots answered by one cm agent, by the agent column; used when the admin changes the answering agent.",
+    "create": "Saves a new bot as not configured with its name, audience, agent and access key; done by the company admin.",
+    "update": "Changes the answering agent and records the result of the check with Telegram; done by the admin and the check command.",
+    "transition": "Activates, pauses, resumes and deactivates the bot through its situation, and lets the cm process pause it; guarded by the module rules.",
+    "uniqueKey": "Refuses a second bot with the same name, so the admin never confuses two bots.",
+    "telegram.checkBot": "Asks Telegram who the bot is with its access key and keeps the reported name, the date and the result; started by the admin.",
+    "telegram.registerDelivery": "Tells Telegram where to deliver the text messages sent to this bot when it is activated, using the module secret from the platform configuration of outside systems.",
+    "telegram.pickCmAgent": "Offers the agents of the cm for the admin to choose the one that answers the bot."
+  },
+  "rules": [
+    "botActivationRequiresModuleSecret",
+    "textMessagesOnly",
+    "pauseKeepsWhoWhenWhy",
+    "cmPauseUndoneOnlyByAdmin",
+    "botNeverDeleted",
+    "accessKeyAdminOnly",
+    "onlyActiveBotCarriesMessages",
+    "agentChosenFromCm"
+  ],
+  "kind": "entity",
+  "class": "core",
+  "storage": {
+    "target": "moduleDatabase",
+    "table": "telegram_telegrambot",
+    "kind": "relational"
+  },
+  "record": {
+    "fields": {
+      "id": {
+        "type": "uuid",
+        "required": true,
+        "derived": true,
+        "indexed": true,
+        "title": "Id"
+      },
+      "version": {
+        "type": "integer",
+        "required": true,
+        "derived": true
+      },
+      "name": {
+        "type": "string",
+        "required": true,
+        "indexed": true,
+        "title": "Bot name",
+        "description": "The name the company gives the bot, shown on the bots screen (for example 'Motorcycle parts sales').",
+        "maxLength": 120
+      },
+      "audience": {
+        "type": "enum",
+        "required": true,
+        "indexed": true,
+        "values": [
+          {
+            "value": "employees",
+            "title": "Employees"
+          },
+          {
+            "value": "externalCustomers",
+            "title": "External customers"
+          },
+          {
+            "value": "meetings",
+            "title": "Meetings"
+          }
+        ],
+        "title": "Audience",
+        "description": "Who talks to this bot. It is sent to the cm with every incoming message."
+      },
+      "agentId": {
+        "type": "record",
+        "required": true,
+        "indexed": true,
+        "to": [
+          "CmAgent"
+        ],
+        "title": "Answering agent",
+        "description": "The cm agent that answers the conversations of this bot, chosen from the agents of the cm."
+      },
+      "status": {
+        "type": "enum",
+        "required": true,
+        "indexed": true,
+        "values": [
+          {
+            "value": "notConfigured",
+            "title": "Not configured"
+          },
+          {
+            "value": "active",
+            "title": "Active"
+          },
+          {
+            "value": "paused",
+            "title": "Paused"
+          },
+          {
+            "value": "deactivated",
+            "title": "Deactivated"
+          }
+        ],
+        "title": "Situation",
+        "description": "Situation of the bot: only an active bot carries messages."
+      },
+      "details": {
+        "type": "object",
+        "required": true,
+        "title": "Details",
+        "description": "Everything else about the bot.",
+        "fields": {
+          "accessKey": {
+            "type": "string",
+            "required": true,
+            "title": "Access key",
+            "description": "The access key Telegram gave when the bot was created. Only the company admin informs it and sees it; it is never shown elsewhere.",
+            "maxLength": 200
+          },
+          "lastCheck": {
+            "type": "object",
+            "title": "Last check with Telegram",
+            "description": "Result of the last time the module asked Telegram who the bot is.",
+            "fields": {
+              "reportedName": {
+                "type": "string",
+                "title": "Name reported by Telegram",
+                "description": "The bot name Telegram reported in the check.",
+                "maxLength": 200
+              },
+              "checkedAt": {
+                "type": "timestamp",
+                "required": true,
+                "title": "Checked at",
+                "description": "When the check was made."
+              },
+              "result": {
+                "type": "enum",
+                "required": true,
+                "values": [
+                  {
+                    "value": "succeeded",
+                    "title": "Succeeded"
+                  },
+                  {
+                    "value": "failed",
+                    "title": "Failed"
+                  }
+                ],
+                "title": "Result",
+                "description": "Whether Telegram recognised the access key."
+              },
+              "failureReason": {
+                "type": "text",
+                "title": "Reason of failure",
+                "description": "What Telegram answered when the check failed, in plain words."
+              }
+            }
+          },
+          "pause": {
+            "type": "object",
+            "title": "Pause",
+            "description": "Who paused the bot, when and why; filled while the bot is paused.",
+            "fields": {
+              "pausedBy": {
+                "type": "enum",
+                "required": true,
+                "values": [
+                  {
+                    "value": "admin",
+                    "title": "Company admin"
+                  },
+                  {
+                    "value": "cm",
+                    "title": "cm (collab-messages)"
+                  }
+                ],
+                "title": "Paused by",
+                "description": "Whether the company admin or the cm paused the bot. A pause by the cm is undone only by the admin."
+              },
+              "pausedAt": {
+                "type": "timestamp",
+                "required": true,
+                "title": "Paused at",
+                "description": "When the bot was paused."
+              },
+              "reason": {
+                "type": "text",
+                "required": true,
+                "title": "Reason",
+                "description": "Why the bot was paused, as given by the admin or by the cm.",
+                "maxLength": 1000
+              }
+            }
+          },
+          "activatedAt": {
+            "type": "timestamp",
+            "title": "Activated at",
+            "description": "When Telegram was last told to deliver this bot's text messages to the module."
+          },
+          "deactivatedAt": {
+            "type": "timestamp",
+            "title": "Deactivated at",
+            "description": "When the bot was deactivated; it is kept so its conversations and audit stay readable."
+          },
+          "lastActivityAt": {
+            "type": "timestamp",
+            "derived": true,
+            "title": "Last activity",
+            "description": "When the most recent message of this bot came in or went out, read from the audit records of this bot."
+          },
+          "conversationCount": {
+            "type": "integer",
+            "derived": true,
+            "title": "Conversations",
+            "description": "How many conversations are held with this bot."
+          },
+          "activatedBy": {
+            "type": "string",
+            "title": "Activated by",
+            "description": "Who activated the bot, the last time Telegram was told to deliver its text messages to the module. The company admin can read it.",
+            "maxLength": 256
+          }
+        }
+      }
+    }
+  },
+  "uniqueKeys": [
+    [
+      "name"
+    ]
+  ],
+  "lifecycleStates": [
+    {
+      "state": "notConfigured",
+      "reachedBy": "actor"
+    },
+    {
+      "state": "active",
+      "reachedBy": "actor"
+    },
+    {
+      "state": "paused",
+      "reachedBy": "actor"
+    },
+    {
+      "state": "deactivated",
+      "reachedBy": "actor"
+    }
+  ],
+  "initialState": "notConfigured",
+  "transitions": [
+    {
+      "transitionId": "activate",
+      "from": [
+        "notConfigured"
+      ],
+      "to": "active",
+      "by": [
+        "companyAdmin"
+      ],
+      "description": "Activating calls setMessageDelivery, which tells Telegram where to deliver the text messages people send to this bot. When the platform answers that the module secret has not been entered in its configuration of outside systems, the activation is refused by the rule botActivationRequiresModuleSecret and the bot stays not configured.",
+      "payload": [],
+      "ruleRefs": [
+        "botActivationRequiresModuleSecret"
+      ]
+    },
+    {
+      "transitionId": "pause",
+      "from": [
+        "active"
+      ],
+      "to": "paused",
+      "by": [
+        "companyAdmin"
+      ],
+      "description": "The admin pauses the bot giving the reason; the record keeps who paused it and when.",
+      "payload": [
+        "details.pause.reason"
+      ],
+      "ruleRefs": [
+        "pauseKeepsWhoWhenWhy"
+      ]
+    },
+    {
+      "transitionId": "pauseByCm",
+      "from": [
+        "active"
+      ],
+      "to": "paused",
+      "by": [],
+      "description": "In an extreme case the cm asks the module to pause the bot, giving the reason; the record keeps that the cm paused it, when and why.",
+      "payload": [
+        "details.pause.reason"
+      ],
+      "ruleRefs": [
+        "pauseKeepsWhoWhenWhy",
+        "cmPauseUndoneOnlyByAdmin"
+      ]
+    },
+    {
+      "transitionId": "resume",
+      "from": [
+        "paused"
+      ],
+      "to": "active",
+      "by": [
+        "companyAdmin"
+      ],
+      "description": "The admin resumes the bot so it carries messages again, including a bot paused by the cm.",
+      "payload": [],
+      "ruleRefs": [
+        "cmPauseUndoneOnlyByAdmin"
+      ]
+    },
+    {
+      "transitionId": "deactivate",
+      "from": [
+        "notConfigured",
+        "active",
+        "paused"
+      ],
+      "to": "deactivated",
+      "by": [
+        "companyAdmin"
+      ],
+      "description": "The admin retires a bot no longer used; it is never deleted, so its conversations and audit stay readable.",
+      "payload": [],
+      "ruleRefs": [
+        "botNeverDeleted"
+      ]
+    }
+  ]
+} as const satisfies Ns5Readonly<Ns5OntologyEntityV3>;
+
+export type TelegramEntityTelegramBotType = typeof telegramEntityTelegramBot;
+
+export default telegramEntityTelegramBot;

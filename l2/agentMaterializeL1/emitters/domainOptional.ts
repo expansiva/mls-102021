@@ -23,8 +23,12 @@ export function domainOptionalPaths(entity: M1Definition, ontologySource: string
   if (!requiredFields) return null;
   const assigned = serverAssigned(entity, lifecycleStart(entity));
   const paths = (Array.isArray(entity.data.fields) ? entity.data.fields.filter(isRecord) : []).map(field => text(field.name)).filter(Boolean);
-  // A group with a required field inside is there whenever the record is (`identification` holds the required `name`).
-  const required = (path: string): boolean => requiredFields.has(path) || [...requiredFields].some(field => field.startsWith(`${path}.`));
+  // A group with a required field inside is there whenever the record is (`identification` holds the required `name`), on an MDM entity: the engine shapes it.
+  // d1_320: on an entity the module stores, an object is required only when the l4 says so for the object itself; the required fields inside it are required
+  // inside it (`lastCheck?: { checkedAt: string }`: a bot is born with no check). The `details` container of the record is always there.
+  const stored = target === 'moduleDatabase';
+  const required = (path: string): boolean => requiredFields.has(path)
+    || (!(stored && path !== 'details') && [...requiredFields].some(field => field.startsWith(`${path}.`)));
   return new Set(paths.filter(path => !required(path) && !assigned.has(path)));
 }
 

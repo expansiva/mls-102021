@@ -1,0 +1,206 @@
+/// <mls fileReference="_102047_/l1/telegram/layer_3_domain/entities/telegramBot.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "TelegramBot",
+  "moduleName": "telegram",
+  "status": "pending",
+  "dependencies": [],
+  "data": {
+    "entityId": "TelegramBot",
+    "storageTarget": "moduleDatabase",
+    "fields": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "derived": true
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "audience",
+        "type": "enum"
+      },
+      {
+        "name": "agentId",
+        "type": "record",
+        "ref": "CmAgent"
+      },
+      {
+        "name": "status",
+        "type": "enum"
+      },
+      {
+        "name": "details",
+        "type": "object"
+      },
+      {
+        "name": "details.accessKey",
+        "type": "string"
+      },
+      {
+        "name": "details.lastCheck",
+        "type": "object"
+      },
+      {
+        "name": "details.lastCheck.reportedName",
+        "type": "string"
+      },
+      {
+        "name": "details.lastCheck.checkedAt",
+        "type": "timestamp"
+      },
+      {
+        "name": "details.lastCheck.result",
+        "type": "enum"
+      },
+      {
+        "name": "details.lastCheck.failureReason",
+        "type": "text"
+      },
+      {
+        "name": "details.pause",
+        "type": "object"
+      },
+      {
+        "name": "details.pause.pausedBy",
+        "type": "enum"
+      },
+      {
+        "name": "details.pause.pausedAt",
+        "type": "timestamp"
+      },
+      {
+        "name": "details.pause.reason",
+        "type": "text"
+      },
+      {
+        "name": "details.activatedAt",
+        "type": "timestamp"
+      },
+      {
+        "name": "details.deactivatedAt",
+        "type": "timestamp"
+      },
+      {
+        "name": "details.lastActivityAt",
+        "type": "timestamp",
+        "derived": true
+      },
+      {
+        "name": "details.conversationCount",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "details.activatedBy",
+        "type": "string"
+      }
+    ],
+    "lifecycle": {
+      "states": [
+        {
+          "state": "notConfigured",
+          "reachedBy": "actor"
+        },
+        {
+          "state": "active",
+          "reachedBy": "actor"
+        },
+        {
+          "state": "paused",
+          "reachedBy": "actor"
+        },
+        {
+          "state": "deactivated",
+          "reachedBy": "actor"
+        }
+      ],
+      "transitions": [
+        {
+          "transitionId": "activate",
+          "from": [
+            "notConfigured"
+          ],
+          "to": "active",
+          "by": [
+            "companyAdmin"
+          ],
+          "ruleRefs": [
+            "botActivationRequiresModuleSecret"
+          ]
+        },
+        {
+          "transitionId": "pause",
+          "from": [
+            "active"
+          ],
+          "to": "paused",
+          "by": [
+            "companyAdmin"
+          ],
+          "ruleRefs": [
+            "pauseKeepsWhoWhenWhy"
+          ]
+        },
+        {
+          "transitionId": "pauseByCm",
+          "from": [
+            "active"
+          ],
+          "to": "paused",
+          "by": [],
+          "ruleRefs": [
+            "pauseKeepsWhoWhenWhy",
+            "cmPauseUndoneOnlyByAdmin"
+          ]
+        },
+        {
+          "transitionId": "resume",
+          "from": [
+            "paused"
+          ],
+          "to": "active",
+          "by": [
+            "companyAdmin"
+          ],
+          "ruleRefs": [
+            "cmPauseUndoneOnlyByAdmin"
+          ]
+        },
+        {
+          "transitionId": "deactivate",
+          "from": [
+            "notConfigured",
+            "active",
+            "paused"
+          ],
+          "to": "deactivated",
+          "by": [
+            "companyAdmin"
+          ],
+          "ruleRefs": [
+            "botNeverDeleted"
+          ]
+        }
+      ]
+    },
+    "invariants": [
+      "textMessagesOnly",
+      "accessKeyAdminOnly",
+      "onlyActiveBotCarriesMessages",
+      "agentChosenFromCm"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;
