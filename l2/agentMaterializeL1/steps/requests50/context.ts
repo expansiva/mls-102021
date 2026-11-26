@@ -21,6 +21,7 @@ import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, infoOfRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { l4Process } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
+import { typeLeakProblems } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { pageJourneyIds, processReceives, routeReachableOperations, processStartEvent, usecaseOperationNames } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
 import { moduleSpecifier, workflowFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { routeChildWrites } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
@@ -1240,6 +1241,7 @@ export function requestGate(code: string, input: {
   if (/\blocalStorage\b|\bsessionStorage\b/u.test(code)) problems.push('No browser storage.');
   if (/catch\s*(\([^)]*\))?\s*\{\s*\}/u.test(code)) problems.push('No empty catch: an error names its cause.');
   problems.push(...notImplementedProblems(code));
+  problems.push(...typeLeakProblems(code));
   return problems;
 }
 

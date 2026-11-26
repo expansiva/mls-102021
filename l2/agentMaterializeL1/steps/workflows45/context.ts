@@ -29,6 +29,7 @@ import { processReceives } from '/_102021_/l2/agentMaterializeL1/helpers/workflo
 import { l4RecordOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/affectedWrites.js';
 import { arrivalInputOf } from '/_102021_/l2/agentMaterializeL1/helpers/arrivalInput.js';
 import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
+import { typeLeakProblems } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { answerTypeNames, catalogTypeBody, connectionGatewaySection, repositoryUniqueKeySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { arrivalUpsertProblems, connectionRowsOf, emptyCastProblems, emptyRequiredProblems, recordCastProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, typedResultDiscardedProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
@@ -817,6 +818,7 @@ export function workflowGate(code: string, input: { siblingImports?: readonly st
   }
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) problems.push('No `as unknown as` and no `as any`.');
   problems.push(...typedResultDiscardedProblems(code));
+  problems.push(...typeLeakProblems(code));
   problems.push(...emptyCastProblems(code));
   problems.push(...recordCastProblems(code));
   problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));

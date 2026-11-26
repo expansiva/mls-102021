@@ -296,6 +296,17 @@ export function gatewayOutputFieldProblems(code: string, outputs: readonly M12Ga
   return problems;
 }
 
+/**
+ * d1_318: `null!` and `undefined!` assert a value the type does not allow: the compiler accepts it and the value is still missing at run time (a screen that read
+ * `null` broke; a create wrote `lastCheck: undefined!` to satisfy a required type). Measured on every generated module of the repository (s0): 7 occurrences, all
+ * leaks, none legitimate; `!=`/`!==` comparisons are not matched. For the files the model writes (usecase, request service, process).
+ */
+export function typeLeakProblems(code: string): string[] {
+  const hits = [...codeOnly(code).matchAll(/\b(null|undefined)\s*!(?!=)/gu)].map(match => match[1]);
+  if (!hits.length) return [];
+  return [`TYPE_LEAK: \`${[...new Set(hits)].map(word => `${word}!`).join('`, `')}\` asserts a value the type does not allow. Give the field the shape its type has: an optional field is left out, a required text is '', and a required object with no empty form is a gap of the source (say it), never \`null!\` or \`undefined!\`.`];
+}
+
 /** One call of a connection that the usecase consumes. */
 export interface M12ConsumerCall {
   connectionId: string;
@@ -1076,6 +1087,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...eventPublishProblems(code, input.publishers ?? []));
   problems.push(...consumerCallProblems(code, input.consumerCalls ?? []));
   problems.push(...gatewayOutputFieldProblems(code, input.gatewayOutputs ?? []));
+  problems.push(...typeLeakProblems(code));
   problems.push(...gatewayInputCastProblems(code, (input.consumerCalls ?? []).map(call => call.operationId)));
   problems.push(...gatewayInputFieldProblems(code, input.callInputs ?? []));
   problems.push(...childRecordProblems(code, input.childRecords ?? [], (input.consumerCalls ?? []).map(call => call.operationId)));
