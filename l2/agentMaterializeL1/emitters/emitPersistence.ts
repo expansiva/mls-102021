@@ -479,7 +479,7 @@ async function renderConnectionGateways(
     imports.push(specifier);
     const typeNames = [...new Set(used.flatMap(item => [item.inputType, item.outputType]))].sort();
     const gateway = `${connectionId.charAt(0).toUpperCase()}${connectionId.slice(1)}Gateway`;
-    const methods = used.map(item => `  ${item.operationId}(input: ${item.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${item.outputType}>;`).join('\n');
+    const methods = used.map(item => `  ${item.operationId}(input: ${item.inputType}, ctx: RequestContext, opts?: CallConnectionOptions, context?: GatewayCallContext): Promise<${item.outputType}>;`).join('\n');
     const bodies = used.map(item => gatewayMethod(connectionId, item)).join('\n');
     blocks.push([
       `import type { ${typeNames.join(', ')} } from '${specifier}';`,
@@ -499,7 +499,11 @@ async function renderConnectionGateways(
   const source = [
     header(output),
     `import { AppError, type RequestContext } from '${APP_CONTRACTS}';`,
-    ...(rows.length > 0 ? [`import { callConnection, type CallConnectionOptions } from '${CALL_CONNECTION}';`] : []),
+    ...(rows.length > 0 ? [
+      `import { callConnection, type CallConnectionContext, type CallConnectionOptions } from '${CALL_CONNECTION}';`,
+      '',
+      "export type GatewayCallContext = Omit<CallConnectionContext, 'actorMdmId' | 'organizationId' | 'callerModuleId' | 'hookParams' | 'requestedByMdmId'>;",
+    ] : []),
     ...(publishing.length > 0 ? [`import { ${MODULE_EVENT_PUBLISH.symbol} } from '${MODULE_EVENT_PUBLISH.importPath}';`] : []),
     '',
     `const STATUS: Record<string, number> = ${JSON.stringify(CONNECTION_STATUS)};`,
@@ -533,7 +537,7 @@ function eventPublisher(moduleName: string, event: Record<string, unknown>): str
 
 function gatewayMethod(connectionId: string, item: CatalogOperation): string {
   const lines = [
-    `    async ${item.operationId}(input: ${item.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${item.outputType}> {`,
+    `    async ${item.operationId}(input: ${item.inputType}, ctx: RequestContext, opts?: CallConnectionOptions, context?: GatewayCallContext): Promise<${item.outputType}> {`,
   ];
   if (item.expectsVersion) {
     lines.push(`      if (opts?.expectVersion === undefined) throw new AppError('invalid', ${JSON.stringify(`${item.operationId} requires expectVersion.`)}, 400);`);
@@ -542,7 +546,7 @@ function gatewayMethod(connectionId: string, item: CatalogOperation): string {
     // d1_214: the id of the request the app is serving ties the call record to it. An id the caller passed wins; the other keys stay.
     '      const requestId = opts?.requestId ?? ctx.requestMeta?.requestId;',
     '      const callOptions = requestId === undefined ? opts : { ...opts, requestId };',
-    `      const result = await callConnection(${JSON.stringify(connectionId)}, ${JSON.stringify(item.operationId)}, input, { actorMdmId: ctx.sessionContext.person?.mdmId }, callOptions);`,
+    `      const result = await callConnection(${JSON.stringify(connectionId)}, ${JSON.stringify(item.operationId)}, input, { ...context, actorMdmId: ctx.sessionContext.person?.mdmId }, callOptions);`,
     "      if (!result.ok) throw new AppError(result.code, result.message, STATUS[result.code], result.code === 'disabled' && result.missing ? { missing: result.missing } : undefined);",
     `      return result.output as ${item.outputType};`,
     '    },',

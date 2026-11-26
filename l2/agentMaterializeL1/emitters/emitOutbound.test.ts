@@ -64,8 +64,8 @@ test('cm.readAgent and cm.simulateAgent become one gateway whose file compiles a
   if ('code' in emitted) return;
   assert.match(emitted.source, /import type \{ CmReadAgentInput, CmReadAgentOutput, CmSimulateAgentInput, CmSimulateAgentOutput \} from '\/_102034_\/l2\/shared\/contracts\/connections\/cm\.js'/);
   assert.match(emitted.source, /export interface CmGateway \{/);
-  assert.match(emitted.source, /readAgent\(input: CmReadAgentInput, ctx: RequestContext, opts\?: CallConnectionOptions\): Promise<CmReadAgentOutput>/);
-  assert.match(emitted.source, /simulateAgent\(input: CmSimulateAgentInput, ctx: RequestContext, opts\?: CallConnectionOptions\): Promise<CmSimulateAgentOutput>/);
+  assert.match(emitted.source, /readAgent\(input: CmReadAgentInput, ctx: RequestContext, opts\?: CallConnectionOptions, context\?: GatewayCallContext\): Promise<CmReadAgentOutput>/);
+  assert.match(emitted.source, /simulateAgent\(input: CmSimulateAgentInput, ctx: RequestContext, opts\?: CallConnectionOptions, context\?: GatewayCallContext\): Promise<CmSimulateAgentOutput>/);
   assert.equal(emitted.evidences.some(item => !item.passed && item.detail.startsWith('MECHANISM_UNBOUND')), true);
   const fake = createFakeCallConnection({
     'cm.readAgent': { output: { agentId: 'a' } },
@@ -74,9 +74,10 @@ test('cm.readAgent and cm.simulateAgent become one gateway whose file compiles a
   const loaded = await loadEmitted(emitted.source, fake);
   const ctx = { sessionContext: { person: { mdmId: 'person-1' } } } as RequestContext;
   const gateway = loaded.createCmGateway(ctx);
-  await gateway.readAgent({ agentId: 'a' }, ctx, { idempotencyKey: 'same', expectVersion: 3 });
+  await gateway.readAgent({ agentId: 'a' }, ctx, { idempotencyKey: 'same', expectVersion: 3 }, { agentId: 'ag-1' });
   assert.equal(fake.calls[0]?.opts && (fake.calls[0].opts as { idempotencyKey?: string }).idempotencyKey, 'same');
   assert.equal((fake.calls[0]?.context as { actorMdmId?: string }).actorMdmId, 'person-1');
+  assert.equal((fake.calls[0]?.context as { agentId?: string }).agentId, 'ag-1');
   assert.equal((fake.calls[0]?.context as { organizationId?: string }).organizationId, undefined);
   await assert.rejects(gateway.simulateAgent({ agentId: 'a', level: 'canDo' }, ctx), (error: unknown) => {
     assert.ok(error instanceof AppError);
@@ -97,7 +98,7 @@ test('updateAgent requires expectVersion and readAgent stays unchanged', async (
   const readBody = emitted.source.split('async readAgent')[1]?.split('async updateAgent')[0] ?? '';
   assert.equal(readBody.includes('expectVersion'), false);
   // d1_214: the options go merged with the id of the request; a read still has no expectVersion.
-  assert.match(readBody, /callConnection\("cm", "readAgent", input, \{ actorMdmId: ctx\.sessionContext\.person\?\.mdmId \}, callOptions\)/);
+  assert.match(readBody, /callConnection\("cm", "readAgent", input, \{ \.\.\.context, actorMdmId: ctx\.sessionContext\.person\?\.mdmId \}, callOptions\)/);
   assert.match(emitted.source, /if \(opts\?\.expectVersion === undefined\) throw new AppError\('invalid', "updateAgent requires expectVersion\.", 400\)/);
   const types = checkTypes(emitted.source);
   assert.equal(types.clean, '');

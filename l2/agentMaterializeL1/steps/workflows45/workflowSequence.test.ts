@@ -520,7 +520,7 @@ test('d1_195: the prompt of a process carries the gateway section of the calls w
   linked.ctx.read = async (ref: string) => ref.endsWith('/l4/' + MODULE + '/integration.defs.ts') ? integration : linkedRead(ref);
   const linkedText = (await loadWorkflowContext(linked.ctx, linked.unit)).human;
   assert.match(linkedText, /## Calls of the steps/);
-  assert.match(linkedText, /- step `cotar` \(mechanical, Cotar\) → `gateway\.listAgents\(input, ctx\)` \(cm\.listAgents\)/);
+  assert.match(linkedText, /- step `cotar` \(mechanical, Cotar\) → `gateway\.listAgents\(input, ctx, opts\?, context\?\)` \(cm\.listAgents\); fields of the connection context such as `agentId` go in `context`, and a repeat key goes in `opts\.idempotencyKey`/);
   assert.match(linkedText, /input CmListAgentsInput =/);
   assert.equal(linkedText.includes('gateway.readAgent('), false, 'a call of another process is not here');
   assert.equal(text.includes('## Calls of the steps'), false, 'no usedBy in the L4: no section');
@@ -561,7 +561,7 @@ test('d1_204: a call that a usecase consumes is run by calling the usecase; the 
   const built = build();
   const text = (await loadWorkflowContext(built.ctx, built.unit)).human;
   assert.match(text, /- step `cotar` \(mechanical, Cotar\) → call the usecase `listThing\(input, ctx\)`, which consumes cm\.listAgents \(import from `\/_7_\/l1\/pedido\/layer_2_application\/usecases\/listThing\.js`\); the gateway is not needed/);
-  assert.match(text, /- step `cotar` .* → `gateway\.readAgent\(input, ctx\)` \(cm\.readAgent\)/, 'a call no usecase consumes keeps the gateway');
+  assert.match(text, /- step `cotar` .* → `gateway\.readAgent\(input, ctx, opts\?, context\?\)` \(cm\.readAgent\); fields of the connection context such as `agentId` go in `context`, and a repeat key goes in `opts\.idempotencyKey`/, 'a call no usecase consumes keeps the gateway');
   assert.equal(text.includes('gateway.listAgents('), false);
   assert.equal(text.includes('always call the gateway'), false);
 

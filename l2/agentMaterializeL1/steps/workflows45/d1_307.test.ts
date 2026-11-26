@@ -27,6 +27,7 @@ const BASE = path.resolve(HERE, '../../../../..');
 const REPO = path.join(BASE, 'mls-102047');
 const ADDRESS = 'Object.values(ctx.requestMeta?.connection?.context?.hookParams ?? {})[0]';
 const KEPT = 'after that call returns it throws `new AppError(code, message, 422)`';
+const CONFLICT = "AppError('CONFLICT', 'Unique key already stored.', 409)";
 
 function extract(root: string, commit: string, paths: string[]): void {
   if (existsSync(path.join(root, paths[0]))) return;
@@ -86,4 +87,17 @@ void test('d1_307 s1: the two outside arrivals read the address from ctx and kee
     assert.equal(text.includes('hookParams'), false, id);
     assert.equal(text.includes(KEPT), false, id);
   }
+});
+
+void test('d1_307 s1b: a process shows the unique keys of the entity table and the conflict the repository create throws', async () => {
+  const { human } = await loaded('telegram', '/tmp/d1_307_real_3f4', '3f481f59', 'l4/telegram/workflows.defs.ts', ['l1/telegram', 'l2/telegram', 'l4/telegram', 'l4/organization', 'l5']);
+  for (const id of ['deliverIncomingMessage', 'sendCmMessage']) {
+    const text = await human(id);
+    assert.match(text, /Unique keys: \(botId, direction, telegramMessageId, writtenAt\), \(botId, direction, cmRequestReference, writtenAt\)\./u, id);
+    assert.ok(text.includes(CONFLICT), id);
+  }
+  const agents = await loaded('agents', '/tmp/d1_307_agents_be5', 'be5e6203', 'l4/agents/workflows.defs.ts', ['l1/agents', 'l2/agents', 'l4/agents', 'l4/organization', 'l5']);
+  const texts = await Promise.all(['virtualEmployeeCreation', 'executionRecording', 'toolCatalogRefresh'].map(id => agents.human(id)));
+  assert.ok(texts.some(text => text.includes(CONFLICT)), 'agents');
+  assert.ok(texts.some(text => text.includes('{ agentId }')), 'agents');
 });

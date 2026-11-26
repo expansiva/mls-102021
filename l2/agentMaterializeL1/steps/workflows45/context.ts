@@ -27,7 +27,7 @@ import { processReceives } from '/_102021_/l2/agentMaterializeL1/helpers/workflo
 import { l4RecordOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/affectedWrites.js';
 import { arrivalInputOf } from '/_102021_/l2/agentMaterializeL1/helpers/arrivalInput.js';
 import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
-import { answerTypeNames, catalogTypeBody, connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { answerTypeNames, catalogTypeBody, connectionGatewaySection, repositoryUniqueKeySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { arrivalUpsertProblems, connectionRowsOf, emptyCastProblems, emptyRequiredProblems, recordCastProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, typedResultDiscardedProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -574,7 +574,7 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
       const where = `\`${call.stepId}\`${step ? ` (${step.kind}${step.title ? `, ${step.title}` : ''})` : ''}`;
       const run = call.usecase
         ? `call the usecase \`${call.usecase}(input, ctx)\`, which consumes ${call.connectionId}.${call.operationId}${usecaseUnit ? ` (import from \`/${usecaseUnit.outputRef.replace(/\.ts$/u, '.js')}\`)` : ''}; the gateway is not needed`
-        : `\`gateway.${call.operationId}(input, ctx)\` (${call.connectionId}.${call.operationId})`;
+        : `\`gateway.${call.operationId}(input, ctx, opts?, context?)\` (${call.connectionId}.${call.operationId}); fields of the connection context such as \`agentId\` go in \`context\`, and a repeat key goes in \`opts.idempotencyKey\``;
       return [
         `- step ${where} → ${run}`,
         input ? `  input ${input.type} =\n${fence('ts', input.text)}` : '',
@@ -635,6 +635,8 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     ].join('\n\n')));
     if (kind === 'domainEntity') {
       const entityId = String(item.definition.data.entityId ?? '');
+      const unique = repositoryUniqueKeySection(ctx.units, entityId);
+      if (unique) parts.push(section(`Unique keys of the table of ${entityId}`, unique));
       if (touched && !touched.has(entityId)) {
         // d1_292: an entity the process writes through its port (an operation with no usecase) keeps what the l4 says about that write, whichever function writes it: the task that names the
         // entity is tied to no function, so the narrow context would leave out the capability (`upserting by agent`) and the unique key the function needs.

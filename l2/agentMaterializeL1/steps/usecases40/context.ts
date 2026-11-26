@@ -376,7 +376,8 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
   const importPath = `/_${ctx.run.project}_/l1/${ctx.run.module}/layer_1_external/adapters/integration/outbound.js`;
   const blocks: string[] = [
     `Import the gateway type with \`import type { … } from '${importPath}'\`.`,
-    'Resolve it with `resolveRepository<<Connection>Gateway>(ctx, \'<Connection>Gateway\')`, then call `gateway.<operation>(input, ctx)` or `gateway.<operation>(input, ctx, opts)`.',
+    'Resolve it with `resolveRepository<<Connection>Gateway>(ctx, \'<Connection>Gateway\')`, then call `gateway.<operation>(input, ctx)`, `gateway.<operation>(input, ctx, opts)` or `gateway.<operation>(input, ctx, opts, context)`.',
+    'The agent and the other fields of `ConnectionContext` the caller may set go in the fourth parameter (`{ agentId }`). The session sets `actorMdmId`; the caller does not.',
     'Pass `opts.idempotencyKey` only when an l4 rule asks for it. The gateway does not invent a key.',
     'Let an error from the gateway propagate. Do not catch it and replace it with a generic message.',
     'Do not write HTTP. Do not import `callConnection`. Do not redeclare the catalog types: they are imported by the gateway file.',
@@ -420,7 +421,7 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
       const sources = chosen.length
         ? ` The def says where ${chosen.map(item => `\`${item.field}\``).join(', ')} comes from, and the usecase input does not declare it: ${chosen.map(item => `\`${item.field}\` is ${callInputSourceText(item.from)}`).join('; ')}. Build it from that source.`
         : '';
-      return `- \`${operation.operationId}(input: ${operation.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${operation.outputType}>\`.${effect}${typed}${sources}${version}${later}`;
+      return `- \`${operation.operationId}(input: ${operation.inputType}, ctx: RequestContext, opts?: CallConnectionOptions, context?: GatewayCallContext): Promise<${operation.outputType}>\`.${effect}${typed}${sources}${version}${later}`;
     });
     blocks.push([
       `### ${gateway}`,
@@ -530,6 +531,17 @@ export async function childRecordFieldsOf(ctx: M12Context, unit: M12Unit): Promi
     out.push({ ...record, parentId, fields });
   }
   return out;
+}
+
+/** Unique keys of the entity table (`table` def, `uniqueKeys`) and the error the generated repository throws on a repeat. '' when the table has none. */
+export function repositoryUniqueKeySection(units: readonly { definition: { artifactType: string; data: Record<string, unknown> } }[], entityId: string): string {
+  if (!entityId) return '';
+  const table = units.find(item => item.definition.artifactType === 'table' && String(item.definition.data.entityId ?? '') === entityId);
+  const keys = table && Array.isArray(table.definition.data.uniqueKeys)
+    ? table.definition.data.uniqueKeys.filter((key): key is string[] => Array.isArray(key) && key.every(field => typeof field === 'string') && key.length > 0)
+    : [];
+  if (!keys.length) return '';
+  return `Unique keys: ${keys.map(key => `(${key.join(', ')})`).join(', ')}. On a violation, the repository \`create\` throws \`AppError('CONFLICT', 'Unique key already stored.', 409)\`.`;
 }
 
 /** What the model must do for each entity the usecase records with its parent: resolve the port and create, after the outside call when there is one; and the fields. */
@@ -720,6 +732,10 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
     ctx.units.map(item => String(item.definition.data.entityId ?? '')),
   );
   if (companyAnchor) parts.push(companyAnchor);
+  if (String(unit.definition.data.operation ?? '') === 'create') {
+    const unique = repositoryUniqueKeySection(ctx.units, entityId);
+    if (unique) parts.push(section(`Unique keys of ${entityId}`, unique));
+  }
   const gateways = await connectionGatewaySection(ctx, functionName, unit.definition.artifactId);
   if (gateways) parts.push(gateways);
   const publishing = eventPublishSection(ctx, eventPublishersOf(ctx, unit));
