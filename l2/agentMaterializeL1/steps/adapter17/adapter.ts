@@ -7,6 +7,7 @@
 import { validateExternalSystemAdapter, type ExternalSystemDeclaration } from '/_102034_/l2/shared/contracts/connections/externalSystem.js';
 import { DECLARATION_TYPES_IMPORT } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { codeOnly, withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
+import { failureMemberProblems, failureMembersOf } from '/_102021_/l2/agentMaterializeL1/steps/adapter17/failureMember.js';
 import { declarationLiteral, defaultObjectStart } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
 
 /** The part of the runtime type file the adapter is written against: the request, the response, the context and the adapter. */
@@ -32,17 +33,22 @@ export { withoutComments };
  * (comments, strings, templates and regex literals blanked, d1_258), so a `)` or a `}` inside a regex or a string moves no depth.
  */
 export function adapterKeys(code: string): string[] | null {
+  return adapterMembers(code)?.map(member => member.name) ?? null;
+}
+
+/** The members of the default-exported object with their text (d1_319: the gate reads the body of one operation). */
+export function adapterMembers(code: string): Array<{ name: string; text: string }> | null {
   const text = withoutComments(code);
   const start = defaultObjectStart(text);
   if (start < 0) return null;
   const structure = codeOnly(code);
-  const keys: string[] = [];
+  const keys: Array<{ name: string; text: string }> = [];
   let depth = 0;
   let from = start + 1;
   const take = (to: number) => {
     const match = /^\s*(?:async\s+)?(?:'([^']+)'|"([^"]+)"|([A-Za-z_$][\w$]*))\s*(?::|\()/u.exec(text.slice(from, to));
     const name = match ? match[1] ?? match[2] ?? match[3] : '';
-    if (name) keys.push(name);
+    if (name) keys.push({ name, text: text.slice(from, to) });
   };
   for (let at = start + 1; at < structure.length; at += 1) {
     const char = structure[at];
@@ -85,9 +91,11 @@ export function adapterProblems(code: string, declarationSource: string, header:
     if (setting.secret && new RegExp(`\\.setting\\s*\\(\\s*['"\`]${setting.id}['"\`]`, 'u').test(clean)) problems.push(`Setting ${setting.id} is a secret: it is never read, it is cited in the request as {{secret:${setting.id}}}.`);
   }
   problems.push(...emptySettingInvalid(clean));
-  const keys = adapterKeys(code);
-  if (keys === null) return [...problems, 'The file must default-export the adapter object: `const adapter: ExternalSystemAdapter = { ... }; export default adapter;`.'];
+  const members = adapterMembers(code);
+  const keys = members?.map(member => member.name) ?? null;
+  if (keys === null || members === null) return [...problems, 'The file must default-export the adapter object: `const adapter: ExternalSystemAdapter = { ... }; export default adapter;`.'];
   for (const found of validateExternalSystemAdapter(declaration, Object.fromEntries(keys.map(key => [key, () => undefined])))) problems.push(`Adapter: ${found.message}.`);
+  problems.push(...failureMemberProblems(members, failureMembersOf(declarationSource)));
   return problems;
 }
 

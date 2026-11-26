@@ -1,0 +1,158 @@
+/// <mls fileReference="_102047_/l1/telegram/layer_1_external/connections/telegram.ts" enhancement="_blank"/>
+import type { ExternalSystemDeclaration } from '/_102034_/l2/shared/contracts/connections/externalSystem.js';
+
+export type CheckBotIdentityInput = {
+  botAccessKey: string;
+};
+
+export type CheckBotIdentityOutput =
+  | { success: true; name: string }
+  | { success: false; reason: string };
+
+export type SetMessageDeliveryInput = {
+  botId: string;
+  botAccessKey: string;
+};
+
+export type SetMessageDeliveryOutput =
+  | { success: true }
+  | { success: false; reason: string };
+
+export type SendTextInput = {
+  botAccessKey: string;
+  chatId: string;
+  text: string;
+};
+
+export type SendTextOutput =
+  | { success: true; messageIds: number[] }
+  | { success: false; messageIds: number[]; reason: string };
+
+export type TelegramChat = {
+  id: number;
+  type: string;
+  title?: string;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+};
+
+export type TelegramUser = {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+};
+
+export type MessageArrivedInput = {
+  update_id: number;
+  message?: {
+    message_id: number;
+    date: number;
+    chat: TelegramChat;
+    from?: TelegramUser;
+    sender_chat?: TelegramChat;
+    text?: string;
+  };
+};
+
+export type MessageArrivedOutput = Record<string, never>;
+
+const declaration: ExternalSystemDeclaration = {
+  "schemaVersion": "external-system-v1",
+  "systemId": "telegram",
+  "title": "Telegram",
+  "description": "Telegram's messaging service, which hosts the company's bots. The module asks Telegram who a bot is, tells Telegram where to deliver the text messages people send to a bot, sends texts to the chat of a conversation, and receives the text messages people write to the bots. Each bot's access key is kept with that bot in this module.",
+  "hosts": [
+    {
+      "host": "api.telegram.org"
+    }
+  ],
+  "settings": [
+    {
+      "id": "incomingMessageSecret",
+      "title": "Secret for incoming messages",
+      "description": "One secret for the whole module, agreed with Telegram, used to check that an incoming message really comes from Telegram. The company admin enters it once in the platform's configuration of outside systems. A bot cannot be activated until it is entered.",
+      "secret": true
+    }
+  ],
+  "operations": [
+    {
+      "operationId": "checkBotIdentity",
+      "direction": "call",
+      "description": "Asks Telegram who the bot is, using the bot's access key. Telegram answers with the name it has for the bot, or says the check failed.",
+      "kind": "query",
+      "inputType": "CheckBotIdentityInput",
+      "outputType": "CheckBotIdentityOutput",
+      "methods": [
+        "POST"
+      ],
+      "uses": {
+        "settings": [],
+        "secrets": [],
+        "inputSecrets": [
+          "botAccessKey"
+        ]
+      },
+      "reply": "now"
+    },
+    {
+      "operationId": "setMessageDelivery",
+      "direction": "call",
+      "description": "Using the bot's access key, tells Telegram where to deliver the messages people send to this bot (text messages only). The delivery address carries the bot's identifier as its only parameter.",
+      "kind": "command",
+      "inputType": "SetMessageDeliveryInput",
+      "outputType": "SetMessageDeliveryOutput",
+      "methods": [
+        "POST"
+      ],
+      "uses": {
+        "settings": [],
+        "secrets": [
+          "incomingMessageSecret"
+        ],
+        "inputSecrets": [
+          "botAccessKey"
+        ]
+      },
+      "reply": "now"
+    },
+    {
+      "operationId": "sendText",
+      "direction": "call",
+      "description": "Sends a text through a bot to one Telegram chat. A long text is sent in parts, in order. It returns, in the order of sending, the identifier Telegram gave to each part sent, and the reason when a part fails (the parts after it are not attempted).",
+      "kind": "command",
+      "inputType": "SendTextInput",
+      "outputType": "SendTextOutput",
+      "methods": [
+        "POST"
+      ],
+      "uses": {
+        "settings": [],
+        "secrets": [],
+        "inputSecrets": [
+          "botAccessKey"
+        ]
+      },
+      "reply": "now"
+    },
+    {
+      "operationId": "messageArrived",
+      "direction": "serve",
+      "description": "Telegram delivers a message a person or a group sent to one of the bots, to that bot's delivery address: the chat, the author, when it was written, the text and the identifier Telegram gave to the message. The message does not name the bot; the bot parameter of the address does. A notice that carries no message is answered with the empty acknowledgement and nothing is recorded.",
+      "kind": "command",
+      "inputType": "MessageArrivedInput",
+      "outputType": "MessageArrivedOutput",
+      "verify": {
+        "scheme": "token",
+        "secret": "incomingMessageSecret",
+        "header": "X-Telegram-Bot-Api-Secret-Token"
+      },
+      "noticeId": {
+        "jsonPointer": "/update_id"
+      }
+    }
+  ]
+};
+
+export default declaration;

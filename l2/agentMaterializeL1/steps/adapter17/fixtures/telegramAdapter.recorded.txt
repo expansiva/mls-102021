@@ -1,0 +1,134 @@
+/// <mls fileReference="_102047_/l1/telegram/layer_1_external/connections/telegramAdapter.ts" enhancement="_blank"/>
+import type { ExternalSystemAdapter, ExternalAdapterContext } from '/_102034_/l2/shared/contracts/connections/externalSystem.js';
+import type { CheckBotIdentityInput, CheckBotIdentityOutput, SetMessageDeliveryInput, SetMessageDeliveryOutput, SendTextInput, SendTextOutput } from '/_102047_/l1/telegram/layer_1_external/connections/telegram.js';
+
+function parseObject(body: string): Record<string, unknown> | undefined {
+  try {
+    const value: unknown = JSON.parse(body);
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    return value as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+function botPath(key: string, method: string): string {
+  return `/bot${encodeURIComponent(key).replace(/%3A/gi, ':')}/${method}`;
+}
+
+const adapter: ExternalSystemAdapter = {
+  async checkBotIdentity(input: unknown, ctx: ExternalAdapterContext) {
+    const { botAccessKey } = input as CheckBotIdentityInput;
+    const response = await ctx.send('checkBotIdentity', {
+      method: 'POST',
+      path: botPath(botAccessKey, 'getMe'),
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (!response.ok) return response;
+
+    const body = parseObject(response.output.body);
+    if (!body || typeof body.ok !== 'boolean') {
+      return { ok: false, code: 'invalid', message: 'Invalid Telegram getMe response' };
+    }
+    if (!body.ok) {
+      if (typeof body.description !== 'string' || !body.description) {
+        return { ok: false, code: 'invalid', message: 'Telegram getMe failure has no description' };
+      }
+      const output: CheckBotIdentityOutput = { success: false, reason: body.description };
+      return { ok: true, output };
+    }
+    const result = body.result;
+    if (result === null || typeof result !== 'object' || Array.isArray(result) ||
+        typeof (result as Record<string, unknown>).first_name !== 'string') {
+      return { ok: false, code: 'invalid', message: 'Telegram getMe response has no bot name' };
+    }
+    const output: CheckBotIdentityOutput = {
+      success: true,
+      name: (result as { first_name: string }).first_name,
+    };
+    return { ok: true, output };
+  },
+
+  async setMessageDelivery(input: unknown, ctx: ExternalAdapterContext) {
+    const { botId, botAccessKey } = input as SetMessageDeliveryInput;
+    const hook = ctx.hookUrl('messageArrived');
+    if (!hook) {
+      return { ok: false, code: 'unavailable', message: 'The incoming message webhook URL is unavailable' };
+    }
+    const response = await ctx.send('setMessageDelivery', {
+      method: 'POST',
+      path: botPath(botAccessKey, 'setWebhook'),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: `${hook}?b=${encodeURIComponent(botId)}`,
+        allowed_updates: ['message'],
+        secret_token: '{{secret:incomingMessageSecret}}',
+      }),
+    });
+    if (!response.ok) return response;
+
+    const body = parseObject(response.output.body);
+    if (!body || typeof body.ok !== 'boolean') {
+      return { ok: false, code: 'invalid', message: 'Invalid Telegram setWebhook response' };
+    }
+    if (!body.ok) {
+      if (typeof body.description !== 'string' || !body.description) {
+        return { ok: false, code: 'invalid', message: 'Telegram setWebhook failure has no description' };
+      }
+      const output: SetMessageDeliveryOutput = { success: false, reason: body.description };
+      return { ok: true, output };
+    }
+    if (body.result !== true) {
+      return { ok: false, code: 'invalid', message: 'Invalid Telegram setWebhook result' };
+    }
+    const output: SetMessageDeliveryOutput = { success: true };
+    return { ok: true, output };
+  },
+
+  async sendText(input: unknown, ctx: ExternalAdapterContext) {
+    const { botAccessKey, chatId, text } = input as SendTextInput;
+    const characters = Array.from(text);
+    const parts: string[] = [];
+    for (let i = 0; i < characters.length; i += 4096) {
+      parts.push(characters.slice(i, i + 4096).join(''));
+    }
+    if (parts.length === 0) parts.push('');
+
+    const messageIds: number[] = [];
+    for (const part of parts) {
+      const response = await ctx.send('sendText', {
+        method: 'POST',
+        path: botPath(botAccessKey, 'sendMessage'),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: part }),
+      });
+      if (!response.ok) return response;
+
+      const body = parseObject(response.output.body);
+      if (!body || typeof body.ok !== 'boolean') {
+        return { ok: false, code: 'invalid', message: 'Invalid Telegram sendMessage response' };
+      }
+      if (!body.ok) {
+        if (typeof body.description !== 'string' || !body.description) {
+          return { ok: false, code: 'invalid', message: 'Telegram sendMessage failure has no description' };
+        }
+        const output: SendTextOutput = { success: false, messageIds, reason: body.description };
+        return { ok: true, output };
+      }
+      const result = body.result;
+      if (result === null || typeof result !== 'object' || Array.isArray(result)) {
+        return { ok: false, code: 'invalid', message: 'Telegram sendMessage response has no message identifier' };
+      }
+      const messageId = (result as Record<string, unknown>).message_id;
+      if (typeof messageId !== 'number' || !Number.isSafeInteger(messageId)) {
+        return { ok: false, code: 'invalid', message: 'Telegram sendMessage response has an invalid message identifier' };
+      }
+      messageIds.push(messageId);
+    }
+    const output: SendTextOutput = { success: true, messageIds };
+    return { ok: true, output };
+  },
+};
+
+export default adapter;

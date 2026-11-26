@@ -8,6 +8,7 @@ import { DECLARATION_TYPES_REF, declarationImportPath, declarationRef, integrati
 import type { M12Context } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import type { M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { failureMemberSection, failureMembersOf } from '/_102021_/l2/agentMaterializeL1/steps/adapter17/failureMember.js';
 import { adapterContractShown, adapterProblems, resultTypeShown } from '/_102021_/l2/agentMaterializeL1/steps/adapter17/adapter.js';
 import { DECLARATION_TYPES_IMPORT, connectionLinesOf, externalFacts } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
 
@@ -49,6 +50,8 @@ export async function loadAdapterContext(ctx: M12Context, unit: M12Unit, repair?
     types ? fence('ts', adapterContractShown(types)) : '(the type file of the runtime was not read)',
     results ? fence('ts', resultTypeShown(results)) : '',
   ].filter(Boolean).join('\n\n')));
+  const refusals = failureMemberSection(declaration ? failureMembersOf(declaration) : []);
+  if (refusals) parts.push(section('Refusals of the outside system', refusals));
   if (repair) {
     parts.push(section('Repair', [
       'The previous answer was refused. Fix exactly these problems and return the whole file again:',
