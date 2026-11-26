@@ -28,7 +28,7 @@ const REPO = path.join(BASE, 'mls-102047');
 const FIRST_NEW_ID = '`createOccurrenceContext(ctx, recordId)` makes the first `newId` the id of the record. The generated usecase uses that first `newId` for the `id` (`ctx.idGenerator.newId()`).';
 const CALL_OUTPUT = 'The output type of a `call` is resolved the same way as the input (`resolveInputType`, cited types three levels down).';
 const GATEWAY_ERROR = "new AppError(result.code, result.message, STATUS[result.code], result.code === 'disabled' && result.missing ? { missing: result.missing } : undefined)";
-const CONFLICT_ENDS = 'When a write throws `CONFLICT` (a unique key) or a version conflict, the function ends there: it returns the repeat result or the refusal the L4 states, and it writes nothing more in that transaction.';
+const CONFLICT_ENDS = 'is the repeat only when it is thrown by the write of the record the repeat search of the L4 reads';
 const NOT_A_GAP = 'Guarantees the L4 and the platform do not give are not a SOURCE_GAP.';
 
 function extract(root: string, commit: string, paths: string[]): void {

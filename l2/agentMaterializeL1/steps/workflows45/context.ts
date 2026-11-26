@@ -897,8 +897,16 @@ const CALL_OUTPUT_RESOLVE = 'The output type of a `call` is resolved the same wa
 /** What the generated gateway throws. The codes are the keys of `CONNECTION_STATUS`, the map the emitter writes into the gateway (`STATUS`). */
 const GATEWAY_CALL_ERROR = 'When the call is not ok, the gateway throws `new AppError(result.code, result.message, STATUS[result.code], result.code === \'disabled\' && result.missing ? { missing: result.missing } : undefined)`. `code` is one of ' + Object.keys(CONNECTION_STATUS).map(code => `\`${code}\``).join(', ') + '. `disabled` carries `missing` when the gateway has it.';
 
-/** A `CONFLICT` from a unique key, or a version conflict, ends the function. A database error aborts the transaction; the repository check does not (d1_309, measured on `runInTransaction`). */
-const CONFLICT_ENDS_THE_FUNCTION = 'When a write throws `CONFLICT` (a unique key) or a version conflict, the function ends there: it returns the repeat result or the refusal the L4 states, and it writes nothing more in that transaction. An error from the database aborts the transaction; the repository check does not, and the rule is the same.';
+/** A conflict is the repeat only on the write of the record the L4 repeat search reads; any other conflict is a concurrent write and goes up as an error (d1_311, after d1_309). */
+export const CONFLICT_ENDS_THE_FUNCTION = [
+  'A `CONFLICT` (a unique key) or a version conflict is the repeat only when it is thrown by the write of the record the repeat search of the L4 reads, that is, the record that identifies the arrival. There the function returns the repeat result or the refusal the L4 states, and it writes nothing more in that transaction.',
+  'On any other write the conflict is a concurrent write, not a repeat: it goes up as the error, the route undoes the whole transaction, the arrival fails and the caller repeats it. Never catch a conflict outside the write of the repeat-search record.',
+  'When the L4 describes no repeat search, no conflict is a repeat: every conflict goes up.',
+  'After a conflict the transaction accepts no more writes. An error from the database aborts the transaction; the repository check does not, and the rule is the same.',
+].join(' ');
+
+/** An update that only copies values of the arrival writes only when one value differs from the record read (d1_311). */
+export const COPY_ONLY_WHEN_DIFFERENT = 'An update that only copies values of the arrival into a record already read (a name, a label, a handle) writes only when at least one value differs from the record read. With no difference there is no write, and the function goes on with the record it read. A write that is not needed is one more conflict.';
 
 /** The catalog input type of a call, resolved (d1_200). Null when the catalog or the operation is not readable. */
 async function catalogInputOf(ctx: M12Context, call: { connectionId: string; operationId: string }): Promise<{ type: string; text: string } | null> {
@@ -988,6 +996,7 @@ export async function transactionSection(ctx: M12Context, unit: M12Unit, facts: 
     `The route that calls ${names.map(fn => `\`${fn}\``).join(', ')} already runs ${names.length > 1 ? 'them' : 'it'} inside \`ctx.data.moduleData.runInTransaction\` and passes ${names.length > 1 ? 'them' : 'it'} the context bound to that transaction, as \`ctx\`.`,
     'Every write through the ports and the usecases with that `ctx` is all or nothing. Write the function as one pass over that `ctx`; open no transaction of your own, and take the L4 requirement of all or nothing as met by this.',
     CONFLICT_ENDS_THE_FUNCTION,
+    COPY_ONLY_WHEN_DIFFERENT,
     ...(names.length ? [keptRefusalText()] : []),
     ...(outsideCall ? ['A call to a system outside the module is not undone by the transaction. The function makes that call once and stores the result. What stops a repeat send is what the L4 says (for example, look the request up by its reference before calling). Without that in the L4, a failure between the call and the commit can repeat the call, and that does not ask for a protocol of its own.'] : []),
   ].join('\n'));
