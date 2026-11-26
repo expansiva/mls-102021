@@ -80,6 +80,8 @@ void test('d1_307 s1: the outside arrival reads the address from ctx; every func
     const text = await human(id);
     assert.equal(text.includes('hookParams'), false, `${id}: the address is only for an arrival from outside`);
     assert.ok(text.includes(KEPT), `${id}: the kept refusal is for every function a served route calls`);
+    assert.ok(text.includes('`code` is the `ruleId` when a rule of the L4 refuses; otherwise it names the cause'), `${id}: the code of the refusal`);
+    assert.ok(text.includes('the system outside failed or refused it'), `${id}: a failure of the outside system is a refusal too`);
   }
   const agents = await loaded('agents', '/tmp/d1_307_agents_be5', 'be5e6203', 'l4/agents/workflows.defs.ts', ['l1/agents', 'l2/agents', 'l4/agents', 'l4/organization', 'l5']);
   for (const id of ['virtualEmployeeCreation', 'executionRecording', 'toolCatalogRefresh']) {
