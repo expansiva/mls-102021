@@ -6,11 +6,12 @@
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_BUILD, M12_PROMPT_LIMIT, clip, errorText, parseM12StepInvocation, type M12Layer } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { addM12Step, m12PromptReady, m12ToolPayload, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
-import { readDraft, readOptional, readUnitStatus, removeStorFile, reuseDecision, writeDraft, writeSource, writeText, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import type { M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { readDraft, readOptional, readUnitStatus, removeStorFile, reuseDecision, sha256Text, writeDraft, writeSource, writeText, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { compileDiagnostics, compileM12Files, isUnavailable, releaseCompileModels } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import { importSpecifiers } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { fileRef, infoOfRef } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
-import { blockingDependencies, layerUnits, unitInputHash, writeAndProve, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
+import { blockingDependencies, layerUnits, rulesNotEmitted, unitInputHash, unitInputParts, writeAndProve, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { emitterTargetLayer, orderWithinLayer, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { canRepair, parseM12WorkerArgs, recordM12ArgsRefusal, repairOrGiveUp, workerStep, type M12WorkerArgs } from '/_102021_/l2/agentMaterializeL1/helpers/m12Worker.js';
@@ -169,12 +170,29 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
           lines.push(`${unit.unitId}: blocked, ${clip(diagnostic, 300)}`);
           continue;
         }
-        const inputHash = await unitInputHash(ctx, unit);
+        const parts = await unitInputParts(ctx, unit);
+        const inputHash = parts.hash;
         const prior = await readUnitStatus(run.project, run.module, spec.layer, unit.unitId);
-        const decision = await reuseDecision([unit.output], run.force);
+        const scratch = run.scratch ?? run.force;
+        const onDisk = (await reuseDecision([unit.output], false)).kind === 'reuse';
+        let decision = await reuseDecision([unit.output], scratch);
+        let repairWith: { source: string; problems: string[] } | null = null;
+        let kept = false;
+        if (onDisk && !scratch && run.target) {
+          // d1_329: a target without "force" does not redo a unit from scratch. Only a dependency moved: compile the file against it.
+          const move = await dragOf(unit, prior, parts);
+          if (move === 'other') decision = { kind: 'generate' };
+          else if (move === 'deps') {
+            const checked = await checkKept(ctx, unit, spec, prior as M12UnitStatus);
+            if (checked.problems.length) { repairWith = checked; decision = { kind: 'generate' }; } else kept = true;
+          }
+        }
         if (decision.kind === 'reuse') {
-          await writeUnitStatus(run.project, run.module, { ...base, status: 'reused', code: '', diagnostic: '', inputHash, outputs: prior?.outputs ?? {} });
-          lines.push(`${unit.unitId}: reused`);
+          // The halves are those of the inputs the file was made from. A file kept after a compile (or whose hash did not move) is
+          // made from the inputs of now. A reuse under a hash that moved keeps the old halves, or none (a receipt without halves stays without).
+          const halves = kept || prior?.inputHash === inputHash ? { own: parts.own, deps: parts.deps } : prior?.inputParts;
+          await writeUnitStatus(run.project, run.module, { ...base, status: 'reused', code: '', diagnostic: '', inputHash, outputs: prior?.outputs ?? {}, ...(halves ? { inputParts: halves } : {}), ...(prior?.notApplicable ? { notApplicable: prior.notApplicable } : {}) });
+          lines.push(`${unit.unitId}: ${kept ? 'kept, it compiles against the new dependencies' : 'reused'}`);
           continue;
         }
         const derived = spec.byCode ? await spec.byCode(ctx, unit) : null;
@@ -194,6 +212,22 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
         }
         const workerArgs: M12WorkerArgs = { project: run.project, module: run.module, unitId: unit.unitId, attempt: 1, force: run.force };
         if (spec.sequence) workerArgs.phase = 'skeleton';
+        if (repairWith) {
+          // The file on disk goes to the repair that already exists: its problems as the refusal, its text as the previous answer.
+          const diagnostic = repairWith.problems.map(problem => clip(problem, 600)).slice(0, 20).join('\n');
+          if (spec.sequence) {
+            await writeDraft(run.project, run.module, spec.layer, unit.unitId, 'assembled', repairWith.source);
+            await writeDraft(run.project, run.module, spec.layer, unit.unitId, 'answer', '');
+            workerArgs.phase = 'final';
+          } else {
+            await writeDraft(run.project, run.module, spec.layer, unit.unitId, 'code', repairWith.source);
+            workerArgs.attempt = 2;
+          }
+          await writeUnitStatus(run.project, run.module, { ...base, status: 'failed', code: 'MODEL_REPAIR', attempt: 1, diagnostic, inputHash, outputs: {} });
+          workers.push(addM12Step(context, step.stepId, workerStep(spec.workerAgentName, spec.layer, workerArgs)));
+          lines.push(`${unit.unitId}: dispatched to the model to repair the file on disk (${repairWith.problems.length} problem(s))`);
+          continue;
+        }
         workers.push(addM12Step(context, step.stepId, workerStep(spec.workerAgentName, spec.layer, workerArgs)));
         lines.push(`${unit.unitId}: dispatched to the model`);
       }
@@ -206,6 +240,29 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
     }
   }
   return { agentName, agentProject: 102021, agentFolder: `agentMaterializeL1/${spec.folder}`, agentDescription: description, visibility: 'private', beforePromptStep };
+}
+
+/**
+ * d1_329: what moved since the receipt. `same`: nothing. `deps`: only what other units and contracts give, on a receipt that
+ * is ready, with the file as this agent wrote it. `other`: the def, the L4, a hand edit, or a receipt without halves (generate as before).
+ */
+export async function dragOf(unit: M12Unit, prior: M12UnitStatus | null, parts: { own: string; deps: string }): Promise<'same' | 'deps' | 'other'> {
+  if (!prior?.inputParts || (prior.status !== 'done' && prior.status !== 'reused')) return 'other';
+  if (prior.inputParts.own !== parts.own) return 'other';
+  const text = await readOptional(unit.output);
+  if (text === null || (await sha256Text(text)) !== prior.outputs[unit.outputRef]) return 'other';
+  return prior.inputParts.deps === parts.deps ? 'same' : 'deps';
+}
+
+/** The file on disk against the dependencies of now: the gate of the layer, the imports, the compiler, the rules of a usecase. */
+export async function checkKept(ctx: M12Context, unit: M12Unit, spec: M12ModelLayerSpec, prior: M12UnitStatus): Promise<{ source: string; problems: string[] }> {
+  const source = (await readOptional(unit.output)) ?? '';
+  const waived = prior.notApplicable ?? [];
+  const problems = [...await spec.gate(ctx, unit, source, waived), ...await missingImports(ctx, source)];
+  const dropped = unit.definition.artifactType === 'usecase' ? rulesNotEmitted(unit.definition, source).filter(ruleId => !waived.some(item => item.ruleId === ruleId)) : [];
+  if (dropped.length) problems.push(`RULE_NOT_EMITTED: ${dropped.join(', ')} are in the rulePlan of ${unit.defRef} and absent from ${unit.outputRef}.`);
+  problems.push(...(await compileAssembled(ctx, unit, source)).map(error => `Compile: ${error}`));
+  return { source, problems };
 }
 
 /**

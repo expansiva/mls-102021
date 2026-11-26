@@ -118,6 +118,8 @@ export interface M12Request {
   target: string;
   /** Regenerate reusable units and overwrite outputs this agent did not write. A target implies it. */
   force: boolean;
+  /** `"force": true` was said (a target alone implies `force`, not this). Absent = same as `force`. A model unit with output regenerates from scratch only when this is set; otherwise a dependency-only change keeps or repairs it (d1_329). */
+  scratch?: boolean;
 }
 
 /** The args of every phase step: one module, the request that selects its units. */
@@ -140,10 +142,10 @@ const AGENT_PREFIXES = [/^\s*@@\s*_102021_\/l2\/agentMaterializeL1(?:\s+|$)/iu, 
 export const M12_HELP = [
   'Usage: @@agentMaterializeL1 [{"scope":"<folder>"} | {"target":"<path of a .defs.ts>"}]',
   'No JSON: every l1 module of the current project. scope: an l1 folder prefix, e.g. "comandaRestaurante" (the whole backend of the module) or "comandaRestaurante/layer_2_application/usecases".',
-  'target: one unit by its .defs.ts or the .ts generated from it, e.g. "_102047_/l1/comandaRestaurante/layer_2_application/usecases/createMesa.defs.ts" (regenerated regardless of reuse).',
+  'target: one unit by its .defs.ts or the .ts generated from it, e.g. "_102047_/l1/comandaRestaurante/layer_2_application/usecases/createMesa.defs.ts" (regenerated regardless of reuse; a model unit whose only change is a dependency is kept when its file compiles against it and goes to the repair when it does not, unless "force": true).',
   'target also names a unit an emitter writes (it has no def): the module engine by its file, "_102047_/l1/<module>/layer_1_external/adapters/workflow/engine.ts", or "<module>/engine".',
   'target of a def that no longer exists (its .defs.ts or .ts) removes the output this agent wrote for it and its status file; a file edited by hand stays, with ORPHAN_EDITED.',
-  'Optional "force": true regenerates reusable units and overwrites outputs this agent did not write.',
+  'Optional "force": true regenerates reusable units from scratch and overwrites outputs this agent did not write.',
   'Order per module: domain10 -> persistence20 (recipes) -> seedRows25 (model, only tables the l4 says the module seed loads) -> usecases40 -> requests50 (model) -> controllers30 (recipe, imports the request service) -> tests60 (model) -> register70 -> finalize80. A unit whose dependency is not ready is blocked.',
 ].join('\n');
 
@@ -180,7 +182,7 @@ export function parseM12MessageInvocation(value: string, project: number): M12Me
   const target = typeof record.target === 'string' ? record.target.trim() : '';
   if (scope && target) return { kind: 'refusal', diagnostic: '"scope" and "target" cannot come together. Nothing was executed.' };
   if (!scopeOk(scope)) return { kind: 'refusal', diagnostic: `Invalid scope: ${scope}. Nothing was executed.` };
-  return { kind: 'run', project, scope, target, force: record.force === true || Boolean(target) };
+  return { kind: 'run', project, scope, target, force: record.force === true || Boolean(target), scratch: record.force === true };
 }
 
 export function parseM12StepInvocation(value: string, currentProject: number): M12StepInvocation {
@@ -188,7 +190,7 @@ export function parseM12StepInvocation(value: string, currentProject: number): M
   try { parsed = JSON.parse(String(value || '{}')); } catch { return { kind: 'refusal', diagnostic: 'M12_ARGS_JSON' }; }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { kind: 'refusal', diagnostic: 'M12_ARGS_OBJECT' };
   const raw = parsed as Record<string, unknown>;
-  const allowed = new Set(['project', 'module', 'scope', 'target', 'force']);
+  const allowed = new Set(['project', 'module', 'scope', 'target', 'force', 'scratch']);
   const unknown = Object.keys(raw).find(key => !allowed.has(key));
   if (unknown) return { kind: 'refusal', diagnostic: `M12_ARGS_UNKNOWN: ${unknown}` };
   const project = typeof raw.project === 'number' ? raw.project : Number.NaN;
@@ -199,11 +201,11 @@ export function parseM12StepInvocation(value: string, currentProject: number): M
   const scope = typeof raw.scope === 'string' ? raw.scope : '';
   const target = typeof raw.target === 'string' ? raw.target : '';
   if (!scopeOk(scope) || (scope && target)) return { kind: 'refusal', diagnostic: 'M12_ARGS_SELECTOR' };
-  return { kind: 'run', project, module: moduleName, scope, target, force: raw.force === true };
+  return { kind: 'run', project, module: moduleName, scope, target, force: raw.force === true, ...(typeof raw.scratch === 'boolean' ? { scratch: raw.scratch } : {}) };
 }
 
 export function runArgsJson(args: M12RunArgs): string {
-  return JSON.stringify({ project: args.project, module: args.module, scope: args.scope, target: args.target, force: args.force });
+  return JSON.stringify({ project: args.project, module: args.module, scope: args.scope, target: args.target, force: args.force, ...(args.scratch === undefined ? {} : { scratch: args.scratch }) });
 }
 
 export function phasePlanId(stepId: M12StepId, moduleName: string): string {
@@ -227,7 +229,7 @@ export function buildM12PlannedSteps(
   const steps: mls.msg.AIAgentStep[] = [];
   let previous = '';
   for (const item of modules) {
-    const args: M12RunArgs = { project, module: item.module, scope: request.scope, target: request.target, force: request.force };
+    const args: M12RunArgs = { project, module: item.module, scope: request.scope, target: request.target, force: request.force, ...(request.scratch === undefined ? {} : { scratch: request.scratch }) };
     const stepIds: M12StepId[] = [
       ...M12_LAYERS.filter(layer => item.layers.includes(layer)).map(layer => LAYER_STEP[layer]),
       ...(item.register ? ['register70' as const] : []),

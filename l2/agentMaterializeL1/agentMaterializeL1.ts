@@ -106,7 +106,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
   const invocation = parseM12MessageInvocation(raw, Number(mls.actualProject || 0));
   if (invocation.kind === 'help') return statusOnly(M12_HELP);
   if (invocation.kind === 'refusal') return statusOnly(invocation.diagnostic);
-  const request: M12Request = { scope: invocation.scope, target: invocation.target, force: invocation.force };
+  const request: M12Request = { scope: invocation.scope, target: invocation.target, force: invocation.force, ...(invocation.scratch === undefined ? {} : { scratch: invocation.scratch }) };
   const plan = await planModules(invocation.project, request);
   if (plan.refusal) return statusOnly(plan.refusal);
 

@@ -34,6 +34,10 @@ export interface M12UnitStatus {
   inputHash: string;
   /** fileRef -> sha256 of the bytes this agent wrote. A mismatch on disk means a local edit. */
   outputs: Record<string, string>;
+  /** d1_329: the two halves of `inputHash` (own = def/L4/recipe, deps = what other units and contracts give). Absent = generate as before. */
+  inputParts?: { own: string; deps: string };
+  /** d1_329: the rules the model declared not applicable, kept so the gate can run again on a file that is kept. */
+  notApplicable?: Array<{ ruleId: string; reason: string }>;
   updatedAt: string;
 }
 

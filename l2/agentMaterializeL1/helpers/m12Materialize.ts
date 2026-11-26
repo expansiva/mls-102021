@@ -195,13 +195,28 @@ function contractRefs(definition: M1Definition): string[] {
  * output hash its dependency units recorded, the contract a controller reads, the rules text of a usecase.
  */
 export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: readonly string[] = []): Promise<string> {
+  return (await unitInputParts(ctx, unit, extra)).hash;
+}
+
+/**
+ * The same hash, plus its two halves (d1_329): `deps` is what other units and contracts give this one (the def text
+ * and the output of a dependency unit, the contracts it reads, the declaration of an adapter); `own` is the rest
+ * (recipe, def, appEnv, L4 sources, rules, seeds). `hash` is the hash of every part in the old order, unchanged.
+ * Doubt goes to `own`: an own change generates as before.
+ */
+export async function unitInputParts(ctx: M12Context, unit: M12Unit, extra: readonly string[] = []): Promise<{ hash: string; own: string; deps: string }> {
   const parts: string[] = [M12_RECIPE_VERSION, unit.text, ctx.appEnv];
-  for (const ref of unit.definition.dependencies) parts.push(ref, (await ctx.read(ref)) ?? '<absent>');
-  for (const dep of dependencyUnits(ctx, unit)) {
-    const status = await readUnitStatus(ctx.run.project, ctx.run.module, dep.layer, dep.unitId);
-    parts.push(dep.defRef, JSON.stringify(status?.outputs ?? {}));
+  const depIndex = new Set<number>();
+  const dep = (...items: string[]): void => { for (const item of items) { depIndex.add(parts.length); parts.push(item); } };
+  for (const ref of unit.definition.dependencies) {
+    const text = (await ctx.read(ref)) ?? '<absent>';
+    if (ctx.units.some(item => item.defRef === ref)) dep(ref, text); else parts.push(ref, text);
   }
-  for (const ref of contractRefs(unit.definition)) parts.push(ref, (await ctx.read(ref)) ?? '<absent>');
+  for (const unitDep of dependencyUnits(ctx, unit)) {
+    const status = await readUnitStatus(ctx.run.project, ctx.run.module, unitDep.layer, unitDep.unitId);
+    dep(unitDep.defRef, JSON.stringify(status?.outputs ?? {}));
+  }
+  for (const ref of contractRefs(unit.definition)) dep(ref, (await ctx.read(ref)) ?? '<absent>');
   if (unit.definition.artifactType === 'requestService') {
     const requests = Array.isArray(unit.definition.data.requests) ? unit.definition.data.requests.filter(isRecord) : [];
     const connectionIds = [...new Set(requests.flatMap(row => {
@@ -226,12 +241,12 @@ export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: reado
       // A serve request is derived from the connection catalog. A page request still hashes only its page contract.
       for (const connectionId of connectionIds) {
         const found = await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, connectionId);
-        parts.push(found.ref, found.source ?? '<absent>');
+        dep(found.ref, found.source ?? '<absent>');
       }
     } else {
       // The page contract is the source of truth of a request service: its routes, JSDoc and types.
       const ref = `_${ctx.run.project}_/l2/${ctx.run.module}/web/contracts/${String(unit.definition.data.pageId ?? unit.unitId)}.defs.ts`;
-      parts.push(ref, (await ctx.read(ref)) ?? '<absent>');
+      dep(ref, (await ctx.read(ref)) ?? '<absent>');
     }
   }
   if (unit.definition.artifactType === 'usecase') parts.push((await readOptional(rulesFile(ctx.run.project, ctx.run.module))) ?? '');
@@ -240,16 +255,20 @@ export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: reado
   // The adapter is written against the declaration this run generated (d1_209).
   if (unit.layer === 'adapter') {
     const declaration = ctx.units.find(item => item.layer === 'external' && item.defRef === unit.defRef);
-    parts.push(declaration ? (await ctx.read(declaration.outputRef)) ?? '<absent>' : '<no declaration unit>');
+    dep(declaration ? (await ctx.read(declaration.outputRef)) ?? '<absent>' : '<no declaration unit>');
   }
   // A port and its adapter also carry the methods the workflow processes apply through them (§11).
   if (unit.definition.artifactType === 'repositoryPort' || unit.definition.artifactType === 'repositoryAdapter') {
-    parts.push(JSON.stringify(ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.data.methods)));
+    dep(JSON.stringify(ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.data.methods)));
   }
   // The initial rows of seedRows25 and the scenario rows it adds to the def in memory (d1_102 s3) both change the seeds.ts.
   if (unit.definition.artifactType === 'persistenceSeeds') parts.push(JSON.stringify(ctx.referenceSeeds ?? []), JSON.stringify(unit.definition.data.datasets ?? []));
   parts.push(...extra);
-  return hashParts(parts);
+  return {
+    hash: await hashParts(parts),
+    own: await hashParts(parts.filter((_, index) => !depIndex.has(index))),
+    deps: await hashParts(parts.filter((_, index) => depIndex.has(index))),
+  };
 }
 
 function ruleRows(definition: M1Definition): Array<Record<string, unknown>> {
@@ -312,6 +331,8 @@ export async function writeAndProve(
   notApplicable: readonly M12RuleNotApplicable[] = [],
 ): Promise<M12UnitOutcome & { errors: string[] }> {
   const { project, module: moduleName } = ctx.run;
+  const halves = await unitInputParts(ctx, unit);
+  const keep = { inputParts: { own: halves.own, deps: halves.deps }, ...(notApplicable.length ? { notApplicable: notApplicable.map(item => ({ ruleId: item.ruleId, reason: item.reason })) } : {}) };
   const previous = await readOptional(unit.output);
   const stored = await writeSource(unit.output, source);
   const results = await compileM12Files([{ info: unit.output, expected: stored.text }], ctx.compiler);
@@ -332,15 +353,15 @@ export async function writeAndProve(
   if (dropped.length) {
     // Never silent: the file compiles and stays (dependents can import it), the unit is not generated.
     const diagnostic = `RULE_NOT_EMITTED: ${dropped.join(', ')} are in the rulePlan of ${unit.defRef} and absent from ${unit.outputRef}. Their text is in l4/${moduleName}/rules.defs.ts.`;
-    await writeUnitStatus(project, moduleName, { ...base(unit, attempt), status: 'blocked', code: 'RULE_NOT_EMITTED', diagnostic, inputHash, outputs });
+    await writeUnitStatus(project, moduleName, { ...base(unit, attempt), status: 'blocked', code: 'RULE_NOT_EMITTED', diagnostic, inputHash, outputs, ...keep });
     return { status: 'blocked', code: 'RULE_NOT_EMITTED', line: `${unit.unitId}: blocked, RULE_NOT_EMITTED ${dropped.join(', ')}`, errors: [] };
   }
   if (unavailable) {
     // Generated and through every gate; the report lists it apart: no compiler proved it.
-    await writeUnitStatus(project, moduleName, { ...base(unit, attempt), status: 'done', code: COMPILE_UNAVAILABLE_L1, diagnostic: `${unavailableCause}${waiver}`, inputHash, outputs });
+    await writeUnitStatus(project, moduleName, { ...base(unit, attempt), status: 'done', code: COMPILE_UNAVAILABLE_L1, diagnostic: `${unavailableCause}${waiver}`, inputHash, outputs, ...keep });
     return { status: 'done', code: COMPILE_UNAVAILABLE_L1, line: `${unit.unitId}: ${unit.outputRef} (not compiled: ${COMPILE_UNAVAILABLE_L1})`, errors: [] };
   }
-  await writeUnitStatus(project, moduleName, { ...base(unit, attempt), status: 'done', code: '', diagnostic: waiver.trim(), inputHash, outputs });
+  await writeUnitStatus(project, moduleName, { ...base(unit, attempt), status: 'done', code: '', diagnostic: waiver.trim(), inputHash, outputs, ...keep });
   return { status: 'done', code: '', line: `${unit.unitId}: ${unit.outputRef}`, errors: [] };
 }
 

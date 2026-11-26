@@ -157,10 +157,13 @@ const BYTES_COMPILER: M12Compiler = {
 // ---- invocation, refs, selection ----
 
 void test('the invocation takes scope, target and force as the L22 does', () => {
-  assert.deepEqual(parseM12MessageInvocation('@@agentMaterializeL1 {"scope":"comandaRestaurante"}', PROJECT), { kind: 'run', project: PROJECT, scope: 'comandaRestaurante', target: '', force: false });
+  assert.deepEqual(parseM12MessageInvocation('@@agentMaterializeL1 {"scope":"comandaRestaurante"}', PROJECT), { kind: 'run', project: PROJECT, scope: 'comandaRestaurante', target: '', force: false, scratch: false });
   const target = parseM12MessageInvocation('@@agentMaterializeL1 {"target":"_102047_/l1/comandaRestaurante/layer_2_application/usecases/createMesa.defs.ts"}', PROJECT);
   assert.equal(target.kind, 'run');
   assert.equal(target.kind === 'run' && target.force, true, 'a target regenerates regardless of reuse');
+  assert.equal(target.kind === 'run' && target.scratch, false, 'a target alone is not "from scratch" for a model unit (d1_329)');
+  const forced = parseM12MessageInvocation('@@agentMaterializeL1 {"target":"_102047_/l1/comandaRestaurante/layer_2_application/usecases/createMesa.defs.ts","force":true}', PROJECT);
+  assert.equal(forced.kind === 'run' && forced.scratch, true, '"force": true is from scratch');
   assert.equal(parseM12MessageInvocation('@@agentMaterializeL1', PROJECT).kind, 'run');
   assert.equal(parseM12MessageInvocation('@@agentMaterializeL1 /help', PROJECT).kind, 'help');
   assert.equal(parseM12MessageInvocation('@@agentMaterializeL1 {"scope":"a","target":"b"}', PROJECT).kind, 'refusal');

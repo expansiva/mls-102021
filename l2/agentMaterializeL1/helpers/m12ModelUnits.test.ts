@@ -6,6 +6,7 @@ import test from 'node:test';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_USECASES_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { modelDispatcherAgent, modelWorkerAgent, type M12ModelLayerSpec } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
+import { readOptional, sha256Text, writeText, writeUnitStatus, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { parseM12WorkerArgs } from '/_102021_/l2/agentMaterializeL1/helpers/m12Worker.js';
 import { M12_REQUESTS_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
@@ -322,4 +323,101 @@ void test('d1_225: a request service whose routes only confirm an event is writt
   assert.equal(/usecases\//u.test(output.content), false);
   const receipt = Object.values(files).find(item => item.extension === '.json' && item.shortName === 'repoHost');
   assert.equal(JSON.parse(receipt?.content ?? '{}').status, 'done');
+});
+
+// d1_329: a target without "force" keeps a model unit whose only change is a dependency, or sends the file on disk to the repair.
+const OPEN_SPEC: M12ModelLayerSpec = { ...USECASE_SPEC, gate: async () => [] };
+const BY_TARGET = { target: fileRef(usecaseDef), force: true, scratch: false };
+const KEPT_TEXT = 'export const openItem = 1;\n';
+
+async function dispatchRun(run: Record<string, unknown>): Promise<Array<Record<string, unknown>>> {
+  const agent = modelDispatcherAgent(M12_USECASES_AGENT_NAME, 'test', OPEN_SPEC);
+  return agent.beforePromptStep!(meta, exec, { stepId: 1 } as mls.msg.AIAgentStep, { stepId: 2, prompt: '' } as mls.msg.AIAgentStep, 0,
+    JSON.stringify({ project: PROJECT, module: MODULE, scope: '', target: '', force: false, ...run })) as Promise<Array<Record<string, unknown>>>;
+}
+
+function receiptFile(): FakeFile {
+  return Object.values(mls.stor.files as Record<string, FakeFile>).find(item => item.extension === '.json' && item.shortName === 'openItem') as FakeFile;
+}
+
+/** A unit generated earlier: its output, and a receipt that says what it was made from. `change` moves one half of the receipt. */
+async function seedReceipt(text: string, change: 'deps' | 'own' | 'none' | 'noParts'): Promise<void> {
+  seedDefs(text);
+  await writeText(usecaseTs, text);
+  // The first reuse records the hash of now (a receipt of another test may hold an older one); the second finds it equal and stamps the halves.
+  await dispatchRun({ scope: MODULE });
+  await dispatchRun({ scope: MODULE });
+  const receipt = JSON.parse(receiptFile().content) as Record<string, unknown> & { inputParts?: { own: string; deps: string } };
+  assert.ok(receipt.inputParts, 'a reuse records the halves');
+  const sha = await sha256Text(text);
+  const next = { ...receipt, status: 'done', outputs: { [fileRef(usecaseTs)]: sha } };
+  if (change === 'noParts') delete next.inputParts;
+  else if (change === 'deps') next.inputParts = { own: receipt.inputParts.own, deps: 'old-deps' };
+  else if (change === 'own') next.inputParts = { own: 'old-own', deps: receipt.inputParts.deps };
+  const { schemaVersion: _version, updatedAt: _at, ...status } = next as unknown as M12UnitStatus;
+  await writeUnitStatus(PROJECT, MODULE, status);
+}
+
+function workersOf(intents: Array<Record<string, unknown>>): Array<{ attempt?: number; phase?: string }> {
+  return intents.filter(item => item.type === 'add-step').map(item => JSON.parse((item.step as { prompt?: string }).prompt ?? '{}') as { attempt?: number; phase?: string });
+}
+
+void test('d1_329: a target, only a dependency moved, the file compiles: it is kept and the receipt follows', async () => {
+  await seedReceipt(KEPT_TEXT, 'deps');
+  const intents = await dispatchRun(BY_TARGET);
+  assert.deepEqual(workersOf(intents), []);
+  const receipt = JSON.parse(receiptFile().content) as { status: string; inputParts: { deps: string } };
+  assert.equal(receipt.status, 'reused');
+  assert.notEqual(receipt.inputParts.deps, 'old-deps');
+  assert.equal(await readOptional(usecaseTs), KEPT_TEXT);
+});
+
+void test('d1_329: a target, only a dependency moved, the file does not compile: the file goes to the repair', async () => {
+  const broken = 'export const openItem = 1; // FORCE_COMPILE_ERROR\n';
+  await seedReceipt(broken, 'deps');
+  const intents = await dispatchRun(BY_TARGET);
+  assert.deepEqual(workersOf(intents), [{ project: PROJECT, module: MODULE, unitId: 'openItem', attempt: 2, force: true }]);
+  const receipt = JSON.parse(receiptFile().content) as { status: string; code: string; diagnostic: string };
+  assert.equal(receipt.code, 'MODEL_REPAIR');
+  assert.match(receipt.diagnostic, /forced compile error/u);
+  const draft = Object.values(mls.stor.files as Record<string, FakeFile>).find(item => item.shortName === 'openItem_code');
+  assert.equal(draft?.content, broken);
+  assert.equal(await readOptional(usecaseTs), broken);
+});
+
+void test('d1_329: a target, the def side moved, no halves, or "force": true: generated as before', async () => {
+  for (const change of ['own', 'noParts'] as const) {
+    await seedReceipt(KEPT_TEXT, change);
+    const workers = workersOf(await dispatchRun(BY_TARGET));
+    assert.equal(workers.length, 1, change);
+    assert.equal(workers[0].attempt, 1, change);
+  }
+  await seedReceipt(KEPT_TEXT, 'deps');
+  const scratch = workersOf(await dispatchRun({ ...BY_TARGET, scratch: true }));
+  assert.equal(scratch.length, 1, 'force');
+  assert.equal(scratch[0].attempt, 1, 'force');
+});
+
+void test('d1_329: a run by scope reuses a unit with its file, as before', async () => {
+  await seedReceipt(KEPT_TEXT, 'deps');
+  assert.deepEqual(workersOf(await dispatchRun({ scope: MODULE })), []);
+});
+
+void test('d1_329: a reuse stamps the halves only when the hash did not move', async () => {
+  seedDefs(KEPT_TEXT);
+  await writeText(usecaseTs, KEPT_TEXT);
+  await dispatchRun({ scope: MODULE });
+  await dispatchRun({ scope: MODULE });
+  const first = JSON.parse(receiptFile().content) as { inputHash: string; inputParts?: unknown };
+  assert.ok(first.inputParts, 'no receipt yet: stamped');
+  // A receipt of an older run (no halves) whose hash moved stays without halves: they would describe inputs it was not made from.
+  const { schemaVersion: _v, updatedAt: _u, ...old } = { ...first, inputHash: 'sha256:old', layer: 'usecases', unitId: 'openItem', defRef: '', status: 'done', code: '', attempt: 1, diagnostic: '', outputs: {} } as unknown as M12UnitStatus;
+  delete old.inputParts;
+  await writeUnitStatus(PROJECT, MODULE, old);
+  await dispatchRun({ scope: MODULE });
+  assert.equal((JSON.parse(receiptFile().content) as { inputParts?: unknown }).inputParts, undefined);
+  // The same receipt with the hash of now is stamped.
+  await writeUnitStatus(PROJECT, MODULE, { ...old, inputHash: first.inputHash });
+  await dispatchRun({ scope: MODULE });
+  assert.ok((JSON.parse(receiptFile().content) as { inputParts?: unknown }).inputParts);
 });
