@@ -178,9 +178,12 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
         let decision = await reuseDecision([unit.output], scratch);
         let repairWith: { source: string; problems: string[] } | null = null;
         let kept = false;
+        let asserted = false;
         if (onDisk && !scratch && run.target) {
           // d1_329: a target without "force" does not redo a unit from scratch. Only a dependency moved: compile the file against it.
-          const move = await dragOf(unit, prior, parts);
+          let move = await dragOf(unit, prior, parts);
+          // d1_331: the operator asserts that the def and the L4 did not move; only a receipt without halves (stamping was not possible) is taken so.
+          if (move === 'other' && run.asserted && await assertedOk(unit, prior)) { move = 'deps'; asserted = true; }
           if (move === 'other') decision = { kind: 'generate' };
           else if (move === 'deps') {
             const checked = await checkKept(ctx, unit, spec, prior as M12UnitStatus);
@@ -192,7 +195,7 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
           // made from the inputs of now. A reuse under a hash that moved keeps the old halves, or none (a receipt without halves stays without).
           const halves = kept || prior?.inputHash === inputHash ? { own: parts.own, deps: parts.deps } : prior?.inputParts;
           await writeUnitStatus(run.project, run.module, { ...base, status: 'reused', code: '', diagnostic: '', inputHash, outputs: prior?.outputs ?? {}, ...(halves ? { inputParts: halves } : {}), ...(prior?.notApplicable ? { notApplicable: prior.notApplicable } : {}) });
-          lines.push(`${unit.unitId}: ${kept ? 'kept — only a dependency moved and the file compiles against it' : 'reused'}`);
+          lines.push(`${unit.unitId}: ${kept ? `kept${asserted ? ' (asserted)' : ''} — only a dependency moved and the file compiles against it` : 'reused'}`);
           continue;
         }
         const derived = spec.byCode ? await spec.byCode(ctx, unit) : null;
@@ -225,7 +228,7 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
           }
           await writeUnitStatus(run.project, run.module, { ...base, status: 'failed', code: 'MODEL_REPAIR', attempt: 1, diagnostic, inputHash, outputs: {} });
           workers.push(addM12Step(context, step.stepId, workerStep(spec.workerAgentName, spec.layer, workerArgs)));
-          lines.push(`${unit.unitId}: repaired — only a dependency moved; the file on disk goes to the repair with ${repairWith.problems.length} problem(s)`);
+          lines.push(`${unit.unitId}: repaired${asserted ? ' (asserted)' : ''} — only a dependency moved; the file on disk goes to the repair with ${repairWith.problems.length} problem(s)`);
           continue;
         }
         workers.push(addM12Step(context, step.stepId, workerStep(spec.workerAgentName, spec.layer, workerArgs)));
@@ -252,6 +255,13 @@ export async function dragOf(unit: M12Unit, prior: M12UnitStatus | null, parts: 
   const text = await readOptional(unit.output);
   if (text === null || (await sha256Text(text)) !== prior.outputs[unit.outputRef]) return 'other';
   return prior.inputParts.deps === parts.deps ? 'same' : 'deps';
+}
+
+/** d1_331: a ready receipt without halves whose output is still the bytes the receipt recorded (no hand edit). */
+export async function assertedOk(unit: M12Unit, prior: M12UnitStatus | null): Promise<boolean> {
+  if (!prior || prior.inputParts || (prior.status !== 'done' && prior.status !== 'reused')) return false;
+  const text = await readOptional(unit.output);
+  return text !== null && (await sha256Text(text)) === prior.outputs[unit.outputRef];
 }
 
 /** The file on disk against the dependencies of now: the gate of the layer, the imports, the compiler, the rules of a usecase. */

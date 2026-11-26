@@ -17,6 +17,7 @@ Invocation, as `agenteMaterializeL22`; the project is the current one:
   the file on disk goes to the existing repair) or `generated` (the def or the L4 moved, the receipt has no `inputParts`, or `force`).
   A target alone is **not** `force` for a model unit any more: over a valid, stamped receipt it does nothing. A recipe whose fix is
   in the text of the generator (not in a dependency) must say `"force": true` in the recipe;
+- `{"target":"…","asserted":true}`: for a model unit whose receipt has no `inputParts` (it could not be stamped), the operator asserts that its def and L4 did not move (the recipe proves it with `git diff` of the defs and the L4 between the two commits); the unit goes through keep/repair and answers `kept (asserted)` or `repaired (asserted)`. Refused together with `force`, or without `target`;
 - `@@agentMaterializeL1 {"stamp":true,"scope":"<module>"}` (add `"dry":true` to only count) writes `inputParts` into the receipts
   of the model units (external, adapter, usecases, workflows, requests) whose receipt hash equals the hash of their inputs now; nothing else,
   no model, no output touched. A receipt that does not match is listed and stays as it is (the unit generates from scratch on a target).

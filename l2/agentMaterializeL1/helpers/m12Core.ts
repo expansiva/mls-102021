@@ -120,6 +120,8 @@ export interface M12Request {
   force: boolean;
   /** `"force": true` was said (a target alone implies `force`, not this). Absent = same as `force`. A model unit with output regenerates from scratch only when this is set; otherwise a dependency-only change keeps or repairs it (d1_329). */
   scratch?: boolean;
+  /** `"asserted": true` on a target: the operator says the def and the L4 of a unit without `inputParts` did not move (the recipe proves it with `git diff`); it goes through keep/repair, not from scratch. */
+  asserted?: boolean;
 }
 
 /** The args of every phase step: one module, the request that selects its units. */
@@ -148,6 +150,7 @@ export const M12_HELP = [
   'target of a def that no longer exists (its .defs.ts or .ts) removes the output this agent wrote for it and its status file; a file edited by hand stays, with ORPHAN_EDITED.',
   '{"stamp":true,"scope":"<module>","dry":true}: writes the `inputParts` of the model units whose receipt still matches their inputs, and only that (no model, no output touched); "dry" only counts and lists the receipts that do not match. A unit without them generates from scratch on a target.',
   'target on a model unit that has an output and a stamped receipt: unchanged = reused; only a dependency moved = kept (it compiles against it) or repaired (the file on disk goes to the repair); def or L4 moved, or no stamp = generated. One line per unit says which. A recipe whose fix is in the text of the generator needs "force": true, written in the recipe.',
+  '{"target":"…","asserted":true}: for a model unit whose receipt has no `inputParts`, the operator asserts that its def and L4 did not move (the recipe proves it with git diff): it goes through keep/repair and answers `kept (asserted)` or `repaired (asserted)`. Not with "force".',
   'Optional "force": true regenerates reusable units from scratch and overwrites outputs this agent did not write.',
   'Order per module: domain10 -> persistence20 (recipes) -> seedRows25 (model, only tables the l4 says the module seed loads) -> usecases40 -> requests50 (model) -> controllers30 (recipe, imports the request service) -> tests60 (model) -> register70 -> finalize80. A unit whose dependency is not ready is blocked.',
 ].join('\n');
@@ -179,7 +182,7 @@ export function parseM12MessageInvocation(value: string, project: number): M12Me
   try { parsed = JSON.parse(raw); } catch { return { kind: 'refusal', diagnostic: `Invalid JSON. Nothing was executed.\n${M12_HELP}` }; }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { kind: 'refusal', diagnostic: `The JSON must be an object. Nothing was executed.\n${M12_HELP}` };
   const record = parsed as Record<string, unknown>;
-  const unknown = Object.keys(record).find(key => !['scope', 'target', 'force', 'stamp', 'dry'].includes(key));
+  const unknown = Object.keys(record).find(key => !['scope', 'target', 'force', 'stamp', 'dry', 'asserted'].includes(key));
   if (unknown) return { kind: 'refusal', diagnostic: `Unknown key "${unknown}". Nothing was executed.\n${M12_HELP}` };
   if (record.stamp === true) {
     if (record.target || record.force || (record.scope !== undefined && typeof record.scope !== 'string')) return { kind: 'refusal', diagnostic: '"stamp" takes only "scope" and "dry". Nothing was executed.' };
@@ -187,12 +190,13 @@ export function parseM12MessageInvocation(value: string, project: number): M12Me
     if (!scopeOk(stampScope)) return { kind: 'refusal', diagnostic: `Invalid scope: ${stampScope}. Nothing was executed.` };
     return { kind: 'stamp', project, scope: stampScope, dry: record.dry === true };
   }
+  if (record.asserted !== undefined && (record.asserted !== true || !record.target || record.force === true)) return { kind: 'refusal', diagnostic: '"asserted": true goes with a "target" and without "force". Nothing was executed.' };
   if (record.dry !== undefined) return { kind: 'refusal', diagnostic: '"dry" belongs to "stamp". Nothing was executed.' };
   const scope = typeof record.scope === 'string' ? record.scope.trim().replace(/^\/+|\/+$/gu, '') : '';
   const target = typeof record.target === 'string' ? record.target.trim() : '';
   if (scope && target) return { kind: 'refusal', diagnostic: '"scope" and "target" cannot come together. Nothing was executed.' };
   if (!scopeOk(scope)) return { kind: 'refusal', diagnostic: `Invalid scope: ${scope}. Nothing was executed.` };
-  return { kind: 'run', project, scope, target, force: record.force === true || Boolean(target), scratch: record.force === true };
+  return { kind: 'run', project, scope, target, force: record.force === true || Boolean(target), scratch: record.force === true, ...(record.asserted === true ? { asserted: true } : {}) };
 }
 
 export function parseM12StepInvocation(value: string, currentProject: number): M12StepInvocation {
@@ -200,7 +204,7 @@ export function parseM12StepInvocation(value: string, currentProject: number): M
   try { parsed = JSON.parse(String(value || '{}')); } catch { return { kind: 'refusal', diagnostic: 'M12_ARGS_JSON' }; }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { kind: 'refusal', diagnostic: 'M12_ARGS_OBJECT' };
   const raw = parsed as Record<string, unknown>;
-  const allowed = new Set(['project', 'module', 'scope', 'target', 'force', 'scratch']);
+  const allowed = new Set(['project', 'module', 'scope', 'target', 'force', 'scratch', 'asserted']);
   const unknown = Object.keys(raw).find(key => !allowed.has(key));
   if (unknown) return { kind: 'refusal', diagnostic: `M12_ARGS_UNKNOWN: ${unknown}` };
   const project = typeof raw.project === 'number' ? raw.project : Number.NaN;
@@ -211,11 +215,11 @@ export function parseM12StepInvocation(value: string, currentProject: number): M
   const scope = typeof raw.scope === 'string' ? raw.scope : '';
   const target = typeof raw.target === 'string' ? raw.target : '';
   if (!scopeOk(scope) || (scope && target)) return { kind: 'refusal', diagnostic: 'M12_ARGS_SELECTOR' };
-  return { kind: 'run', project, module: moduleName, scope, target, force: raw.force === true, ...(typeof raw.scratch === 'boolean' ? { scratch: raw.scratch } : {}) };
+  return { kind: 'run', project, module: moduleName, scope, target, force: raw.force === true, ...(typeof raw.scratch === 'boolean' ? { scratch: raw.scratch } : {}), ...(raw.asserted === true ? { asserted: true } : {}) };
 }
 
 export function runArgsJson(args: M12RunArgs): string {
-  return JSON.stringify({ project: args.project, module: args.module, scope: args.scope, target: args.target, force: args.force, ...(args.scratch === undefined ? {} : { scratch: args.scratch }) });
+  return JSON.stringify({ project: args.project, module: args.module, scope: args.scope, target: args.target, force: args.force, ...(args.scratch === undefined ? {} : { scratch: args.scratch }), ...(args.asserted ? { asserted: true } : {}) });
 }
 
 export function phasePlanId(stepId: M12StepId, moduleName: string): string {
@@ -239,7 +243,7 @@ export function buildM12PlannedSteps(
   const steps: mls.msg.AIAgentStep[] = [];
   let previous = '';
   for (const item of modules) {
-    const args: M12RunArgs = { project, module: item.module, scope: request.scope, target: request.target, force: request.force, ...(request.scratch === undefined ? {} : { scratch: request.scratch }) };
+    const args: M12RunArgs = { project, module: item.module, scope: request.scope, target: request.target, force: request.force, ...(request.scratch === undefined ? {} : { scratch: request.scratch }), ...(request.asserted ? { asserted: true } : {}) };
     const stepIds: M12StepId[] = [
       ...M12_LAYERS.filter(layer => item.layers.includes(layer)).map(layer => LAYER_STEP[layer]),
       ...(item.register ? ['register70' as const] : []),

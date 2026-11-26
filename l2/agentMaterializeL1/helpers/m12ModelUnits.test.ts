@@ -447,3 +447,21 @@ void test('d1_329: the stamp counts in dry, writes only the halves, only when th
   assert.deepEqual(await stampModule(PROJECT, MODULE, MODULE, false), { stamped: 0, already: 0, noReceipt: 0, mismatch: ['usecases/openItem'] });
   assert.equal((JSON.parse(receiptFile().content) as { inputParts?: unknown }).inputParts, undefined);
 });
+
+void test('d1_331: "asserted" sends a unit without halves through keep/repair; without it, or with an edited file, it generates', async () => {
+  const { parseM12MessageInvocation } = await import('/_102021_/l2/agentMaterializeL1/helpers/m12Core.js');
+  assert.equal(parseM12MessageInvocation('@@agentMaterializeL1 {"target":"x","asserted":true,"force":true}', PROJECT).kind, 'refusal');
+  assert.equal(parseM12MessageInvocation('@@agentMaterializeL1 {"scope":"x","asserted":true}', PROJECT).kind, 'refusal');
+  const asserted = { ...BY_TARGET, asserted: true };
+  await seedReceipt(KEPT_TEXT, 'noParts');
+  assert.equal(workersOf(await dispatchRun(BY_TARGET)).length, 1, 'without asserted: generated');
+  await seedReceipt(KEPT_TEXT, 'noParts');
+  assert.deepEqual(workersOf(await dispatchRun(asserted)), [], 'kept');
+  assert.ok((JSON.parse(receiptFile().content) as { inputParts?: unknown }).inputParts, 'the kept unit is stamped');
+  const broken = 'export const openItem = 1; // FORCE_COMPILE_ERROR\n';
+  await seedReceipt(broken, 'noParts');
+  assert.equal(workersOf(await dispatchRun(asserted))[0]?.attempt, 2, 'repaired');
+  await seedReceipt(KEPT_TEXT, 'noParts');
+  await writeText(usecaseTs, `${KEPT_TEXT}// edited by hand\n`);
+  assert.equal(workersOf(await dispatchRun(asserted))[0]?.attempt, 1, 'a hand edit generates');
+});
