@@ -39,6 +39,10 @@ export interface SeedTableUnit {
    * not one of them, so the gate does too; `details` is the only nested key. Null until the caller resolves the table.
    */
   tableColumns: string[] | null;
+  /** Where the table def stores each field (the bindings the adapter emitter reads): a column, or the json column `details` under the key without `details.`. Null until the caller resolves the table. */
+  tableBindings: Array<{ field: string; column: string; placement: 'column' | 'json' }> | null;
+  /** Derived and required scalar fields the server writes on create (a stamp, a counter), outside `id` and `version`: a seed row carries them too (d1_326). */
+  serverAssigned: Array<{ path: string; type: SeedColumn['type'] }>;
   uniqueKeys: string[][];
   states: string[];
   stateField: string;
@@ -71,6 +75,7 @@ interface OntologyRead {
   uniqueKeys: string[][];
   initialData: string;
   moduleName: string;
+  serverAssigned: Array<{ path: string; type: SeedColumn['type'] }>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -152,7 +157,25 @@ function ontologyOf(source: string): OntologyRead | null {
     uniqueKeys: uniqueKeysOf(literal.uniqueKeys),
     initialData: typeof literal.initialData === 'string' ? literal.initialData.trim() : '',
     moduleName: typeof literal.moduleName === 'string' ? literal.moduleName : '',
+    serverAssigned: serverAssignedOf(isRecord(literal.record) ? literal.record.fields : null),
   };
+}
+
+/** Derived, required scalar leaves of the l4 record, by dotted path (`id` and `version` are completed apart). */
+function serverAssignedOf(fields: unknown): Array<{ path: string; type: SeedColumn['type'] }> {
+  const out: Array<{ path: string; type: SeedColumn['type'] }> = [];
+  const walk = (value: unknown, prefix: string): void => {
+    if (!isRecord(value)) return;
+    for (const [name, meta] of Object.entries(value)) {
+      if (!isRecord(meta)) continue;
+      const path = prefix ? `${prefix}.${name}` : name;
+      const type = columnType(meta);
+      if (meta.derived === true && meta.required === true && path !== 'id' && path !== 'version' && (type === 'string' || type === 'integer' || type === 'boolean' || type === 'timestamp')) out.push({ path, type });
+      if (isRecord(meta.fields)) walk(meta.fields, path);
+    }
+  };
+  walk(fields, '');
+  return out;
 }
 
 /**
@@ -183,6 +206,8 @@ export function referenceSeedUnit(input: {
     fieldsText: ontology.fieldsText,
     columns: ontology.fields,
     tableColumns: null,
+    tableBindings: null,
+    serverAssigned: ontology.serverAssigned,
     uniqueKeys: ontology.uniqueKeys,
     states: [...input.states],
     stateField: input.stateField,
@@ -429,6 +454,47 @@ async function objectPlaceholder(fields: readonly SeedColumn[], token: string, u
   return nested;
 }
 
+/** The key of a field inside the json column: the path without the `details.` prefix, as the adapter emitter writes it. */
+function jsonKeyOf(field: string): string {
+  return field.startsWith('details.') ? field.slice('details.'.length) : field;
+}
+
+/** Writes `value` where the table def stores `field` (a column at the root, or the json column `details`); at the root when the table is not resolved. */
+export function placeSeedValue(unit: SeedTableUnit, row: Record<string, unknown>, field: string, value: unknown): void {
+  const binding = unit.tableBindings?.find(item => item.field === field);
+  if (!binding || binding.placement === 'column') { row[binding?.column ?? field] = value; return; }
+  const details: Record<string, unknown> = isRecord(row.details) ? { ...row.details } : {};
+  const parts = jsonKeyOf(field).split('.');
+  let node = details;
+  for (const part of parts.slice(0, -1)) {
+    const next = isRecord(node[part]) ? { ...(node[part] as Record<string, unknown>) } : {};
+    node[part] = next;
+    node = next;
+  }
+  node[parts[parts.length - 1]] = value;
+  row.details = details;
+}
+
+/** The value of `field` in a row, read where the table def stores it. */
+export function readSeedValue(unit: SeedTableUnit, row: Record<string, unknown>, field: string): unknown {
+  const binding = unit.tableBindings?.find(item => item.field === field);
+  if (!binding || binding.placement === 'column') return row[binding?.column ?? field];
+  let node: unknown = row.details;
+  for (const part of jsonKeyOf(field).split('.')) node = isRecord(node) ? node[part] : undefined;
+  return node;
+}
+
+/** The smallest valid value of a server-assigned scalar. A stamp reuses a time the row already has. */
+export function serverAssignedValue(type: SeedColumn['type'], row: Record<string, unknown>): unknown {
+  if (type === 'timestamp') {
+    const known = JSON.stringify(row).match(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/u);
+    return known ? known[0] : '2026-01-01T00:00:00.000Z';
+  }
+  if (type === 'integer') return 1;
+  if (type === 'boolean') return true;
+  return 'sample';
+}
+
 /** `field → entity` of the `ref:` constraints whose entity has rows in this module seed (`parentIds`). */
 export function refsToSeedRows(unit: SeedTableUnit): Map<string, string> {
   const out = new Map<string, string>();
@@ -459,13 +525,16 @@ export async function draftScenarioRow(unit: SeedTableUnit, refValues: Readonly<
   for (const name of needed) {
     const column = unit.columns.find(item => item.name === name);
     if (!column || column.name === 'id') continue;
-    // A field that is not a column of the table is not written at the root: the runtime refuses it.
-    if (unit.tableColumns && !unit.tableColumns.includes(name)) continue;
+    // A field the table def stores in the json column is written there (d1_326), not at the root: the runtime refuses a root key that is not a column.
+    const stored = unit.tableColumns && !unit.tableColumns.includes(name);
+    if (stored && !unit.tableBindings?.some(item => item.field === name && item.placement === 'json')) continue;
     if (name in refValues) { row[name] = refValues[name]; continue; }
     // A ref to a row of this seed never gets an invented uuid: without a parent row the gate names the miss.
     if (refsToSeedRows(unit).has(name)) continue;
     const token = `${unit.moduleName}.${unit.tableId}.${unit.scenarioId}.${name}`;
-    row[name] = await placeholder(column, token, field => stableActorMdmId(unit.moduleName, `${unit.scenarioId}:${field}`), unit.scenarioIndex);
+    const value = await placeholder(column, token, field => stableActorMdmId(unit.moduleName, `${unit.scenarioId}:${field}`), unit.scenarioIndex);
+    if (stored) placeSeedValue(unit, row, name, value);
+    else row[name] = value;
   }
   if (unit.stateField && unit.states.length > 0) {
     const column = unit.columns.find(item => item.name === unit.stateField);

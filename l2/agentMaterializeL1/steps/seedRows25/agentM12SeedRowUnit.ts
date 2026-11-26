@@ -12,7 +12,10 @@ import {
   SEED_ROWS_TOOL,
   SEED_ROWS_TOOL_DESCRIPTION,
   parseSeedRowsCode,
+  placeSeedValue,
+  readSeedValue,
   seedRowProblems,
+  serverAssignedValue,
   seedRowsHuman,
   type SeedRepair,
   type SeedTableUnit,
@@ -107,6 +110,11 @@ export async function completeInitialRows(
     const token = values.map(value => String(value)).join(':');
     next.id = await uuidV5(`${unit.moduleName}.${unit.tableId}:${token}`);
     withControlVersion(unit, next);
+    // d1_326: what the server writes on create (a stamp, a counter) is in the row too, where the table def stores it.
+    for (const item of unit.serverAssigned) {
+      const there = readSeedValue(unit, next, item.path);
+      if (there === undefined || there === null || there === '') placeSeedValue(unit, next, item.path, serverAssignedValue(item.type, next));
+    }
     completed.push(next);
   }
   return problems.length > 0 ? { problems } : { rows: completed };

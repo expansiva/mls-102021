@@ -47,6 +47,15 @@ function tableIdOf(ctx: M12Context, entityId: string): string {
  * A table def, entity def or table shape that is missing throws: the rows are not checked against a guess.
  */
 export function seedTableColumns(units: readonly M12Unit[], tableId: string): string[] {
+  return seedTableBuilt(units, tableId).definition.columns.map(column => column.name);
+}
+
+/** Where the table def of `tableId` stores each field: the same bindings the adapter emitter reads (d1_326). */
+export function seedTableBindings(units: readonly M12Unit[], tableId: string): Array<{ field: string; column: string; placement: 'column' | 'json' }> {
+  return seedTableBuilt(units, tableId).bindings.map(binding => ({ field: binding.field, column: binding.column, placement: binding.placement as 'column' | 'json' }));
+}
+
+function seedTableBuilt(units: readonly M12Unit[], tableId: string): Extract<ReturnType<typeof buildLocalTable>, { bindings: unknown }> {
   const table = units.find(unit => unit.definition.artifactType === 'table' && unit.definition.data.tableId === tableId);
   if (!table) throw new Error(`M12_TABLE_UNKNOWN: seedRows ${tableId} has no table def.`);
   const entityRef = table.definition.dependencies.find(path => path.includes('/entities/'));
@@ -54,7 +63,7 @@ export function seedTableColumns(units: readonly M12Unit[], tableId: string): st
   if (!entity) throw new Error(`M12_TABLE_UNKNOWN: table ${tableId} has no entity def in the module.`);
   const built = buildLocalTable(table.definition, entity.definition);
   if ('code' in built) throw new Error(`M12_TABLE_UNKNOWN: table ${tableId}: ${built.code}: ${built.detail}`);
-  return built.definition.columns.map(column => column.name);
+  return built;
 }
 
 /** Tables of this module whose l4 entity declares `initialData`. A seed scenario is not required. Others are absent: no model call. */
@@ -80,7 +89,7 @@ export async function referenceSeedTables(ctx: M12Context): Promise<SeedTableUni
     if (!tableId || seen.has(tableId) || !unitIdOk(tableId)) continue;
     const stateField = stateFieldFor(draft.columns, draft.states);
     seen.add(tableId);
-    tables.push({ ...draft, tableId, tableColumns: seedTableColumns(ctx.units, tableId), ...(stateField ? { stateField } : {}) });
+    tables.push({ ...draft, tableId, tableColumns: seedTableColumns(ctx.units, tableId), tableBindings: seedTableBindings(ctx.units, tableId), ...(stateField ? { stateField } : {}) });
   }
   return tables.sort((left, right) => left.tableId.localeCompare(right.tableId));
 }
@@ -179,7 +188,7 @@ export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSe
       const scenarioIndex = scenarios.filter(item => item.tableId === scenario.tableId).indexOf(scenario) + 1;
       planned.push({
         scenario,
-        unit: { ...draft, scenarioIndex, tableColumns: seedTableColumns(ctx.units, scenario.tableId), ...(stateField ? { stateField } : {}) },
+        unit: { ...draft, scenarioIndex, tableColumns: seedTableColumns(ctx.units, scenario.tableId), tableBindings: seedTableBindings(ctx.units, scenario.tableId), ...(stateField ? { stateField } : {}) },
         pairs: refPairsOf(scenario.constraints),
       });
     }
