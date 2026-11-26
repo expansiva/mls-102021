@@ -48,6 +48,12 @@ export interface SeedTableUnit {
   loadedBySeed: boolean;
   /** Seed-plan constraints (`ref:`, `state:`, `uniqueKeys:`). Empty for an initial table. */
   constraints: string[];
+  /**
+   * Ids of the rows each parent entity has in this module seed, for the entities of the module. A `ref:` constraint to
+   * one of these entities must hold one of its ids (d1_312). An entity that is not a key is outside the module
+   * (platform, actor): the old rule applies. Absent in a unit built outside `scenarioSeedDatasets`.
+   */
+  parentIds?: Record<string, string[]>;
 }
 
 export interface SeedRepair {
@@ -363,11 +369,13 @@ export function seedRowProblems(unit: SeedTableUnit, rows: readonly Record<strin
     });
   }
   for (const constraint of unit.constraints) {
-    const ref = /^ref:([^:]+):/u.exec(constraint);
+    const ref = /^ref:([^:]+):([^:]+)/u.exec(constraint);
     if (!ref) continue;
+    const parents = unit.parentIds?.[ref[2]];
     rows.forEach((row, index) => {
       const value = row[ref[1]];
       if (value === undefined || value === null || value === '') problems.push(`row ${index} misses constraint ${constraint}.`);
+      else if (parents && !parents.includes(String(value))) problems.push(`row ${index} ${ref[1]} is not the id of a ${ref[2]} row of this seed.`);
     });
   }
   return problems;
@@ -421,12 +429,22 @@ async function objectPlaceholder(fields: readonly SeedColumn[], token: string, u
   return nested;
 }
 
+/** `field → entity` of the `ref:` constraints whose entity has rows in this module seed (`parentIds`). */
+export function refsToSeedRows(unit: SeedTableUnit): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const constraint of unit.constraints) {
+    const ref = /^ref:([^:]+):([^:]+)/u.exec(constraint);
+    if (ref && unit.parentIds && ref[2] in unit.parentIds) out.set(ref[1], ref[2]);
+  }
+  return out;
+}
+
 /**
  * One row for a seed-plan scenario. No `purpose` (the emitter marks it `test`).
  * The primary key is filled later, from the unique key, the same way as an initial row.
  * Returns the gate problems instead of a row that breaks columns, types, the unique key, states, or a ref constraint.
  */
-export async function draftScenarioRow(unit: SeedTableUnit): Promise<{ row: Record<string, unknown> } | { problems: string[] }> {
+export async function draftScenarioRow(unit: SeedTableUnit, refValues: Readonly<Record<string, string>> = {}): Promise<{ row: Record<string, unknown> } | { problems: string[] }> {
   const row: Record<string, unknown> = {};
   const needed = new Set<string>();
   for (const column of unit.columns) {
@@ -443,6 +461,9 @@ export async function draftScenarioRow(unit: SeedTableUnit): Promise<{ row: Reco
     if (!column || column.name === 'id') continue;
     // A field that is not a column of the table is not written at the root: the runtime refuses it.
     if (unit.tableColumns && !unit.tableColumns.includes(name)) continue;
+    if (name in refValues) { row[name] = refValues[name]; continue; }
+    // A ref to a row of this seed never gets an invented uuid: without a parent row the gate names the miss.
+    if (refsToSeedRows(unit).has(name)) continue;
     const token = `${unit.moduleName}.${unit.tableId}.${unit.scenarioId}.${name}`;
     row[name] = await placeholder(column, token, field => stableActorMdmId(unit.moduleName, `${unit.scenarioId}:${field}`), unit.scenarioIndex);
   }

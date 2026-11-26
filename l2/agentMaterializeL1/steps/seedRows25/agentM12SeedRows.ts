@@ -102,16 +102,65 @@ export function takenSeedTables(prior: readonly unknown[], reference: readonly R
   return new Set([...fromDef, ...fromReference]);
 }
 
+interface ScenarioRow {
+  id: string;
+  /** `entity → id` this row cites through its own `ref:` fields, so a child that cites this row and that entity agrees with it. */
+  links: Record<string, string>;
+}
+
+function refPairsOf(constraints: readonly string[]): { field: string; entity: string }[] {
+  const out: { field: string; entity: string }[] = [];
+  for (const constraint of constraints) {
+    const ref = /^ref:([^:]+):([^:]+)/u.exec(constraint);
+    if (ref) out.push({ field: ref[1], entity: ref[2] });
+  }
+  return out;
+}
+
+/**
+ * The value of each `ref:` field of a scenario row: the id of a row of the parent entity in this seed (d1_312).
+ * The parent is picked by the scenario index, modulo the number of parent rows. A parent that already cites another
+ * parent of this row decides that one too (audit → conversation → bot). No parent row: the field gets no value.
+ */
+export function pickRefValues(
+  pairs: readonly { field: string; entity: string }[],
+  scenarioIndex: number,
+  rowsOf: (entity: string) => readonly ScenarioRow[],
+): Record<string, string> {
+  const values: Record<string, string> = {};
+  const entities = new Set(pairs.map(pair => pair.entity));
+  const cites = (entity: string): number => rowsOf(entity).some(row => Object.keys(row.links).some(target => entities.has(target) && target !== entity)) ? 0 : 1;
+  const ordered = [...pairs].sort((left, right) => cites(left.entity) - cites(right.entity));
+  for (const pair of ordered) {
+    if (pair.field in values) continue;
+    const rows = rowsOf(pair.entity);
+    if (rows.length === 0) continue;
+    const chosen = rows[(Math.max(scenarioIndex, 1) - 1) % rows.length];
+    values[pair.field] = chosen.id;
+    for (const other of ordered) {
+      if (!(other.field in values) && other.entity !== pair.entity && chosen.links[other.entity]) values[other.field] = chosen.links[other.entity];
+    }
+  }
+  return values;
+}
+
 /**
  * One accepted row per seed-plan scenario (journey or model). No `purpose`:
  * the emitter marks a dataset that is not the initial unit as `test`.
  * A row the gate refuses is left out. Initial drafts are not touched.
+ * A `ref:` field holds the id of a row of the parent entity in this seed, so the scenarios are drafted parents first
+ * (topological order by their `ref:` constraints); a cycle is drafted in plan order and its refs stay without value.
  */
 export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSeedDataset[]> {
   const grouped = new Map<string, Record<string, unknown>[]>();
   const { completeInitialRows } = await import('/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js');
-  for (const seed of ctx.units) {
-    if (seed.definition.artifactType !== 'persistenceSeeds') continue;
+  const seeds = ctx.units.filter(seed => seed.definition.artifactType === 'persistenceSeeds');
+  const prior = seeds.flatMap(seed => (Array.isArray(seed.definition.data.datasets) ? seed.definition.data.datasets : []));
+  const taken = takenSeedTables(prior, ctx.referenceSeeds ?? []);
+
+  interface Planned { scenario: ReturnType<typeof seedScenariosOf>[number]; unit: SeedTableUnit; pairs: { field: string; entity: string }[] }
+  const planned: Planned[] = [];
+  for (const seed of seeds) {
     const scenarios = seedScenariosOf(seed.definition.data);
     for (const scenario of scenarios) {
       const source = await ctx.read(seedOntologyRef(ctx.run.project, ctx.run.module, scenario.entityId));
@@ -128,15 +177,65 @@ export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSe
       if (!draft) continue;
       const stateField = scenario.stateField || stateFieldFor(draft.columns, scenario.states);
       const scenarioIndex = scenarios.filter(item => item.tableId === scenario.tableId).indexOf(scenario) + 1;
-      const unit = { ...draft, scenarioIndex, tableColumns: seedTableColumns(ctx.units, scenario.tableId), ...(stateField ? { stateField } : {}) };
-      const drafted = await draftScenarioRow(unit);
-      if ('problems' in drafted) continue;
-      const completed = await completeInitialRows(unit, [drafted.row]);
-      if ('problems' in completed || completed.rows.length === 0) continue;
-      const rows = grouped.get(scenario.tableId) ?? [];
-      rows.push(completed.rows[0]);
-      grouped.set(scenario.tableId, rows);
+      planned.push({
+        scenario,
+        unit: { ...draft, scenarioIndex, tableColumns: seedTableColumns(ctx.units, scenario.tableId), ...(stateField ? { stateField } : {}) },
+        pairs: refPairsOf(scenario.constraints),
+      });
     }
+  }
+
+  // Entities of this module that a `ref:` can point at: the ones a ref names and whose ontology is a seedable table.
+  const moduleEntity = new Map<string, boolean>();
+  for (const item of planned) {
+    for (const pair of item.pairs) {
+      if (moduleEntity.has(pair.entity)) continue;
+      const source = await ctx.read(seedOntologyRef(ctx.run.project, ctx.run.module, pair.entity));
+      moduleEntity.set(pair.entity, !!source && !!referenceSeedUnit({ scenarioId: '', tableId: '', ontologySource: source, states: [], stateField: '', requireInitial: false }));
+    }
+  }
+  const tableOfEntity = new Map<string, string>(planned.map(item => [item.unit.entityId, item.scenario.tableId]));
+  for (const table of await referenceSeedTables(ctx)) tableOfEntity.set(table.entityId, table.tableId);
+
+  const referenceRows = (tableId: string): ScenarioRow[] => (ctx.referenceSeeds ?? [])
+    .filter(item => item.seedFor === tableId)
+    .flatMap(item => item.rows)
+    .filter(row => typeof row.id === 'string' && row.id !== '')
+    .map(row => ({ id: String(row.id), links: {} }));
+  const generated = new Map<string, ScenarioRow[]>();
+  const rowsOf = (entity: string): ScenarioRow[] => {
+    const tableId = tableOfEntity.get(entity);
+    if (!tableId) return [];
+    return taken.has(tableId) ? referenceRows(tableId) : (generated.get(tableId) ?? []);
+  };
+
+  const pending = [...planned];
+  const ordered: Planned[] = [];
+  while (pending.length > 0) {
+    const ready = pending.findIndex(item => item.pairs.every(pair => !moduleEntity.get(pair.entity) || pair.entity === item.unit.entityId
+      || !pending.some(other => other !== item && other.unit.entityId === pair.entity)));
+    const [next] = pending.splice(ready >= 0 ? ready : 0, 1);
+    ordered.push(next);
+  }
+
+  for (const item of ordered) {
+    const { scenario, pairs } = item;
+    const parentIds: Record<string, string[]> = {};
+    for (const pair of pairs) if (moduleEntity.get(pair.entity)) parentIds[pair.entity] = rowsOf(pair.entity).map(row => row.id);
+    const unit = { ...item.unit, parentIds };
+    const seedPairs = pairs.filter(pair => moduleEntity.get(pair.entity));
+    const refValues = pickRefValues(seedPairs, unit.scenarioIndex, rowsOf);
+    const drafted = await draftScenarioRow(unit, refValues);
+    if ('problems' in drafted) continue;
+    const completed = await completeInitialRows(unit, [drafted.row]);
+    if ('problems' in completed || completed.rows.length === 0) continue;
+    const row = completed.rows[0];
+    const rows = grouped.get(scenario.tableId) ?? [];
+    rows.push(row);
+    grouped.set(scenario.tableId, rows);
+    const links: Record<string, string> = {};
+    for (const pair of seedPairs) if (typeof row[pair.field] === 'string' && !(pair.entity in links)) links[pair.entity] = String(row[pair.field]);
+    if (typeof row.id === 'string') generated.set(scenario.tableId, [...(generated.get(scenario.tableId) ?? []), { id: row.id, links }]);
   }
   return [...grouped.entries()].map(([seedFor, rows]) => ({ seedFor, rows }));
 }
