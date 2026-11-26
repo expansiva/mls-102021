@@ -562,7 +562,7 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   if (gateways) parts.push(gateways);
   const received = await receivedInputSection(ctx, unit.definition.data, focus);
   if (received) parts.push(received);
-  const transaction = await transactionSection(ctx, unit, facts, focus);
+  const transaction = await transactionSection(ctx, unit, facts, focus, Boolean(gateways));
   if (transaction) parts.push(transaction);
   const stepCalls = await stepCallsFor(ctx, facts.processId);
   if (stepCalls.length) {
@@ -614,6 +614,15 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   const titles = (await entityNames(ctx)).flatMap(names => [{ entityId: names.entityId, title: names.title }, { entityId: names.entityId, title: names.entityId }]);
   const core = new Set([facts.occurrence, ...facts.operations.map(row => row.operation.split('.')[0])].filter(Boolean));
   const entities = new Set([...core, ...citedEntities(readProcess, titles)]);
+  // One hop: a reference field of an entity already in the set names another entity of the module. The port and the summary follow the same path as a cited entity.
+  const referenced: string[] = [];
+  for (const item of ctx.units) {
+    if (item.definition.artifactType !== 'domainEntity') continue;
+    const entityId = String(item.definition.data.entityId ?? '');
+    if (!entities.has(entityId)) continue;
+    referenced.push(...ontologyReferenceTargets(await ctx.read(ontologyRef(item.definition, item.outputRef))));
+  }
+  for (const entityId of referenced) entities.add(entityId);
   const narrow = Boolean(focus) && !repair;
   const touched = narrow && focus ? touchedEntities(focus, readProcess, facts, titles) : null;
   for (const item of ctx.units) {
@@ -652,11 +661,21 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   const adapter = workflowEngineFile(project, moduleName);
   const adapterSource = await readOptional(adapter);
   if (adapterSource) parts.push(section('The module engine (one engine per process, the step tables, the destination status of each operation)', [`Import from \`${moduleSpecifier(adapter)}\`. Open and advance through it. \`transitionTo\` is the destination status of each operation. The function that returns the person of a human step calls \`resolveStepPerson\` from this file.`, fence('ts', workflowEngineShown(adapterSource))].join('\n\n')));
-  parts.push(section('Occurrence record id', [
-    `On creation, \`recordId = occurrenceRecordId(ctx, '${facts.processId}')\` and the create usecase is called with \`createOccurrenceContext(ctx, recordId)\`.`,
-    'That context returns the occurrence record id on the first `newId` and delegates every later id to the parent generator. Check, on that usecase, that the record is the first `newId`.',
-    'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
-  ].join('\n')));
+  const createsOccurrence = Boolean(facts.occurrence) && (facts.operations.some(row => row.operation === `${facts.occurrence}.create`) || upserts.some(item => item.entityId === facts.occurrence));
+  const perArrival = processReceives(unit.definition.data).size > 0 && !createsOccurrence;
+  parts.push(section('Occurrence record id', perArrival
+    ? [
+      `The occurrence is one per arrival: \`recordId = occurrenceRecordId(ctx, '${facts.processId}', seed)\`.`,
+      '`seed` is the key of the message the L4 names, or `ctx.requestMeta.requestId` when the L4 names none.',
+      'A safe repeat is the one the L4 states: a state already at the destination changes nothing and is not an error.',
+      'The form is the one of `executionRecording` (the seed is `executionRef`) and of `toolCatalogRefresh` (it updates records that already exist).',
+      'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
+    ].join('\n')
+    : [
+      `On creation, \`recordId = occurrenceRecordId(ctx, '${facts.processId}')\` and the create usecase is called with \`createOccurrenceContext(ctx, recordId)\`.`,
+      'That context returns the occurrence record id on the first `newId` and delegates every later id to the parent generator. Check, on that usecase, that the record is the first `newId`.',
+      'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
+    ].join('\n')));
   parts.push(section('How every process function uses the engine', engineUseRules(moduleName, facts.processId, facts.trigger.kind)));
   const processSteps = workflowProcessSteps(readProcess);
   const platform = [WORKFLOW_INDEX_REF, WORKFLOW_ENGINE_REF, WORKFLOW_CONTRACTS_REF, WORKFLOW_RECORD_ID_REF, PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry, ...(facts.trigger.kind === 'scheduled' ? [EVALUATE_SCHEDULE_REF] : [])];
@@ -796,6 +815,35 @@ export function workflowGate(code: string, input: { siblingImports?: readonly st
   return problems;
 }
 
+/** Entity ids named by a reference field (`to`) of the ontology, including a field nested under another. One hop: the caller does not walk the targets. */
+export function ontologyReferenceTargets(source: string | null): string[] {
+  const body = l4RecordOf(source);
+  const record = body && isRecord(body.record) ? body.record : null;
+  const fields = record && isRecord(record.fields) ? record.fields : null;
+  if (!fields) return [];
+  const out: string[] = [];
+  const walk = (node: Record<string, unknown>): void => {
+    for (const meta of Object.values(node)) {
+      if (!isRecord(meta)) continue;
+      if (Array.isArray(meta.to)) {
+        for (const id of meta.to) if (typeof id === 'string' && id && !out.includes(id)) out.push(id);
+      }
+      if (isRecord(meta.fields)) walk(meta.fields);
+    }
+  };
+  walk(fields);
+  return out;
+}
+
+/** The catalog output type of a serve arrival; '' when the catalog names none. */
+async function arrivalOutputType(ctx: M12Context, arrival: string): Promise<string> {
+  const dot = arrival.indexOf('.');
+  if (dot <= 0) return '';
+  const catalog = await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, arrival.slice(0, dot));
+  const operation = catalog.source ? catalogOperations(catalog.source)?.find(item => item.operationId === arrival.slice(dot + 1) && item.direction !== 'call') : undefined;
+  return operation?.outputType ?? '';
+}
+
 /** The catalog input type of a call, resolved (d1_200). Null when the catalog or the operation is not readable. */
 async function catalogInputOf(ctx: M12Context, call: { connectionId: string; operationId: string }): Promise<{ type: string; text: string } | null> {
   const source = (await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, call.connectionId)).source;
@@ -819,10 +867,12 @@ export async function receivedInputSection(ctx: M12Context, processData: Record<
     const input = await arrivalInputOf(ctx.read, ctx.run.project, ctx.run.module, arrival);
     if (!input) continue;
     const said = text(arrivalLineOf(await ctx.read(`_${ctx.run.project}_/l4/${ctx.run.module}/integration.defs.ts`), arrival)?.row.description);
+    const outputType = await arrivalOutputType(ctx, arrival);
     blocks.push([
       `- \`${fn}\` is called with the message of the arrival \`${arrival}\`: its input is \`${input.inputType}\`, and the route passes the whole message.`,
       said ? `  The L4 says what this arrival does (the source; follow it, including which items of the message count): ${clip(said, 2400)}` : '',
       `  \`import type { ${input.inputType} } from '${input.importPath}'\`; type the \`input\` parameter of \`${fn}\` as \`${input.inputType}\`.`,
+      outputType ? `  The \`Output\` of \`${fn}\` is \`${outputType}\` (\`import type { ${outputType} } from '${input.importPath}'\`), and the route returns what the function returns.` : '',
       input.shapes.length ? `  The catalog types: ${input.shapes.join('; ')}. Read the key, the origin and the items of the message from these fields, none else.` : '',
     ].filter(Boolean).join('\n'));
   }
@@ -851,7 +901,7 @@ export function portWriteSection(entityId: string, ontologySource: string | null
  * the same. The L4 asks the rebuild of a catalog to be all or nothing, and the model, not seeing that the route already does it, wrote code that refused for want of
  * a transaction. A function no route calls (the scheduled `onTick`) gets nothing. '' when no function in focus is called by a route.
  */
-export async function transactionSection(ctx: M12Context, unit: M12Unit, facts: M12WorkflowFacts, focus?: string): Promise<string> {
+export async function transactionSection(ctx: M12Context, unit: M12Unit, facts: M12WorkflowFacts, focus?: string, outsideCall = false): Promise<string> {
   const receiving = new Set(processReceives(unit.definition.data).values());
   const routes: string[] = [];
   for (const other of ctx.units.filter(item => item.layer === 'requests')) {
@@ -864,6 +914,7 @@ export async function transactionSection(ctx: M12Context, unit: M12Unit, facts: 
   return section('The transaction of the route', [
     `The route that calls ${names.map(fn => `\`${fn}\``).join(', ')} already runs ${names.length > 1 ? 'them' : 'it'} inside \`ctx.data.moduleData.runInTransaction\` and passes ${names.length > 1 ? 'them' : 'it'} the context bound to that transaction, as \`ctx\`.`,
     'Every write through the ports and the usecases with that `ctx` is all or nothing. Write the function as one pass over that `ctx`; open no transaction of your own, and take the L4 requirement of all or nothing as met by this.',
+    ...(outsideCall ? ['A call to a system outside the module is not undone by the transaction. The function makes that call once and stores the result. What stops a repeat send is what the L4 says (for example, look the request up by its reference before calling). Without that in the L4, a failure between the call and the commit can repeat the call, and that does not ask for a protocol of its own.'] : []),
   ].join('\n'));
 }
 
