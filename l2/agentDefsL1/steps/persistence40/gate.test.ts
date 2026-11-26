@@ -779,8 +779,8 @@ const timedMessage = {
         ...messageEntity.Message.record.fields,
         robotId: { type: 'text', required: true },
         telegramId: { type: 'text', required: true },
-        sentAt: { type: 'datetime', required: true },
-        editedAt: { type: 'datetime', required: false },
+        sentAt: { type: 'timestamp', required: true },
+        editedAt: { type: 'timestamp', required: false },
       },
     },
   },
@@ -833,7 +833,7 @@ void test('d1_295: timeField that is missing, optional, or not a date and time i
   const missing = withField(undefined, 'sentAt');
   assert.equal(missing.ok, false);
   assert.equal(missing.problems.some(problem => problem.code === 'TIME_FIELD' && problem.path === 'Message' && problem.message.includes('not a field')), true);
-  const optional = withField({ type: 'datetime', required: false }, 'sentAt');
+  const optional = withField({ type: 'timestamp', required: false }, 'sentAt');
   assert.equal(optional.problems.some(problem => problem.code === 'TIME_FIELD' && problem.path === 'Message' && problem.message.includes('not required')), true);
   const text = withField({ type: 'text', required: true }, 'sentAt');
   assert.equal(text.problems.some(problem => problem.code === 'TIME_FIELD' && problem.path === 'Message' && problem.message.includes('not a date and time')), true);
@@ -854,7 +854,7 @@ void test('d1_295: timeField on an entity that is not a written time series is a
         record: {
           fields: {
             ...noteEntity.Note.record.fields,
-            sentAt: { type: 'datetime', required: true },
+            sentAt: { type: 'timestamp', required: true },
           },
         },
       },

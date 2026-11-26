@@ -618,7 +618,7 @@ function timeFieldOf(
   } else if (!leaf.required) {
     error(problems, 'TIME_FIELD', entityId, `Entity ${entityId} timeField ${name} is not required.`);
     blocked.add(entityId);
-  } else if (leaf.type !== 'datetime') {
+  } else if (leaf.type !== 'timestamp') {
     error(problems, 'TIME_FIELD', entityId, `Entity ${entityId} timeField ${name} is not a date and time.`);
     blocked.add(entityId);
   }

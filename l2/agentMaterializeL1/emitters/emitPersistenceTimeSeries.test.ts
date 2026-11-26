@@ -85,7 +85,7 @@ test('d1_294: a table without the series mark is unchanged', () => {
   assert.equal(built.definition.columns.some(column => column.name === 'occurredAt'), false);
 });
 
-test('d1_295: a series timeField is the hypertable column and is TIMESTAMPTZ; other datetime fields stay TEXT', () => {
+test('d1_295: a series timeField is the hypertable column and is TIMESTAMPTZ, as every timestamp field', () => {
   const built = buildLocalTable(
     table({
       timeSeries: true,
@@ -98,8 +98,8 @@ test('d1_295: a series timeField is the hypertable column and is TIMESTAMPTZ; ot
       ...fields,
       { name: 'robotId', type: 'text' },
       { name: 'telegramId', type: 'text' },
-      { name: 'sentAt', type: 'datetime' },
-      { name: 'editedAt', type: 'datetime', indexed: true },
+      { name: 'sentAt', type: 'timestamp' },
+      { name: 'editedAt', type: 'timestamp', indexed: true },
     ]),
   );
   assert.equal('code' in built, false);
@@ -111,7 +111,7 @@ test('d1_295: a series timeField is the hypertable column and is TIMESTAMPTZ; ot
   });
   assert.deepEqual(built.definition.columns.find(column => column.name === 'editedAt'), {
     name: 'editedAt',
-    postgresType: 'TEXT',
+    postgresType: 'TIMESTAMPTZ',
     nullable: true,
   });
   const source = JSON.stringify(built.definition, null, 2);
