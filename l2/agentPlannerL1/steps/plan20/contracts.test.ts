@@ -711,6 +711,72 @@ void test('two entities sharing aprovar become aprovarA and aprovarB, each keepi
   assert.ok(planned.file.endpoints.some(item => item.usecaseRef === 'aprovarB' && item.route.endsWith('cmdAprovarB')));
 });
 
+const ENTITY = (entityId: string): P1EntityView => ({
+  entityId, family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [], rules: [],
+});
+
+function planWithWorkflows(workflows: unknown[] | undefined, pages: unknown[]) {
+  return planP1Backend({
+    needs: parseP1Needs({
+      schemaVersion: '2026-09-21-p2-needs-v1',
+      moduleName: 'sample',
+      device: 'web',
+      pages,
+    }),
+    inventory: EMPTY_INVENTORY,
+    ontology: [ENTITY('Thing'), ENTITY('Other')],
+    now: AT,
+    ...(workflows ? { workflows } : {}),
+  });
+}
+
+void test('a mechanical process transition outside any journey is a planned usecase and not a page endpoint', () => {
+  const planned = planWithWorkflows([
+    { processId: 'apply', tasks: [{ taskId: 'block', kind: 'mechanical', entityRef: 'Thing', effect: 'transition', transitionRef: 'blockByCm' }] },
+  ], [{ pageId: 'home', actors: ['person'], reads: [], writes: [] }]);
+  const usecase = planned.file.usecases.find(item => item.usecaseId === 'blockByCm');
+  assert.equal(usecase?.entity, 'Thing');
+  assert.equal(usecase?.operation, 'transition');
+  assert.equal(usecase?.transitionRef, 'blockByCm');
+  assert.equal(usecase?.status, 'toCreate');
+  assert.deepEqual(usecase?.ports, ['Thing']);
+  assert.equal(planned.file.endpoints.length, 0);
+});
+
+void test('the same transition from a page and a process is one usecase', () => {
+  const planned = planWithWorkflows([
+    { processId: 'apply', tasks: [{ taskId: 'block', kind: 'mechanical', entityRef: 'Thing', effect: 'transition', transitionRef: 'blockByCm' }] },
+  ], [{
+    pageId: 'home',
+    actors: ['person'],
+    reads: [],
+    writes: [{ entity: 'Thing', operation: 'transition', transitionRef: 'blockByCm', from: ['journey:block/act'] }],
+  }]);
+  assert.equal(planned.file.usecases.filter(item => item.usecaseId === 'blockByCm').length, 1);
+  assert.equal(planned.file.endpoints.filter(item => item.usecaseRef === 'blockByCm').length, 1);
+});
+
+void test('a human task or a task without transitionRef adds no usecase', () => {
+  const planned = planWithWorkflows([
+    { processId: 'apply', tasks: [
+      { taskId: 'ask', kind: 'human', entityRef: 'Thing', effect: 'transition', transitionRef: 'askPerson' },
+      { taskId: 'note', kind: 'llm', entityRef: 'Thing', effect: 'transition' },
+      { taskId: 'make', kind: 'mechanical', entityRef: 'Thing', effect: 'create' },
+    ] },
+  ], [{ pageId: 'home', actors: ['person'], reads: [], writes: [] }]);
+  assert.deepEqual(planned.file.usecases, []);
+});
+
+void test('absent workflows keep the page-only plan', () => {
+  const planned = planWithWorkflows(undefined, [{
+    pageId: 'home',
+    actors: ['person'],
+    reads: [],
+    writes: [{ entity: 'Thing', operation: 'create', from: ['journey:make/act'] }],
+  }]);
+  assert.deepEqual(planned.file.usecases.map(item => item.usecaseId), ['createThing']);
+});
+
 void test('same transitionRef on two entities suffixes the entity on every colliding side', () => {
   const needs = parseP1Needs({
     schemaVersion: '2026-09-21-p2-needs-v1',

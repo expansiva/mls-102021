@@ -4,6 +4,7 @@ import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   accessFile,
   integrationFile,
+  workflowsFile,
   displayPath,
   ontologyEntityFile,
   ontologyIndexFile,
@@ -88,6 +89,8 @@ export interface P1PlanSources {
   actors: P1ActorView[];
   /** `connections[]` of `integration.defs.ts` (d1_259); empty when the module has none. */
   integration: unknown[];
+  /** `processes[]` of `workflows.defs.ts`; empty when the module has none. */
+  workflows: unknown[];
 }
 
 export interface P1DeliverPlanResult {
@@ -166,6 +169,12 @@ function connectionsOf(integration: unknown): unknown[] {
   return Array.isArray(rows) ? rows : [];
 }
 
+/** `processes[]` of the workflows artifact; empty when the file is absent or has no list. */
+function processesOf(workflows: unknown): unknown[] {
+  const rows = workflows !== null && typeof workflows === 'object' ? (workflows as { processes?: unknown }).processes : undefined;
+  return Array.isArray(rows) ? rows : [];
+}
+
 export async function loadP1PlanSources(moduleName: string): Promise<P1PlanSources> {
   const pipeline = await requirePipeline(moduleName);
   const rawNeeds = await readJson<unknown>(p1NeedsFile(moduleName, pipelineDevice(pipeline)));
@@ -176,6 +185,7 @@ export async function loadP1PlanSources(moduleName: string): Promise<P1PlanSourc
   // Missing access ⇒ no actors; each needs actor then carries ACTOR_UNDECLARED in testSupport.
   const access = await readDefsJson<unknown>(accessFile(moduleName));
   const integration = await readDefsJson<unknown>(integrationFile(moduleName));
+  const workflows = await readDefsJson<unknown>(workflowsFile(moduleName));
   return {
     needs,
     inventory: pipeline.inventory,
@@ -184,6 +194,7 @@ export async function loadP1PlanSources(moduleName: string): Promise<P1PlanSourc
     l4diff: rawDiff === null ? null : parseP1L4Diff(rawDiff),
     actors: access === null ? [] : parseP1Actors(access),
     integration: connectionsOf(integration),
+    workflows: processesOf(workflows),
   };
 }
 
@@ -202,6 +213,7 @@ export async function executeP1Plan(
     l4diff: sources.l4diff,
     actors: sources.actors,
     integration: sources.integration,
+    workflows: sources.workflows,
   });
   const repaired = repairP1Backend(planned.file, sources.needs, sources.ontology, sources.inventory, sources.l4diff, sources.actors);
   const gate = validateP1Backend(repaired, sources.needs, sources.ontology);
@@ -231,6 +243,7 @@ export async function beforeP1PlanPromptStep(
       l4diff: sources.l4diff,
       actors: sources.actors,
       integration: sources.integration,
+      workflows: sources.workflows,
     });
     if (!planned.unresolved.length && !parsed.gateFeedback) {
       const mutationParent = findMutableParent(context, parentStep);
@@ -334,6 +347,7 @@ export async function afterP1PlanPromptStep(
       l4diff: sources.l4diff,
       actors: sources.actors,
       integration: sources.integration,
+      workflows: sources.workflows,
     });
     let draft = normalizeP1Backend(payload, {
       needs: sources.needs,
@@ -344,6 +358,7 @@ export async function afterP1PlanPromptStep(
       l4diff: sources.l4diff,
       actors: sources.actors,
       integration: sources.integration,
+      workflows: sources.workflows,
     });
     if (!draft.endpoints.length) draft = planned.file;
     draft = repairP1Backend(draft, sources.needs, sources.ontology, sources.inventory, sources.l4diff, sources.actors);

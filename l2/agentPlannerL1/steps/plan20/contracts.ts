@@ -4,7 +4,7 @@ import { integrationImplied } from '/_102021_/l2/helpers/connections/integration
 import { classifyEntityKind } from '/_102021_/l2/agentPlannerL1/helpers/defsSource.js';
 import type { L1Inventory, L1InventoryUsecase } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 import { P1_DEVICE, P1_NEEDS_SCHEMA, type P1Device } from '/_102021_/l2/agentPlannerL1/helpers/p1Core.js';
-import { L1_OPERATIONS, L1_OPERATION_TRAITS, collidingTransitionIds, isL1Operation, transitionUsecaseId, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
+import { L1_OPERATIONS, L1_OPERATION_TRAITS, collidingTransitionIds, isL1Operation, transitionUsecaseId, type L1Operation, type L1TransitionWrite } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import type { PoolMessage } from '/_102035_/l2/solution/pool.js';
 import type {
   PoolBackendChange,
@@ -143,6 +143,8 @@ export interface P1PlanBackendInput {
   actors?: readonly P1ActorView[];
   /** `integration.defs.ts` `connections[]` (d1_259): what the L4 says is called or served outside the pages. Absent ⇒ none. */
   integration?: readonly unknown[];
+  /** `workflows.defs.ts` `processes[]`. Absent ⇒ none. A mechanical/llm task with `effect: 'transition'` adds that transition usecase when no page already planned it. */
+  workflows?: readonly unknown[];
 }
 
 export interface P1PlanBackendResult {
@@ -392,7 +394,7 @@ export function checkP1Resolution(value: unknown): string[] {
 
 export function planP1Backend(input: P1PlanBackendInput): P1PlanBackendResult {
   const ontology = new Map(input.ontology.map(entity => [entity.entityId, entity]));
-  const matched = matchCandidates(collectCandidates(input.needs, ontology), input.inventory, ontology);
+  const matched = matchCandidates(collectCandidates(input.needs, ontology, input.workflows ?? []), input.inventory, ontology);
   let unresolved = collectUnresolved(matched, input.inventory, input.needs);
   let usecases = matched.usecases;
   let endpoints = matched.endpoints;
@@ -547,7 +549,27 @@ interface Matched {
   endpoints: EndpointDraft[];
 }
 
-function collectCandidates(needs: P1NeedsView, ontology: Map<string, P1EntityView>): Matched {
+/** Transition writes of process tasks (`mechanical`/`llm`, `effect: 'transition'`) that name an entity and a transition. */
+function processTransitionWrites(workflows: readonly unknown[]): L1TransitionWrite[] {
+  const writes: L1TransitionWrite[] = [];
+  for (const process of workflows) {
+    if (!process || typeof process !== 'object') continue;
+    const tasks = (process as { tasks?: unknown }).tasks;
+    if (!Array.isArray(tasks)) continue;
+    for (const task of tasks) {
+      if (!task || typeof task !== 'object') continue;
+      const row = task as { kind?: unknown; effect?: unknown; entityRef?: unknown; transitionRef?: unknown };
+      if (row.kind !== 'mechanical' && row.kind !== 'llm') continue;
+      if (row.effect !== 'transition') continue;
+      if (typeof row.entityRef !== 'string' || !row.entityRef) continue;
+      if (typeof row.transitionRef !== 'string' || !row.transitionRef) continue;
+      writes.push({ entity: row.entityRef, transitionRef: row.transitionRef });
+    }
+  }
+  return writes;
+}
+
+function collectCandidates(needs: P1NeedsView, ontology: Map<string, P1EntityView>, workflows: readonly unknown[] = []): Matched {
   const usecases = new Map<string, UsecaseDraft>();
   const endpoints: EndpointDraft[] = [];
   const addUsecase = (draft: UsecaseDraft) => {
@@ -563,9 +585,13 @@ function collectCandidates(needs: P1NeedsView, ontology: Map<string, P1EntityVie
     endpoints.push({ page, kind, usecaseId });
   };
 
-  const collidingTransitions = collidingTransitionIds(needs.pages.flatMap(page => page.writes
-    .filter(write => write.operation === 'transition')
-    .map(write => ({ entity: write.entity, transitionRef: write.transitionRef || 'transition' }))));
+  const processWrites = processTransitionWrites(workflows);
+  const collidingTransitions = collidingTransitionIds([
+    ...needs.pages.flatMap(page => page.writes
+      .filter(write => write.operation === 'transition')
+      .map(write => ({ entity: write.entity, transitionRef: write.transitionRef || 'transition' }))),
+    ...processWrites,
+  ]);
   for (const page of needs.pages) {
     for (const read of page.reads) {
       const family = familyFor(read.entity, ontology, read.family);
@@ -607,6 +633,23 @@ function collectCandidates(needs: P1NeedsView, ontology: Map<string, P1EntityVie
       });
       addEndpoint(page.pageId, 'cmd', usecaseId);
     }
+  }
+  for (const write of processWrites) {
+    const family = familyFor(write.entity, ontology);
+    const usecaseId = transitionUsecaseId(write.entity, write.transitionRef, collidingTransitions);
+    addUsecase({
+      usecaseId,
+      entity: write.entity,
+      operation: 'transition',
+      transitionRef: write.transitionRef,
+      ports: portEntities(write.entity, family, ontology),
+      status: 'toCreate',
+      existing: '',
+      reason: `no l1 usecase for ${write.entity}.transition`,
+      nameMatched: false,
+      family,
+      derived: [],
+    });
   }
   return { usecases: [...usecases.values()], endpoints };
 }
