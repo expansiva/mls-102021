@@ -15,6 +15,8 @@ export interface SmokeCaseResult {
   route: string;
   pass: 'happy' | 'failure';
   kind: string;
+  /** d1_330: which way an arrival with a union input was called ('' or absent when one). */
+  variant?: string;
   /** `ok`: the route answered; `refused`: a 4xx the route chose; `error`: an exception that is not an AppError; `failed`: a 5xx or a 501. */
   verdict: 'ok' | 'refused' | 'error' | 'failed';
   status: number | null;
@@ -136,6 +138,7 @@ function stubFor(gateway, pass) {
   return stub;
 }
 
+let counter = 0;
 async function main() {
   const plan = JSON.parse(readFileSync(process.argv[2], 'utf8'));
   const datasets = seedRows();
@@ -143,19 +146,21 @@ async function main() {
     for (const item of plan.routes) {
       const route = ROUTES.find(candidate => candidate.key === item.route);
       let line;
-      if (!route) { process.stdout.write('RESULT ' + JSON.stringify({ route: item.route, pass, kind: item.kind, verdict: 'error', status: null, code: 'NO_HANDLER', message: 'no controller route', output: null }) + '\\n'); continue; }
+      if (!route) { process.stdout.write('RESULT ' + JSON.stringify({ route: item.route, pass, kind: item.kind, variant: item.variant ?? null, verdict: 'error', status: null, code: 'NO_HANDLER', message: 'no controller route', output: null }) + '\\n'); continue; }
       for (const gateway of plan.gateways) registerRepository(gateway.name, () => stubFor(gateway, pass));
       const scope = item.actor ? [plan.module + ':' + item.actor] : [];
       const person = { mdmId: '00000000-0000-4000-8000-000000000001', name: 'Smoke Person' };
       const session = { actorId: item.actor || undefined, actorScope: scope, actorSession: { actorId: item.actor || undefined, scope }, person, organizationId: '00000000-0000-4000-8000-0000000000aa' };
       const ctx = createRequestContext(createMemoryDataRuntime({ sandbox: true }), { sandbox: true, sessionContext: session });
+      // An arrival comes through the message path: the process reads the identity of the arrival from the meta of the request.
+      if (item.arrival) { counter += 1; ctx.requestMeta = { requestId: 'smoke-' + counter, source: 'message', connection: { idempotencyKey: 'smoke-' + counter } }; }
       try {
         const response = await route.handler({ request: { routine: item.route, params: bind(item.input, datasets), meta: { source: 'test', session } }, ctx });
-        line = { route: item.route, pass, kind: item.kind, verdict: response && response.ok === false ? 'refused' : 'ok', status: response?.status ?? 200, code: null, message: null, output: response && response.ok === false ? null : (response?.data ?? response) };
+        line = { route: item.route, pass, kind: item.kind, variant: item.variant ?? null, verdict: response && response.ok === false ? 'refused' : 'ok', status: response?.status ?? 200, code: null, message: null, output: response && response.ok === false ? null : (response?.data ?? response) };
       } catch (error) {
         const status = typeof error?.status === 'number' ? error.status : null;
         const isApp = error instanceof AppError || typeof error?.code === 'string';
-        line = { route: item.route, pass, kind: item.kind, verdict: isApp ? (status !== null && status >= 500 ? 'failed' : 'refused') : 'error', status, code: error?.code ?? 'ERROR', message: String(error?.message ?? error).slice(0, 300), output: null };
+        line = { route: item.route, pass, kind: item.kind, variant: item.variant ?? null, verdict: isApp ? (status !== null && status >= 500 ? 'failed' : 'refused') : 'error', status, code: error?.code ?? 'ERROR', message: String(error?.message ?? error).slice(0, 300), output: null };
       }
       process.stdout.write('RESULT ' + JSON.stringify(line) + '\\n');
     }
@@ -213,7 +218,7 @@ export function runSmoke(input: { tree: string; project: number; module: string;
   const raw = `${run.stdout}\n${run.stderr}`;
   const lines = `${run.stdout}`.split('\n').filter(line => line.startsWith('RESULT ')).map(line => JSON.parse(line.slice('RESULT '.length)) as Omit<SmokeCaseResult, 'conforms'>);
   const results = lines.map(line => {
-    const route = plan.routes.find(item => item.route === line.route);
+    const route = plan.routes.find(item => item.route === line.route && (item.variant ?? null) === (line.variant ?? null));
     let conforms: string[] = [];
     if (route && line.verdict === 'ok') {
       const table = typeTableOf([plan.typeSources[route.page] ?? '']);

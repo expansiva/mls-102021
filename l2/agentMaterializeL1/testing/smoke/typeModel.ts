@@ -49,8 +49,8 @@ function resolved(node: ts.TypeNode, table: TypeTable, seen: ReadonlySet<string>
 
 const isNullish = (node: ts.TypeNode): boolean => node.kind === ts.SyntaxKind.NullKeyword || node.kind === ts.SyntaxKind.UndefinedKeyword || (ts.isLiteralTypeNode(node) && node.literal.kind === ts.SyntaxKind.NullKeyword);
 
-/** The smallest valid value. `prefer`: for a union, the member that has a literal `true` (success) or `false` (failure) field, when asked. */
-export function sampleOf(node: ts.TypeNode, table: TypeTable, options: { prefer?: 'success' | 'failure' } = {}, seen: ReadonlySet<string> = new Set(), depth = 0): unknown {
+/** The smallest valid value. `prefer`: for a union, the member that has a literal `true` (success) or `false` (failure) field, when asked. `variant`: otherwise the nth member of every union (d1_330: each way to call an arrival). */
+export function sampleOf(node: ts.TypeNode, table: TypeTable, options: { prefer?: 'success' | 'failure'; variant?: number } = {}, seen: ReadonlySet<string> = new Set(), depth = 0): unknown {
   if (depth > 8) return undefined;
   const { node: type, seen: next } = resolved(node, table, seen);
   switch (type.kind) {
@@ -87,7 +87,7 @@ export function sampleOf(node: ts.TypeNode, table: TypeTable, options: { prefer?
       return ts.isTypeLiteralNode(inner) && members(inner).some(item => ts.isLiteralTypeNode(item.type) && item.type.literal.kind === (flag ? ts.SyntaxKind.TrueKeyword : ts.SyntaxKind.FalseKeyword));
     };
     const wanted = options.prefer === 'failure' ? candidates.find(item => marked(item, false)) : options.prefer === 'success' ? candidates.find(item => marked(item, true)) : undefined;
-    const chosen = wanted ?? candidates[0];
+    const chosen = wanted ?? candidates[Math.min(options.variant ?? 0, Math.max(candidates.length - 1, 0))];
     return chosen ? sampleOf(chosen, table, options, next, depth + 1) : null;
   }
   if (ts.isIntersectionTypeNode(type)) {

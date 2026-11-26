@@ -20,6 +20,10 @@ export interface SmokeRoute {
   input: Record<string, unknown>;
   inputType: string;
   outputType: string;
+  /** d1_330: an operation the module serves (an arrival), not a route of a page contract. */
+  arrival?: boolean;
+  /** d1_330: which member of a union input this case calls ('' when the input has one shape): the leaf paths of the input. */
+  variant?: string;
 }
 
 export interface SmokeGatewayMethod {
@@ -160,6 +164,64 @@ function gatewaysOf(tree: string, project: number, module: string, base: string)
   return gateways;
 }
 
+function leafPaths(value: unknown, at = ''): string[] {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return Object.entries(value as Record<string, unknown>).flatMap(([key, item]) => leafPaths(item, at ? `${at}.${key}` : key));
+  return [at];
+}
+
+/** A string leaf named `<stem>Id` or `<stem>Ref` points at the stored record of the entity whose name ends with the stem; `id` alone is not guessed. */
+function bindRefs(value: unknown, entities: readonly string[], key = ''): unknown {
+  if (typeof value === 'string') {
+    const stem = /^(.+)(?:Id|Ref)$/u.exec(key)?.[1];
+    const entity = stem ? entityOfIdParam(`${stem}Id`, entities) : '';
+    return entity ? `<seed:${entity}.id>` : value;
+  }
+  if (Array.isArray(value)) return value.map(item => bindRefs(item, entities, key));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([name, item]) => [name, bindRefs(item, entities, name)]));
+  return value;
+}
+
+/**
+ * d1_330: the operations the module serves. A request service def line with `serves: "<connection>.<operation>"` is an arrival; its input is made from the type the catalog
+ * names for the operation (the platform's file, or the declaration the module emitted), one case per way a union input can be called.
+ */
+function arrivalRoutes(tree: string, module: string, base: string): { routes: SmokeRoute[]; typeSources: Record<string, string> } {
+  const routes: SmokeRoute[] = [];
+  const typeSources: Record<string, string> = {};
+  const entities = filesUnder(path.join(tree, 'l1', module, 'layer_3_domain', 'entities'), '.ts').filter(file => !file.endsWith('.defs.ts')).map(file => { const name = path.basename(file, '.ts'); return name.charAt(0).toUpperCase() + name.slice(1); });
+  for (const file of filesUnder(path.join(tree, 'l1', module, 'layer_2_application', 'requests'), '.defs.ts')) {
+    const match = /=\s*(\{[\s\S]*\})\s*as const/u.exec(readFileSync(file, 'utf8'));
+    if (!match) continue;
+    let requests: Array<{ route?: string; serves?: string }> = [];
+    try { requests = (JSON.parse(match[1]) as { data?: { requests?: Array<{ route?: string; serves?: string }> } }).data?.requests ?? []; } catch { continue; }
+    for (const request of requests) {
+      const served = /^([a-z][A-Za-z0-9]*)\.([a-z][A-Za-z0-9]*)$/u.exec(String(request.serves ?? ''));
+      if (!served || !request.route) continue;
+      const [, connection, operation] = served;
+      const candidates = [path.join(base, 'mls-102034', 'l2', 'shared', 'contracts', 'connections', `${connection}.ts`), path.join(tree, 'l1', module, 'layer_1_external', 'connections', `${connection}.ts`)];
+      const source = candidates.map(readIf).find(text => text !== null && new RegExp(`"operationId":\\s*"${operation}"`, 'u').test(text));
+      if (!source) continue;
+      const start = source.search(new RegExp(`"operationId":\\s*"${operation}"`, 'u'));
+      const next = source.indexOf('"operationId"', start + 10);
+      const line = source.slice(start, next < 0 ? start + 1500 : next);
+      const inputType = /"inputType":\s*"(\w+)"/u.exec(line)?.[1];
+      const outputType = /"outputType":\s*"(\w+)"/u.exec(line)?.[1] ?? 'unknown';
+      if (!inputType) continue;
+      const page = `arrival:${connection}`;
+      typeSources[page] = source;
+      const table = typeTableOf([source]);
+      const samples = new Map<string, unknown>();
+      for (let variant = 0; variant < 4; variant += 1) {
+        const sample = sampleOf(typeNodeOf(inputType), table, { variant });
+        const input = bindRefs(sample && typeof sample === 'object' && !Array.isArray(sample) ? sample : {}, entities);
+        samples.set(leafPaths(input).sort().join('+'), input);
+      }
+      for (const [label, input] of samples) routes.push({ page, route: request.route, kind: 'arrival', actor: '', input: input as Record<string, unknown>, inputType, outputType, arrival: true, ...(samples.size > 1 ? { variant: label } : {}) });
+    }
+  }
+  return { routes, typeSources };
+}
+
 /** The plan of the smoke of `module` in `tree`; `base` is the root with the platform projects (`mls-102034`…). */
 export function planSmoke(tree: string, project: number, module: string, base: string): SmokePlan {
   const contracts = filesUnder(path.join(tree, 'l2', module, 'web', 'contracts'), '.defs.ts');
@@ -184,5 +246,6 @@ export function planSmoke(tree: string, project: number, module: string, base: s
       routes.push({ page: pageId, route: item.route, kind: item.kind, actor: item.actors[0] ?? '', input, inputType: item.input, outputType: item.output });
     }
   }
-  return { module, routes, gateways: gatewaysOf(tree, project, module, base), typeSources };
+  const arrivals = arrivalRoutes(tree, module, base);
+  return { module, routes: [...routes, ...arrivals.routes], gateways: gatewaysOf(tree, project, module, base), typeSources: { ...typeSources, ...arrivals.typeSources } };
 }
