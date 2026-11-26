@@ -904,8 +904,10 @@ export async function receivedInputSection(ctx: M12Context, processData: Record<
     const said = text(arrivalLineOf(await ctx.read(`_${ctx.run.project}_/l4/${ctx.run.module}/integration.defs.ts`), arrival)?.row.description);
     const output = await arrivalOutputOf(ctx, arrival);
     const emptyOutput = output ? outputReturnsEmpty(output.text) : false;
+    const outside = input.connectionId ? (await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, input.connectionId)).origin !== 'platform' : false;
     blocks.push([
       `- \`${fn}\` is called with the message of the arrival \`${arrival}\`: its input is \`${input.inputType}\`, and the route passes the whole message.`,
+      outside ? '  The value of the public address is not a field of that message. Read the only value from the `ctx` the route passes, `Object.values(ctx.requestMeta?.connection?.context?.hookParams ?? {})[0]`, whatever the name of the key. When that value is absent or empty, refuse the call; never invent a value.' : '',
       said ? `  The L4 says what this arrival does (the source; follow it, including which items of the message count): ${clip(said, 2400)}` : '',
       `  \`import type { ${input.inputType} } from '${input.importPath}'\`; type the \`input\` parameter of \`${fn}\` as \`${input.inputType}\`.`,
       output ? `  The \`Output\` of \`${fn}\` is \`${output.type}\` (\`import type { ${output.type} } from '${input.importPath}'\`). Its definition: \`${output.text}\`${emptyOutput ? '. The function returns `{}`,' : ''} and the route returns what the function returns.` : '',
@@ -947,9 +949,17 @@ export async function transactionSection(ctx: M12Context, unit: M12Unit, facts: 
   const inRoute = (fn: string): boolean => routes.some(code => code.includes('runInTransaction') && new RegExp(`(?<![\\w$.])${fn}\\s*\\(`, 'u').test(code));
   const names = facts.functions.filter(fn => (!focus || focus === fn) && (receiving.has(fn) || inRoute(fn)));
   if (!names.length) return '';
+  const outsideArrival = new Set<string>();
+  for (const [arrival, fn] of processReceives(unit.definition.data)) {
+    const dot = arrival.indexOf('.');
+    if (dot <= 0) continue;
+    const catalog = await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, arrival.slice(0, dot));
+    if (catalog.origin !== 'platform') outsideArrival.add(fn);
+  }
   return section('The transaction of the route', [
     `The route that calls ${names.map(fn => `\`${fn}\``).join(', ')} already runs ${names.length > 1 ? 'them' : 'it'} inside \`ctx.data.moduleData.runInTransaction\` and passes ${names.length > 1 ? 'them' : 'it'} the context bound to that transaction, as \`ctx\`.`,
     'Every write through the ports and the usecases with that `ctx` is all or nothing. Write the function as one pass over that `ctx`; open no transaction of your own, and take the L4 requirement of all or nothing as met by this.',
+    ...(names.some(fn => outsideArrival.has(fn)) ? ['When the L4 says this arrival can be refused and the record of that refusal must be kept, the function returns the refusal (its code and its reason) instead of throwing. The route awaits `ctx.data.moduleData.runInTransaction`, and after that call returns it throws `new AppError(code, message, 422)` with a rule code (not `VALIDATION_ERROR`, `INVALID_INPUT` or `VERSION_CONFLICT`); the engine then delivers the call as `refused`. When the L4 does not say the record must be kept, follow the L4 on whether the function throws.'] : []),
     ...(outsideCall ? ['A call to a system outside the module is not undone by the transaction. The function makes that call once and stores the result. What stops a repeat send is what the L4 says (for example, look the request up by its reference before calling). Without that in the L4, a failure between the call and the commit can repeat the call, and that does not ask for a protocol of its own.'] : []),
   ].join('\n'));
 }

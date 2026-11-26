@@ -414,7 +414,17 @@ void test('d1_218 s2: the route of a system outside the app is told the input is
   assert.match(loaded.human, /The route translates it into the input of the usecase or of the process it calls, which is in the vocabulary of the module, reading what the L4 says of the line/u);
   assert.match(loaded.human, /## What the module does with the message of these routes/u, 'the L4 text of the line is the source (d1_207)');
   assert.match(loaded.human, /`context\.hookParams` \(optional, `Record<string, string>`, at most one key/u, 'd1_297: the parameter of the address');
-  assert.match(loaded.human, /reads the only value of `context\.hookParams`[^\n]*whatever the name of the key/u, 'd1_300: the name does not matter');
+  assert.match(loaded.human, /the route passes the whole message to the function of the process, and the value of the address stays in `ctx` \(`Object\.values\(ctx\.requestMeta\?\.connection\?\.context\?\.hookParams \?\? \{\}\)\[0\]`, whatever the name of the key\)/u, 'd1_307: the address stays in ctx');
+  const arrived = unit('workflowProcess', 'repositoryChange', {
+    processId: 'repositoryChange',
+    trigger: { kind: 'event', event: 'github.repositoryChanged' },
+    functions: ['receiveRepositoryChange'],
+    receives: [{ function: 'receiveRepositoryChange', arrival: 'github.repositoryChanged' }],
+    operations: [],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/repositoryChange.ts`);
+  const withProcess = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [service, arrived], read } as never, service);
+  const block = withProcess.human.slice(withProcess.human.indexOf('## Workflow service of process'));
+  assert.match(block, /after that call returns it throws `new AppError\(code, message, 422\)`/u, 'd1_307: an outside arrival keeps the refusal');
   assert.equal(/robo|bot|telegram/iu.test(loaded.human.split('hookParams')[1]?.split('\n')[0] ?? ''), false, 'd1_297: generic text');
   // The recorded route takes the body as the declaration types it and hands the usecase the vocabulary of the module.
   const gate = { header: route.split('\n')[0], contractsInterface: loaded.contractsInterface, routes: loaded.routes, project: PROJECT, moduleName: MODULE, pageId: 'github', waived: new Set<string>() };
@@ -529,6 +539,8 @@ void test('d1_305 s1: a command route that reaches a process is told to open the
   const block = withProcess.human.slice(withProcess.human.indexOf('## Workflow service of process'));
   assert.ok(block.startsWith('## Workflow service of process'), 'the process block is present');
   assert.ok(block.includes(TX), 'the process block tells the route to open the transaction');
+  assert.equal(block.includes('hookParams'), false, 'd1_307: a platform arrival does not carry the address');
+  assert.equal(block.includes('AppError(code, message, 422)'), false, 'd1_307: a platform arrival does not carry the kept refusal');
   const alone = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [arrived], read } as never, arrived);
   assert.equal(alone.human.includes('## Workflow service of process'), false);
   const started = unit('workflowProcess', 'openOnly', {
