@@ -421,3 +421,29 @@ void test('d1_329: a reuse stamps the halves only when the hash did not move', a
   await dispatchRun({ scope: MODULE });
   assert.ok((JSON.parse(receiptFile().content) as { inputParts?: unknown }).inputParts);
 });
+
+void test('d1_329: the stamp counts in dry, writes only the halves, only when the hash matches, and lists the rest', async () => {
+  const { stampModule } = await import('/_102021_/l2/agentMaterializeL1/helpers/m12Stamp.js');
+  const { parseM12MessageInvocation } = await import('/_102021_/l2/agentMaterializeL1/helpers/m12Core.js');
+  assert.deepEqual(parseM12MessageInvocation('@@agentMaterializeL1 {"stamp":true,"scope":"telegram","dry":true}', PROJECT), { kind: 'stamp', project: PROJECT, scope: 'telegram', dry: true });
+  assert.equal(parseM12MessageInvocation('@@agentMaterializeL1 {"stamp":true,"target":"x"}', PROJECT).kind, 'refusal');
+  assert.equal(parseM12MessageInvocation('@@agentMaterializeL1 {"dry":true}', PROJECT).kind, 'refusal');
+  await seedReceipt(KEPT_TEXT, 'noParts');
+  const before = receiptFile().content;
+  const matching = JSON.parse(before) as { inputHash: string };
+  // The receipt now has the hash of the inputs of now and no halves: stampable. Dry changes nothing.
+  assert.deepEqual(await stampModule(PROJECT, MODULE, MODULE, true), { stamped: 1, already: 0, noReceipt: 0, mismatch: [] });
+  assert.equal(receiptFile().content, before);
+  assert.deepEqual(await stampModule(PROJECT, MODULE, MODULE, false), { stamped: 1, already: 0, noReceipt: 0, mismatch: [] });
+  const stamped = JSON.parse(receiptFile().content) as { inputHash: string; inputParts?: unknown; outputs: unknown; status: string };
+  assert.ok(stamped.inputParts);
+  assert.equal(stamped.inputHash, matching.inputHash);
+  assert.deepEqual(stamped.outputs, (JSON.parse(before) as { outputs: unknown }).outputs);
+  assert.deepEqual(await stampModule(PROJECT, MODULE, MODULE, false), { stamped: 0, already: 1, noReceipt: 0, mismatch: [] });
+  // A receipt whose hash is not the hash of the inputs stays without halves and is listed.
+  const { schemaVersion: _v, updatedAt: _u, ...old } = JSON.parse(receiptFile().content) as M12UnitStatus;
+  delete old.inputParts;
+  await writeUnitStatus(PROJECT, MODULE, { ...old, inputHash: 'sha256:old' });
+  assert.deepEqual(await stampModule(PROJECT, MODULE, MODULE, false), { stamped: 0, already: 0, noReceipt: 0, mismatch: ['usecases/openItem'] });
+  assert.equal((JSON.parse(receiptFile().content) as { inputParts?: unknown }).inputParts, undefined);
+});

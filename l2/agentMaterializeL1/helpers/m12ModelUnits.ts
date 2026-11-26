@@ -192,7 +192,7 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
           // made from the inputs of now. A reuse under a hash that moved keeps the old halves, or none (a receipt without halves stays without).
           const halves = kept || prior?.inputHash === inputHash ? { own: parts.own, deps: parts.deps } : prior?.inputParts;
           await writeUnitStatus(run.project, run.module, { ...base, status: 'reused', code: '', diagnostic: '', inputHash, outputs: prior?.outputs ?? {}, ...(halves ? { inputParts: halves } : {}), ...(prior?.notApplicable ? { notApplicable: prior.notApplicable } : {}) });
-          lines.push(`${unit.unitId}: ${kept ? 'kept, it compiles against the new dependencies' : 'reused'}`);
+          lines.push(`${unit.unitId}: ${kept ? 'kept — only a dependency moved and the file compiles against it' : 'reused'}`);
           continue;
         }
         const derived = spec.byCode ? await spec.byCode(ctx, unit) : null;
@@ -207,7 +207,7 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
           }
           const proved = await writeAndProve(ctx, unit, source, inputHash, 1);
           releaseCompileModels();
-          lines.push(`${unit.unitId}: written by code, ${proved.status === 'done' ? proved.line : `${proved.status}: ${proved.status === 'failed' ? proved.errors.join(' | ') : proved.line}`}`);
+          lines.push(`${unit.unitId}: generated — written by code, ${proved.status === 'done' ? proved.line : `${proved.status}: ${proved.status === 'failed' ? proved.errors.join(' | ') : proved.line}`}`);
           continue;
         }
         const workerArgs: M12WorkerArgs = { project: run.project, module: run.module, unitId: unit.unitId, attempt: 1, force: run.force };
@@ -225,11 +225,11 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
           }
           await writeUnitStatus(run.project, run.module, { ...base, status: 'failed', code: 'MODEL_REPAIR', attempt: 1, diagnostic, inputHash, outputs: {} });
           workers.push(addM12Step(context, step.stepId, workerStep(spec.workerAgentName, spec.layer, workerArgs)));
-          lines.push(`${unit.unitId}: dispatched to the model to repair the file on disk (${repairWith.problems.length} problem(s))`);
+          lines.push(`${unit.unitId}: repaired — only a dependency moved; the file on disk goes to the repair with ${repairWith.problems.length} problem(s)`);
           continue;
         }
         workers.push(addM12Step(context, step.stepId, workerStep(spec.workerAgentName, spec.layer, workerArgs)));
-        lines.push(`${unit.unitId}: dispatched to the model`);
+        lines.push(`${unit.unitId}: generated — dispatched to the model`);
       }
       const trace = clip([`build ${M12_BUILD}`, `${workers.length} unit(s) dispatched to the model`, ...lines].join('\n') || `No ${spec.layer} unit selected.`, 3000);
       if (!workers.length) return [updateM12Status(context, parentStep, step, hookSequential, 'completed', trace)];

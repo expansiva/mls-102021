@@ -5,6 +5,7 @@ import { M12_AGENT_NAME, M12_BUILD, M12_HELP, buildM12PlannedSteps, isM12PhasePl
 import { addM12Step, m12Result, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
 import { EMITTER_TARGET_FORMS, emitterTargetLayer, loadModuleUnits, registersModule, requestModules, selectUnits, selectedLayers, storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { orphanOfTarget, type M12Orphan } from '/_102021_/l2/agentMaterializeL1/helpers/m12Orphans.js';
+import { stampScope } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stamp.js';
 import { unitNeedsLlm } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import '/_102021_/l2/agentMaterializeL1/steps/domain10/agentM12Domain.js';
 import '/_102021_/l2/agentMaterializeL1/steps/external15/agentM12External.js';
@@ -106,6 +107,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
   const invocation = parseM12MessageInvocation(raw, Number(mls.actualProject || 0));
   if (invocation.kind === 'help') return statusOnly(M12_HELP);
   if (invocation.kind === 'refusal') return statusOnly(invocation.diagnostic);
+  if (invocation.kind === 'stamp') return statusOnly(await stampScope(invocation.project, invocation.scope, invocation.dry));
   const request: M12Request = { scope: invocation.scope, target: invocation.target, force: invocation.force, ...(invocation.scratch === undefined ? {} : { scratch: invocation.scratch }) };
   const plan = await planModules(invocation.project, request);
   if (plan.refusal) return statusOnly(plan.refusal);

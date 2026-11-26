@@ -130,6 +130,7 @@ export interface M12RunArgs extends M12Request {
 
 export type M12MessageInvocation =
   | { kind: 'help' }
+  | { kind: 'stamp'; project: number; scope: string; dry: boolean }
   | ({ kind: 'run'; project: number } & M12Request)
   | { kind: 'refusal'; diagnostic: string };
 
@@ -145,6 +146,8 @@ export const M12_HELP = [
   'target: one unit by its .defs.ts or the .ts generated from it, e.g. "_102047_/l1/comandaRestaurante/layer_2_application/usecases/createMesa.defs.ts" (regenerated regardless of reuse; a model unit whose only change is a dependency is kept when its file compiles against it and goes to the repair when it does not, unless "force": true).',
   'target also names a unit an emitter writes (it has no def): the module engine by its file, "_102047_/l1/<module>/layer_1_external/adapters/workflow/engine.ts", or "<module>/engine".',
   'target of a def that no longer exists (its .defs.ts or .ts) removes the output this agent wrote for it and its status file; a file edited by hand stays, with ORPHAN_EDITED.',
+  '{"stamp":true,"scope":"<module>","dry":true}: writes the `inputParts` of the model units whose receipt still matches their inputs, and only that (no model, no output touched); "dry" only counts and lists the receipts that do not match. A unit without them generates from scratch on a target.',
+  'target on a model unit that has an output and a stamped receipt: unchanged = reused; only a dependency moved = kept (it compiles against it) or repaired (the file on disk goes to the repair); def or L4 moved, or no stamp = generated. One line per unit says which. A recipe whose fix is in the text of the generator needs "force": true, written in the recipe.',
   'Optional "force": true regenerates reusable units from scratch and overwrites outputs this agent did not write.',
   'Order per module: domain10 -> persistence20 (recipes) -> seedRows25 (model, only tables the l4 says the module seed loads) -> usecases40 -> requests50 (model) -> controllers30 (recipe, imports the request service) -> tests60 (model) -> register70 -> finalize80. A unit whose dependency is not ready is blocked.',
 ].join('\n');
@@ -176,8 +179,15 @@ export function parseM12MessageInvocation(value: string, project: number): M12Me
   try { parsed = JSON.parse(raw); } catch { return { kind: 'refusal', diagnostic: `Invalid JSON. Nothing was executed.\n${M12_HELP}` }; }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { kind: 'refusal', diagnostic: `The JSON must be an object. Nothing was executed.\n${M12_HELP}` };
   const record = parsed as Record<string, unknown>;
-  const unknown = Object.keys(record).find(key => !['scope', 'target', 'force'].includes(key));
+  const unknown = Object.keys(record).find(key => !['scope', 'target', 'force', 'stamp', 'dry'].includes(key));
   if (unknown) return { kind: 'refusal', diagnostic: `Unknown key "${unknown}". Nothing was executed.\n${M12_HELP}` };
+  if (record.stamp === true) {
+    if (record.target || record.force || (record.scope !== undefined && typeof record.scope !== 'string')) return { kind: 'refusal', diagnostic: '"stamp" takes only "scope" and "dry". Nothing was executed.' };
+    const stampScope = typeof record.scope === 'string' ? record.scope.trim().replace(/^\/+|\/+$/gu, '') : '';
+    if (!scopeOk(stampScope)) return { kind: 'refusal', diagnostic: `Invalid scope: ${stampScope}. Nothing was executed.` };
+    return { kind: 'stamp', project, scope: stampScope, dry: record.dry === true };
+  }
+  if (record.dry !== undefined) return { kind: 'refusal', diagnostic: '"dry" belongs to "stamp". Nothing was executed.' };
   const scope = typeof record.scope === 'string' ? record.scope.trim().replace(/^\/+|\/+$/gu, '') : '';
   const target = typeof record.target === 'string' ? record.target.trim() : '';
   if (scope && target) return { kind: 'refusal', diagnostic: '"scope" and "target" cannot come together. Nothing was executed.' };

@@ -11,7 +11,16 @@ Invocation, as `agenteMaterializeL22`; the project is the current one:
   l5 registration and the report. A deeper prefix (`comandaRestaurante/layer_2_application/usecases`) selects only
   those units and does not register;
 - `@@agentMaterializeL1 {"target":"_102047_/l1/comandaRestaurante/layer_2_application/usecases/createMesa.defs.ts"}`
-  — one unit (its `.defs.ts` or its `.ts`), regenerated regardless of reuse;
+  — one unit (its `.defs.ts` or its `.ts`). A unit without a model (recipe) is regenerated. A **model unit** that has an output
+  answers in one line (d1_329): `reused` (nothing moved), `kept` (only a dependency moved and the file compiles against it:
+  only the receipt changes, cost zero), `repaired` (only a dependency moved and the file does not compile or passes no gate:
+  the file on disk goes to the existing repair) or `generated` (the def or the L4 moved, the receipt has no `inputParts`, or `force`).
+  A target alone is **not** `force` for a model unit any more: over a valid, stamped receipt it does nothing. A recipe whose fix is
+  in the text of the generator (not in a dependency) must say `"force": true` in the recipe;
+- `@@agentMaterializeL1 {"stamp":true,"scope":"<module>"}` (add `"dry":true` to only count) writes `inputParts` into the receipts
+  of the model units (external, adapter, usecases, workflows, requests) whose receipt hash equals the hash of their inputs now; nothing else,
+  no model, no output touched. A receipt that does not match is listed and stays as it is (the unit generates from scratch on a target).
+  Run it where the receipts were made (old contracts still in place), before the dependencies change;
 - the same `target` for a def that no longer exists (d1_252) removes the `.ts` this agent wrote for it, and its status file, when the bytes are still
   the recorded ones; a file edited by hand stays and is reported `ORPHAN_EDITED`;
 - `"force": true` next to a scope regenerates reusable units and overwrites outputs this agent did not write.
