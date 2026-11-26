@@ -16,6 +16,7 @@ import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context
 import { recordFieldFromGrant, recordFieldsFromGrant, scopeJoins } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { arrivalUpsertProblems, externalVersionConversionProblems, emptyCastProblems, emptyRequiredProblems, gatewayBypassProblems, recordCastProblems, requestRepositoryProblems, importSpecifiers, staticPlainErrorProblems, unknownUsecaseImportProblems, upstreamThrowWithoutReadProblems, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
+import { READ_NEVER_FAILS } from '/_102021_/l2/agentMaterializeL1/helpers/readNeverFails.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, infoOfRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { l4Process } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
@@ -884,6 +885,7 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
     `Write the request service (BFF) of page ${pageId} of module ${moduleName}, file \`${unit.outputRef}\`.`,
     `It exports \`requests\`, typed exactly \`${requestsTypeOf(contractsInterface)}\` with \`import type { ${contractsInterface} } from '${contractSpecifier}'\`: one async function per route of the contract below, keyed by the route string, each returning exactly that route's output type, so the compiler proves the shape. The page controller calls \`requests["<route>"](params, ctx)\` after it checked the grant and the input shape.`,
     'Each function does what its JSDoc says: purpose, input, processing (filters, rules, compositions, calculations) and output, returning exactly the output type of the contract.',
+    READ_NEVER_FAILS,
   ].join('\n')));
   parts.push(section(`Contract ${contractRef} (the source of truth)`, fence('ts', contractText)));
   // Compact JSON: the def is a hint and its output tree is the largest section; indented, consultas (agendaClinica)
@@ -1237,7 +1239,18 @@ export function requestGate(code: string, input: {
   }
   if (/\blocalStorage\b|\bsessionStorage\b/u.test(code)) problems.push('No browser storage.');
   if (/catch\s*(\([^)]*\))?\s*\{\s*\}/u.test(code)) problems.push('No empty catch: an error names its cause.');
+  problems.push(...notImplementedProblems(code));
   return problems;
+}
+
+/**
+ * d1_313: a route that ends in `NOT_IMPLEMENTED`, or answers 501, does not close as materialized: the screen would show an error for a button the module declares. When a usecase of
+ * `uses` does what the route needs, the route calls it; when the source really lacks it, the route says so as a source gap, not as a function that throws.
+ */
+export function notImplementedProblems(code: string): string[] {
+  const clean = withoutComments(code);
+  if (!/['"`]NOT_IMPLEMENTED['"`]/u.test(clean) && !/new\s+AppError\s*\([^;]*?,\s*501\s*[,)]/u.test(clean)) return [];
+  return ['NOT_IMPLEMENTED: a route never throws `NOT_IMPLEMENTED` or answers 501. Call the usecase of `uses` that does what the route needs (read its name and its def: the one that calls the outside system is named for the step); if none does, the route cannot be written from this source: say so as a source gap.'];
 }
 
 /**

@@ -8,13 +8,14 @@ import { connectionCatalogSource, siblingDeclarationImports } from '/_102021_/l2
 import { emitUsecase, emittedValueExports, ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { catalogOperations, expectVersionType } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
+import { READ_NEVER_FAILS } from '/_102021_/l2/agentMaterializeL1/helpers/readNeverFails.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { flatFieldsOf, usecaseInputsOf } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
 import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
 import { identityField, versionField } from '/_102021_/l2/agentMaterializeL1/emitters/domainOptional.js';
 import { dependencyUnits, recipeDraft, rulesToEnforce, rulesUnbound, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
-import { callInputSourceText, connectionRowsOf, externalEntityIds, externalRepositoryPort, gatewayNameOf, moduleGatewayNames, repositoryPortNames, usecaseGate, type M12CallInputs, type M12ChildRecord, type M12ConsumerCall, type M12EventPublisher, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { callInputSourceText, connectionRowsOf, externalEntityIds, externalRepositoryPort, gatewayNameOf, moduleGatewayNames, repositoryPortNames, typeMemberNames, usecaseGate, type M12CallInputs, type M12ChildRecord, type M12ConsumerCall, type M12GatewayOutput, type M12EventPublisher, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { MDM_LIST_USERS_PAGE_SIZE_MAX } from '/_102021_/l2/agentMaterializeL1/helpers/mdmPlatformLimits.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
@@ -314,10 +315,45 @@ export async function usecaseStringVersion(ctx: M12Context, unit: M12Unit): Prom
   return false;
 }
 
+/** d1_313: per call the usecase consumes, the field names of the catalog output type (every member of a union), when the type is a plain object type or a union of them. */
+export async function gatewayOutputsOf(ctx: M12Context, functionName: string, artifactId: string): Promise<M12GatewayOutput[]> {
+  const out: M12GatewayOutput[] = [];
+  for (const call of consumerCallsOf(ctx, functionName, artifactId)) {
+    const source = (await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, call.connectionId)).source;
+    const operation = source ? catalogOperations(source)?.find(item => item.operationId === call.operationId) : undefined;
+    if (!source || !operation?.outputType) continue;
+    const fields = typeMemberNames(catalogTypeBody(source, operation.outputType));
+    if (fields) out.push({ operationId: call.operationId, fields });
+  }
+  return out;
+}
+
 /** `data.calls` of the usecase def, as the gate and the context read it (d1_269). Nothing when the def has none. */
 export function callInputsOfDef(unit: M12Unit): M12CallInputs[] {
   const value = unit.definition.data.calls;
   return Array.isArray(value) ? value.flatMap(row => row && typeof row === 'object' && typeof (row as { call?: unknown }).call === 'string' && Array.isArray((row as { input?: unknown }).input) ? [row as M12CallInputs] : []) : [];
+}
+
+/**
+ * d1_313: a type the catalog declares as a union of object types (`type X = { success: true; name } | { success: false; reason }`, with or without a leading `|`),
+ * on one line, every member whole. The model reads the fields each answer has, and the gate (`usecaseGate`) refuses a field no member has. '' for anything else.
+ */
+export function catalogUnionBody(source: string, name: string): string {
+  const head = new RegExp(`export\\s+type\\s+${name}\\s*=\\s*`, 'u').exec(source);
+  if (!head) return '';
+  let depth = 0;
+  let end = head.index + head[0].length;
+  for (; end < source.length; end += 1) {
+    const char = source[end];
+    if (char === '{') depth += 1;
+    else if (char === '}') depth -= 1;
+    else if (char === ';' && depth === 0) break;
+  }
+  const text = source.slice(head.index + head[0].length, end).replace(/\/\*[\s\S]*?\*\//gu, '').replace(/\/\/[^\n]*/gu, '').replace(/\s+/gu, ' ').trim().replace(/^\|\s*/u, '');
+  const members = text.split(/\}\s*\|\s*(?=\{)/u);
+  if (members.length < 2 || !members.every(member => member.trim().startsWith('{'))) return '';
+  const whole = members.map((member, index) => (index < members.length - 1 ? `${member.trim()} }` : member.trim())).join(' | ');
+  return whole.length <= 900 ? whole : '';
 }
 
 /**
@@ -326,6 +362,8 @@ export function callInputsOfDef(unit: M12Unit): M12CallInputs[] {
  */
 export function catalogTypeBody(source: string | null, name: string): string {
   if (!source) return '';
+  const union = catalogUnionBody(source, name);
+  if (union) return union;
   const start = new RegExp(`export\\s+(?:interface\\s+${name}\\b[^{]*|type\\s+${name}\\s*=\\s*)\\{`, 'u').exec(source);
   if (!start) return '';
   let depth = 1;
@@ -605,6 +643,8 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
       ? `Enforce each rule listed under "Rules this usecase must apply". Each one throws \`new AppError(<code>, <message>, <status>, { ruleId: "<ruleId>" })\` when it is broken, with the rule id written as that exact string literal. A rule in that list that does not concern this operation (its text is about another entity or operation) goes to \`notApplicable\` with the reason, instead of a check that makes no sense. A rule under "Rules of this entity that no transition binds" is not listed in \`notApplicable\`.`
       : 'The def has no rule to enforce beyond its operation. Return notApplicable: [].',
   ].join('\n')));
+  const operationOfUnit = String(unit.definition.data.operation ?? '');
+  if (operationOfUnit === 'list' || operationOfUnit === 'get') parts.push(section('A read does not fail for a missing item', READ_NEVER_FAILS));
   const arrival = arrivalOf(ctx, unit);
   if (arrival) {
     parts.push(section('Arrival (process transitions, from the def)', [
@@ -1252,7 +1292,7 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const arrival = arrivalOf(ctx, unit);
   return [
     ...waived.problems,
-    ...usecaseGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), stringVersion: await usecaseStringVersion(ctx, unit), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ...(arrival ? { arrival } : {}), ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), callInputs: callInputsOfDef(unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId), childRecords: childRecordsOf(ctx, unit), usecaseInputs: await usecaseInputsOf(ctx), mdmCalls: mdmBoundCalls(unit.definition.data) }),
+    ...usecaseGate(code, { gatewayOutputs: await gatewayOutputsOf(ctx, data.functionName, unit.definition.artifactId), siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), stringVersion: await usecaseStringVersion(ctx, unit), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ...(arrival ? { arrival } : {}), ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')), publishers: eventPublishersOf(ctx, unit), callInputs: callInputsOfDef(unit), consumerCalls: consumerCallsOf(ctx, data.functionName, unit.definition.artifactId), childRecords: childRecordsOf(ctx, unit), usecaseInputs: await usecaseInputsOf(ctx), mdmCalls: mdmBoundCalls(unit.definition.data) }),
   ];
 }
 

@@ -42,6 +42,8 @@ export interface M12CodeGateInput {
   stringVersion?: boolean;
   /** Calls the def of the integration gives this usecase as consumer (`connections[].consumer`): the file must make each one (d1_219). */
   consumerCalls?: readonly M12ConsumerCall[];
+  /** Per call the usecase makes: the field names every member of the output type the catalog declares has (d1_313). Absent when the type is not read. */
+  gatewayOutputs?: readonly M12GatewayOutput[];
   /** Where the required fields of those calls that no field of the usecase names come from (`data.calls` of the def, d1_269): the file must build each one. */
   callInputs?: readonly M12CallInputs[];
   /** Events the def lists as effects of this usecase and binds to the platform publisher (d1_216): the file must publish each one. */
@@ -224,6 +226,71 @@ export function childRecordProblems(code: string, records: readonly M12ChildReco
     }));
     if (last >= 0 && create.index < last) {
       problems.push(`CHILD_RECORD_BEFORE_CALL: ${record.entityId} is recorded only after the outside system accepts: move \`create\` after the call to ${afterOperations.join(', ')}.`);
+    }
+  }
+  return problems;
+}
+
+/** The fields the output type of one operation has, over every member of a union (d1_313). */
+export interface M12GatewayOutput {
+  operationId: string;
+  fields: readonly string[];
+}
+
+/** Member names of a one-line object type or union of object types (`{ success: true; name: string } | { success: false; reason: string }`). Null when a member is not a plain object type. */
+export function typeMemberNames(body: string): string[] | null {
+  const names = new Set<string>();
+  let depth = 0;
+  let current = '';
+  const flush = (): boolean => {
+    const text = current.trim();
+    current = '';
+    if (!text) return true;
+    const match = /^(?:readonly\s+)?([A-Za-z_$][\w$]*)\??\s*(?::|$)/u.exec(text);
+    if (!match) return false;
+    names.add(match[1]);
+    return true;
+  };
+  for (const char of body) {
+    if (char === '{') {
+      depth += 1;
+      if (depth > 2) return null;
+      if (depth === 1) current = '';
+      else current += char;
+    } else if (char === '}') {
+      if (depth === 2) current += char;
+      depth -= 1;
+      if (depth === 0) { if (!flush()) return null; }
+      else if (depth < 0) return null;
+    } else if ((char === ';' || char === ',') && depth === 1) {
+      if (!flush()) return null;
+    } else if (depth >= 1) {
+      current += char;
+    } else if (char !== '|' && !/\s/u.test(char)) {
+      return null;
+    }
+  }
+  return depth === 0 && names.size > 0 ? [...names] : null;
+}
+
+/**
+ * d1_313: a field read from the answer of a gateway call that no member of the catalog's output type has: `'result' in identity`, `identity.reportedName`. The `in` form
+ * compiles whatever the name is, and the usecase then fails at run time on every answer (updateTelegramBot threw 502 on every check).
+ */
+export function gatewayOutputFieldProblems(code: string, outputs: readonly M12GatewayOutput[]): string[] {
+  const clean = withoutComments(code);
+  const problems: string[] = [];
+  for (const output of outputs) {
+    const known = new Set(output.fields);
+    const assigned = [...clean.matchAll(new RegExp(`\\b(?:const|let)\\s+([A-Za-z_$][\\w$]*)(?:\\s*:[^=]+)?\\s*=\\s*await\\s+(?:gateway|[A-Za-z_$][\\w$]*Gateway)\\s*\\.${output.operationId}\\s*\\(`, 'gu'))].map(match => match[1]);
+    for (const variable of new Set(assigned)) {
+      const read = new Set<string>();
+      for (const match of clean.matchAll(new RegExp(`['"]([A-Za-z_$][\\w$]*)['"]\\s+in\\s+${variable.replace(/\$/gu, '\\$')}\\b`, 'gu'))) read.add(match[1]);
+      for (const match of clean.matchAll(new RegExp(`(?<![\\w$.])${variable.replace(/\$/gu, '\\$')}\\s*\\??\\.([A-Za-z_$][\\w$]*)`, 'gu'))) read.add(match[1]);
+      for (const match of clean.matchAll(new RegExp(`(?<![\\w$.])${variable.replace(/\$/gu, '\\$')}\\s*\\[\\s*['"]([A-Za-z_$][\\w$]*)['"]\\s*\\]`, 'gu'))) read.add(match[1]);
+      for (const field of [...read].sort()) {
+        if (!known.has(field)) problems.push(`GATEWAY_OUTPUT_FIELD: \`${variable}\` is the answer of \`gateway.${output.operationId}\`; its type has only ${[...known].map(name => `\`${name}\``).join(', ')}, and the file reads \`${field}\`. Read the fields the catalog type names (each member of a union is an answer the call can give).`);
+      }
     }
   }
   return problems;
@@ -1008,6 +1075,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...undeclaredInputProblems(code));
   problems.push(...eventPublishProblems(code, input.publishers ?? []));
   problems.push(...consumerCallProblems(code, input.consumerCalls ?? []));
+  problems.push(...gatewayOutputFieldProblems(code, input.gatewayOutputs ?? []));
   problems.push(...gatewayInputCastProblems(code, (input.consumerCalls ?? []).map(call => call.operationId)));
   problems.push(...gatewayInputFieldProblems(code, input.callInputs ?? []));
   problems.push(...childRecordProblems(code, input.childRecords ?? [], (input.consumerCalls ?? []).map(call => call.operationId)));
