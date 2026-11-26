@@ -98,7 +98,7 @@ void test('d1_302 s1: arrival context names the reference port, the per-arrival 
     const text = texts.get(id) ?? '';
     assert.ok(text.includes(PER_ARRIVAL), id);
     assert.match(text, /occurrenceRecordId\(ctx, '[^']+', seed\)/u, id);
-    assert.match(text, /ctx\.requestMeta\.requestId/u, id);
+    assert.match(text, /ctx\.requestMeta\?\.requestId/u, id);
     assert.match(text, /executionRecording/u, id);
     assert.match(text, /toolCatalogRefresh/u, id);
     assert.ok(!text.includes(ON_CREATION), id);

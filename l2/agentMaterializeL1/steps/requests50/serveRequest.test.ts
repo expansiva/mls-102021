@@ -511,6 +511,36 @@ void test('d1_272: the connection catalog section quotes a cited type that the c
 
 // d1_275: the arrival a function of a process receives (the L4 `receives`, in the process def) is handed to that function: the context names it, and the gate asks
 // for the call, not only the import.
+void test('d1_305 s1: a command route that reaches a process is told to open the transaction and call the function inside it; a route with no process has no process block', async () => {
+  const TX = 'The command route opens `ctx.data.moduleData.runInTransaction`, builds the `ctx` bound to that transaction, and calls the function of the process inside it, passing that `ctx`.';
+  const arrived = unit('requestService', 'cm', {
+    pageId: 'cm',
+    requests: [{ route: `${MODULE}.cm.agentDraftReady`, serves: 'cm.agentDraftReady', uses: [] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/cm.ts`);
+  const process = unit('workflowProcess', 'virtualEmployeeCreation', {
+    processId: 'virtualEmployeeCreation',
+    trigger: { kind: 'manual', actorRef: 'companyAdmin' },
+    functions: ['receiveDraftOutcome'],
+    receives: [{ function: 'receiveDraftOutcome', arrival: 'cm.agentDraftReady' }],
+    operations: [],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/virtualEmployeeCreation.ts`);
+  const read = async (ref: string) => (ref.replace(/^\//u, '') === CATALOG_REF.replace(/^\//u, '') ? CATALOG : null);
+  const withProcess = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [arrived, process], read } as never, arrived);
+  const block = withProcess.human.slice(withProcess.human.indexOf('## Workflow service of process'));
+  assert.ok(block.startsWith('## Workflow service of process'), 'the process block is present');
+  assert.ok(block.includes(TX), 'the process block tells the route to open the transaction');
+  const alone = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [arrived], read } as never, arrived);
+  assert.equal(alone.human.includes('## Workflow service of process'), false);
+  const started = unit('workflowProcess', 'openOnly', {
+    processId: 'openOnly',
+    trigger: { kind: 'event', event: 'cm.agentDraftReady' },
+    functions: ['openOccurrence'],
+    operations: [],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/openOnly.ts`);
+  const withoutFunction = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [arrived, started], read } as never, arrived);
+  assert.ok(withoutFunction.human.includes(TX), 'a route that starts a process and names no function still opens the transaction');
+});
+
 void test('d1_275: the route of the arrival a process receives gets the function in the context, and the gate refuses a request that does not call it', async () => {
   const draftReady = unit('requestService', 'cm', {
     pageId: 'cm',

@@ -668,7 +668,7 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   parts.push(section('Occurrence record id', perArrival
     ? [
       `The occurrence is one per arrival: \`recordId = occurrenceRecordId(ctx, '${facts.processId}', seed)\`.`,
-      '`seed` is the key of the message the L4 names, or `ctx.requestMeta.requestId` when the L4 names none.',
+      arrivalSeedLines(),
       'A safe repeat is the one the L4 states: a state already at the destination changes nothing and is not an error.',
       'The form is the one of `executionRecording` (the seed is `executionRef`) and of `toolCatalogRefresh` (it updates records that already exist).',
       'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
@@ -676,7 +676,8 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     : receivesArrival && facts.trigger.kind === 'event'
       ? [
         `On creation in an arrival, \`recordId = occurrenceRecordId(ctx, '${facts.processId}', seed)\` and the create usecase is called with \`createOccurrenceContext(ctx, recordId)\`.`,
-        '`seed` is the key of the message the L4 names, or `ctx.requestMeta.requestId` when the L4 names none. An arrival from a system outside the platform has no person, and without a seed `occurrenceRecordId` throws.',
+        arrivalSeedLines(),
+        'An arrival from a system outside the platform has no person.',
         'That context returns the occurrence record id on the first `newId` and delegates every later id to the parent generator. Check, on that usecase, that the record is the first `newId`.',
         'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
       ].join('\n')
@@ -844,13 +845,38 @@ export function ontologyReferenceTargets(source: string | null): string[] {
   return out;
 }
 
-/** The catalog output type of a serve arrival; '' when the catalog names none. */
-async function arrivalOutputType(ctx: M12Context, arrival: string): Promise<string> {
+/** Printed definition of an empty catalog output: the function returns `{}`. */
+function outputReturnsEmpty(definition: string): boolean {
+  const flat = definition.replace(/\s+/gu, '');
+  return flat === '{}' || flat === 'Record<string,never>';
+}
+
+/**
+ * The catalog output of a serve arrival, resolved the same way as an input (`resolveInputType`, cited types three levels down).
+ * Null when the catalog names none or the type does not resolve.
+ */
+async function arrivalOutputOf(ctx: M12Context, arrival: string): Promise<{ type: string; text: string } | null> {
   const dot = arrival.indexOf('.');
-  if (dot <= 0) return '';
+  if (dot <= 0) return null;
   const catalog = await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, arrival.slice(0, dot));
   const operation = catalog.source ? catalogOperations(catalog.source)?.find(item => item.operationId === arrival.slice(dot + 1) && item.direction !== 'call') : undefined;
-  return operation?.outputType ?? '';
+  if (!catalog.source || !operation?.outputType) return null;
+  const resolved = await resolveInputType({
+    entry: catalog.source,
+    typeName: operation.outputType,
+    depth: 3,
+    readImport: async specifier => (specifier.startsWith('/_') ? ctx.read(specifier.replace(/\.js$/u, '.ts')) : null),
+  });
+  return resolved.text ? { type: operation.outputType, text: resolved.text } : null;
+}
+
+/** How an arrival picks the seed of its occurrence. The third branch (a person creates the record) does not use it. */
+function arrivalSeedLines(): string {
+  return [
+    '`seed` is, in order: the key of the message the L4 names; otherwise `ctx.requestMeta?.connection?.idempotencyKey`; otherwise `ctx.requestMeta?.requestId`.',
+    'On an arrival served by a connection, `requestId` is always present: the platform sets it to the idempotency key, or to a new value when there is none.',
+    'When none of the three is present, the function throws `AppError` with its own code. It never invents a seed and never fails without that error.',
+  ].join('\n');
 }
 
 /** The catalog input type of a call, resolved (d1_200). Null when the catalog or the operation is not readable. */
@@ -876,12 +902,13 @@ export async function receivedInputSection(ctx: M12Context, processData: Record<
     const input = await arrivalInputOf(ctx.read, ctx.run.project, ctx.run.module, arrival);
     if (!input) continue;
     const said = text(arrivalLineOf(await ctx.read(`_${ctx.run.project}_/l4/${ctx.run.module}/integration.defs.ts`), arrival)?.row.description);
-    const outputType = await arrivalOutputType(ctx, arrival);
+    const output = await arrivalOutputOf(ctx, arrival);
+    const emptyOutput = output ? outputReturnsEmpty(output.text) : false;
     blocks.push([
       `- \`${fn}\` is called with the message of the arrival \`${arrival}\`: its input is \`${input.inputType}\`, and the route passes the whole message.`,
       said ? `  The L4 says what this arrival does (the source; follow it, including which items of the message count): ${clip(said, 2400)}` : '',
       `  \`import type { ${input.inputType} } from '${input.importPath}'\`; type the \`input\` parameter of \`${fn}\` as \`${input.inputType}\`.`,
-      outputType ? `  The \`Output\` of \`${fn}\` is \`${outputType}\` (\`import type { ${outputType} } from '${input.importPath}'\`), and the route returns what the function returns.` : '',
+      output ? `  The \`Output\` of \`${fn}\` is \`${output.type}\` (\`import type { ${output.type} } from '${input.importPath}'\`). Its definition: \`${output.text}\`${emptyOutput ? '. The function returns `{}`,' : ''} and the route returns what the function returns.` : '',
       input.shapes.length ? `  The catalog types: ${input.shapes.join('; ')}. Read the key, the origin and the items of the message from these fields, none else.` : '',
     ].filter(Boolean).join('\n'));
   }
