@@ -192,7 +192,7 @@ export async function emitPersistence(
   if (id === 'persistence.table') return emitTable(definition, output, read);
   if (id === 'persistence.repositoryAdapter') return emitAdapter(definition, output, read, moduleDefinitions);
   if (id === 'persistence.repositoryRegistration') return emitRegistration(definition, output, read);
-  if (id === 'persistence.persistenceSeeds') return emitSeeds(definition, output, referenceSeeds, read);
+  if (id === 'persistence.persistenceSeeds') return emitSeeds(definition, output, referenceSeeds, read, moduleDefinitions);
   if (id === 'persistence.integrationOutbound') return emitOutbound(definition, output, read);
   return { code: 'NO_NAMED_HANDLER', detail: `${id} is not a persistence body.` };
 }
@@ -294,6 +294,7 @@ async function emitSeeds(
   output: string,
   referenceSeeds: readonly ReferenceSeedDataset[] = [],
   read: StructureRead = async () => null,
+  moduleDefinitions: readonly M1Definition[] = [],
 ): Promise<PersistenceEmit | EmitFailure> {
   const pending = pendingOf(definition.data);
   if (pending) return { code: pending, detail: `${definition.artifactId} is pending ${pending}. No seed file was written.` };
@@ -311,7 +312,7 @@ async function emitSeeds(
   const fromActors = (await actorDatasets(definition.moduleName, output, read))
     .filter(item => item.rows.length > 0 && !taken.has(item.seedFor))
     .map(item => ({ seedFor: item.seedFor, purpose: 'test' as const, rows: item.rows }));
-  const rows = [...fromDef, ...fromUnit, ...fromActors];
+  const rows = [...fromDef, ...fromUnit, ...fromActors].map(item => withLoadRelativeTime(item, moduleDefinitions));
   const planned = datasets
     .filter(item => targets.includes(text(item.tableId)) && !Array.isArray(item.rows) && !rows.some(row => text(row.seedFor) === text(item.tableId)))
     .map(item => text(item.tableId));
@@ -1043,6 +1044,24 @@ export function renderRegistration(output: string, rows: readonly { portId: stri
   ].join('\n');
 }
 
+/** Marker of a time value that is relative to the load; `renderSeeds` turns it into the expression the file evaluates when it is imported (d1_314). */
+const LOAD_RELATIVE = /"__LOAD_RELATIVE_DAYS_(\d+)__"/gu;
+
+/**
+ * d1_314: a `test` row of a table that keeps its rows for `retentionDays` (a series with a time field) carries that time field as `now - N days`, N from the
+ * position of the row and under the retention, so the retention does not delete the seed on load. Initial rows, tables without a retention and every other
+ * field are left as they are. Table, field and retention come from the table def.
+ */
+function withLoadRelativeTime<T extends { seedFor: string; purpose: 'initial' | 'test'; rows: unknown }>(dataset: T, moduleDefinitions: readonly M1Definition[]): T {
+  if (dataset.purpose !== 'test' || !Array.isArray(dataset.rows)) return dataset;
+  const table = moduleDefinitions.find(item => item.artifactType === 'table' && text(item.data.tableId) === dataset.seedFor);
+  const field = table ? text(table.data.timeField) : '';
+  const retention = table?.data.retentionDays;
+  if (!table || table.data.timeSeries !== true || !field || field.includes('.') || typeof retention !== 'number' || !Number.isInteger(retention) || retention < 1) return dataset;
+  const rows = dataset.rows.map((row, index) => (isRecord(row) && field in row ? { ...row, [field]: `__LOAD_RELATIVE_DAYS_${index % retention}__` } : row));
+  return { ...dataset, rows };
+}
+
 function renderSeeds(
   output: string,
   phase: string,
@@ -1052,7 +1071,7 @@ function renderSeeds(
 ): string {
   const exports = datasets.map((item, index) => {
     const purpose = text(item.purpose) === 'initial' ? 'initial' : 'test';
-    return `export const seedRows${index} = ${JSON.stringify({ seedFor: text(item.seedFor), purpose, rows: item.rows })} satisfies TableSeedRows;`;
+    return `export const seedRows${index} = ${JSON.stringify({ seedFor: text(item.seedFor), purpose, rows: item.rows }).replace(LOAD_RELATIVE, (_, days: string) => `new Date(Date.now() - ${days} * 86400000).toISOString()`)} satisfies TableSeedRows;`;
   });
   return [
     header(output),
