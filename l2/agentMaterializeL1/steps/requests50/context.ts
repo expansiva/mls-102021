@@ -631,6 +631,8 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     ...(marks.some(mark => (catalogRefs.get(mark.connectionId)?.origin ?? 'platform') !== 'platform') ? [
       // d1_218: the input of the serve of an outside system is the body that system sends; the module's vocabulary starts after this route.
       `The route${marks.filter(mark => (catalogRefs.get(mark.connectionId)?.origin ?? 'platform') !== 'platform').length > 1 ? 's' : ''} of a system outside the app (declared by a module): the input is the body the outside system sends, with its names and its shape (its declaration types it), handed over as it came. The route translates it into the input of the usecase or of the process it calls, which is in the vocabulary of the module, reading what the L4 says of the line (below).`,
+      // d1_297: the public address of an outside system's arrival may carry one parameter; the platform hands it to the route.
+      '`context.hookParams` (optional, `Record<string, string>`, at most one key, named by the module) holds the parameter of the public address the outside system called, only on these routes. When the L4 says the arrival knows something by its address, the route reads it from `context.hookParams` and carries it into the input of the usecase or of the process it calls. When it is absent, refuse the call as an invalid input; never invent a value.',
     ] : []),
   ].join('\n')));
   parts.push(section('Connection catalog', catalogSections.join('\n\n')));

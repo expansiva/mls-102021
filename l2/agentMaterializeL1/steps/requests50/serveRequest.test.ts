@@ -413,6 +413,8 @@ void test('d1_218 s2: the route of a system outside the app is told the input is
   assert.match(loaded.human, /the input is the body the outside system sends, with its names and its shape \(its declaration types it\), handed over as it came/u);
   assert.match(loaded.human, /The route translates it into the input of the usecase or of the process it calls, which is in the vocabulary of the module, reading what the L4 says of the line/u);
   assert.match(loaded.human, /## What the module does with the message of these routes/u, 'the L4 text of the line is the source (d1_207)');
+  assert.match(loaded.human, /`context\.hookParams` \(optional, `Record<string, string>`, at most one key/u, 'd1_297: the parameter of the address');
+  assert.equal(/robo|bot|telegram/iu.test(loaded.human.split('hookParams')[1]?.split('\n')[0] ?? ''), false, 'd1_297: generic text');
   // The recorded route takes the body as the declaration types it and hands the usecase the vocabulary of the module.
   const gate = { header: route.split('\n')[0], contractsInterface: loaded.contractsInterface, routes: loaded.routes, project: PROJECT, moduleName: MODULE, pageId: 'github', waived: new Set<string>() };
   assert.equal(loaded.contractsInterface.includes('RepositoryChangedInput'), true);
@@ -427,6 +429,7 @@ void test('d1_218 s2: the route of a system outside the app is told the input is
   const platformRead = async (ref: string) => (ref.replace(/^\//u, '') === CATALOG_REF.replace(/^\//u, '') ? CATALOG : null);
   const platform = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [platformService], read: platformRead } as never, platformService);
   assert.equal(platform.human.includes('the body the outside system sends'), false);
+  assert.equal(platform.human.includes('hookParams'), false, 'd1_297: not on a platform connection');
 });
 
 void test('d1_239 s3: the serve context of requests/cm carries RequestContext and ctx.requestMeta?.connection, and the recorded cm.ts of 102047 passes the gate', async () => {

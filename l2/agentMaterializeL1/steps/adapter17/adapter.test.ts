@@ -55,6 +55,7 @@ void test('d1_209 s1: the prompt shows the generated declaration, the call lines
   assert.match(human, /listChanges \(usedBy: reviewChanges\.pickProject\)/u);
   assert.equal(human.includes('changePushed (usedBy'), false, 'a serve has no adapter function');
   assert.match(human, /export interface ExternalAdapterContext/u);
+  assert.match(human, /appends one parameter only, `\?<name>=<value>`, with the value passed through `encodeURIComponent`/u, 'd1_297');
   assert.match(human, /export type ExternalSystemAdapter =/u);
   assert.match(human, /export type ConnectionResult<Output = unknown>/u);
   assert.equal(human.includes('export function validateExternalSystemDeclaration'), false, 'the validator of the declaration is another phase');
