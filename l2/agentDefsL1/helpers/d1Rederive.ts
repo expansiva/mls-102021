@@ -88,7 +88,7 @@ export async function writeRederive(project: number, moduleName: string, marker:
 }
 
 /**
- * The `@@agentMaterializeL1` line of each def that changed or was born since the marker, in path order, and the marker is removed. A def that came
+ * The `@@agentMaterializeL1` line of each def that changed or was born since the marker, in dependency order (d1_316), and the marker is removed. A def that came
  * out the same and reads no def that changed is not listed. d1_264: the materializer reuses a unit whose output exists (d1_122), by existence and not by
  * hash, so a def that came out the same but reads (`dependencies`, transitively) a def that changed is listed too: nothing else regenerates its unit.
  */
@@ -96,7 +96,9 @@ export async function finishRederive(project: number, moduleName: string, curren
   const marker = await readRederive(project, moduleName);
   if (!marker) return null;
   const now = await defHashes(project, currentDefPaths);
-  const changed = [...new Set([...Object.keys(now).filter(path => marker.before[path] !== now[path]), ...await readersOfChanged(project, currentDefPaths, Object.keys(now).filter(path => marker.before[path] !== now[path]))])].sort();
+  const changedNow = Object.keys(now).filter(path => marker.before[path] !== now[path]);
+  const closure = await readersOfChanged(project, currentDefPaths, changedNow);
+  const changed = orderByDependency([...new Set([...changedNow, ...closure.added])].sort(), closure.reads);
   // d1_252: a def that was there before and is gone from the disk now: its target removes the output the materializer wrote for it.
   const gone = Object.keys(marker.before).filter(path => !(path in now) && !currentDefPaths.includes(path));
   const removed: string[] = [];
@@ -114,8 +116,8 @@ function moduleOf(defPath: string): string {
   return defPath.split('/')[1] ?? '';
 }
 
-async function readersOfChanged(project: number, candidates: readonly string[], changed: readonly string[]): Promise<string[]> {
-  if (!changed.length) return [];
+async function readersOfChanged(project: number, candidates: readonly string[], changed: readonly string[]): Promise<{ added: string[]; reads: ReadonlyMap<string, readonly string[]> }> {
+  if (!changed.length) return { added: [], reads: new Map() };
   const prefix = `_${project}_/`;
   const reads = new Map<string, string[]>();
   const parsedDefs = new Map<string, { artifactType: string; artifactId: string; data: Record<string, unknown> }>();
@@ -162,5 +164,22 @@ async function readersOfChanged(project: number, candidates: readonly string[], 
       grew = true;
     }
   }
-  return added;
+  return { added, reads };
+}
+
+/**
+ * d1_316: the targets in dependency order: a def never comes before a def of the list that it reads through `dependencies` (a route after the usecase it uses). Defs with
+ * nothing between them keep the path order of `paths`; a cycle is left in path order after the defs that can be placed.
+ */
+export function orderByDependency(paths: readonly string[], reads: ReadonlyMap<string, readonly string[]>): string[] {
+  const inList = new Set(paths);
+  const waiting = new Map(paths.map(path => [path, new Set((reads.get(path) ?? []).filter(dep => dep !== path && inList.has(dep)))]));
+  const out: string[] = [];
+  while (waiting.size > 0) {
+    const next = [...waiting.keys()].find(path => (waiting.get(path) as Set<string>).size === 0) ?? [...waiting.keys()][0];
+    waiting.delete(next);
+    out.push(next);
+    for (const deps of waiting.values()) deps.delete(next);
+  }
+  return out;
 }

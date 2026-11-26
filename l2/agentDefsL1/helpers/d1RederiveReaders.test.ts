@@ -38,7 +38,7 @@ void test('d1_264: a def that came out the same but reads a def that changed is 
   assert.ok(targets.includes(targetOf(UPDATE_TOOL)), 'the changed def');
   assert.ok(targets.includes(targetOf(WORKFLOW)), 'the workflow that reads updateAgentTool');
   assert.equal(targets.includes(targetOf(UNRELATED)), false, 'listTool reads nothing that changed');
-  assert.deepEqual([...targets].sort(), targets, 'path order');
+  assert.equal(targets.indexOf(targetOf(UPDATE_TOOL)) < targets.indexOf(targetOf(WORKFLOW)), true, 'the def comes before the workflow that reads it (d1_316)');
 });
 
 void test('d1_264: nothing changed, nothing is listed', async () => {
