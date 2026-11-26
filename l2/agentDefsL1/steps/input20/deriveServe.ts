@@ -125,6 +125,20 @@ export function takeUsecase(args: {
     for (const item of chosen) if (!args.uses.includes(item.usecaseId)) args.uses.push(item.usecaseId);
     return;
   }
+  // d1_313: one usecase names a call and another of the same entity and operation names none (the write that calls the outside, and the plain one). The route
+  // whose page cites that call runs the named one; every other route runs the plain one.
+  if (named.length > 0 && named.length < candidates.length && args.operation !== 'list' && args.operation !== 'get') {
+    const chosen = named.filter(item => (args.routeCalls || []).includes(item.call || ''));
+    if (chosen.length > 0) {
+      for (const item of chosen) if (!args.uses.includes(item.usecaseId)) args.uses.push(item.usecaseId);
+      return;
+    }
+    const plain = candidates.find(item => !item.call);
+    if (plain) {
+      if (!args.uses.includes(plain.usecaseId)) args.uses.push(plain.usecaseId);
+      return;
+    }
+  }
   const match = candidates[0];
   if (match) {
     if (!args.uses.includes(match.usecaseId)) args.uses.push(match.usecaseId);

@@ -57,7 +57,8 @@ export function externalCallsOf(args: D1ExternalCallsInput): D1ExternalCallMatch
     // the usecase the plan named, and the calls of the other steps are not its: the usecase stays local (no `call`, never the consumer of those calls).
     // The routes of the other steps use the usecase of the call's own entity (`externalUsecaseForCall`). Steps that all cite a call stay one group (d1_269).
     if (!usecase.call && isLocalEntity(args.entityKind, usecase.entity)) {
-      const bare = serving.filter(step => !calls.some(row => accepts(row) && strings(row.usedBy).includes(step.ref)));
+      // d1_313: a call that is another entity's read (`readOfOther`) is never this usecase's, so a step that cites only that call is still a step without one.
+      const bare = serving.filter(step => !calls.some(row => accepts(row) && !readOfOther(row, usecase.entity) && strings(row.usedBy).includes(step.ref)));
       if (bare.length > 0 && bare.length < serving.length) serving = bare;
     }
     // A read (`list`/`read`/`get`) belongs to the entity its `entityRefs` names first. A step of an entity the module stores that cites that read
@@ -69,6 +70,11 @@ export function externalCallsOf(args: D1ExternalCallsInput): D1ExternalCallMatch
         const have = new Set(serving.map(step => step.ref));
         serving = [...serving, ...cited.filter(step => !have.has(step.ref))].sort((left, right) => left.ref.localeCompare(right.ref));
       }
+    }
+    // d1_313: a write usecase of an entity the module stores that names its call serves only the steps that cite that call.
+    if (usecase.call && isLocalEntity(args.entityKind, usecase.entity) && usecase.operation !== 'list' && usecase.operation !== 'get') {
+      const own = serving.filter(step => calls.some(row => accepts(row) && strings(row.usedBy).includes(step.ref)));
+      if (own.length > 0) serving = own;
     }
     const refs = serving.map(step => step.ref);
     const matched: D1ExternalCallRef[] = [];
@@ -274,6 +280,16 @@ export function splitExternalUsecases(args: D1ExternalCallsInput & { taken: Read
   const born = new Set<string>();
   for (const usecase of args.usecases) {
     const match = matches.get(usecase.usecaseId);
+    const own = args.splitStored === true && !usecase.call ? ownWriteCallUsecases(args, usecase, used) : [];
+    if (own.length > 0) {
+      usecases.push(usecase);
+      for (const item of own) {
+        usecases.push(item.usecase);
+        born.add(item.usecase.usecaseId);
+      }
+      splits.push({ from: usecase.usecaseId, into: own.map(item => ({ usecaseId: item.usecase.usecaseId, operation: item.usecase.operation, call: item.usecase.call ?? '' })) });
+      continue;
+    }
     // d1_269: an entity the module stores is split too when more than one call serves its usecase (RepositoryEntry: `listarConteudo` lists, `lerArquivo` reads, and
     // the one `list` usecase was the consumer of both). With one call, or none, a stored entity's usecase is left as it is: no `call` is put on it.
     const kind = args.entityKind.get(usecase.entity);
@@ -311,6 +327,41 @@ export function splitExternalUsecases(args: D1ExternalCallsInput & { taken: Read
     splits.push({ from: usecase.usecaseId, into });
   }
   return dropSplitDuplicates(usecases, splits, born);
+}
+
+/**
+ * d1_313: a call that writes the very entity the module stores (`effect` `update` or `remove`, `entityRefs` first = the usecase's entity) and that only some of the steps of the
+ * usecase cite is not for the usecase every write step of the entity uses (`updateX` also serves the step that changes another field). The steps that cite it get a
+ * usecase of their own: it names the call, it is born `toCreate`, and its id comes from the step (`checkBot`), or the step and the entity when that id is taken.
+ * When every step of the usecase cites the call, nothing is born: the usecase is that one already.
+ */
+function ownWriteCallUsecases(
+  args: D1ExternalCallsInput,
+  usecase: D1SelectedUsecase,
+  used: Set<string>,
+): Array<{ usecase: D1SelectedUsecase }> {
+  const kind = args.entityKind.get(usecase.entity);
+  if (!kind || kind === 'external' || kind === 'role' || usecase.operation === 'custom' || usecase.operation === 'list' || usecase.operation === 'get') return [];
+  const calls = args.connections.map(rec).filter(row => text(row.direction) === 'call');
+  const reads = readTargets(args.usecases, args.entityKind, true);
+  const serving = journeySteps(args.journeys).filter(step => stepServes(step, usecase, reads));
+  const out: Array<{ usecase: D1SelectedUsecase }> = [];
+  const entity = `${usecase.entity.charAt(0).toUpperCase()}${usecase.entity.slice(1)}`;
+  for (const row of calls) {
+    const effect = text(row.effect);
+    // A `create` call stays out (d1_285: the cm `runAiPrompt` of the agents is run by the route, the tools are created by the plain `create`).
+    if (!(effect === 'update' || effect === 'remove') || !operationMatchesEffect(usecase.operation, effect)) continue;
+    if (strings(row.entityRefs)[0] !== usecase.entity) continue;
+    const citing = serving.filter(step => strings(row.usedBy).includes(step.ref));
+    if (citing.length === 0 || citing.length === serving.length) continue;
+    const stepId = citing[0].ref.slice(citing[0].ref.indexOf('.') + 1);
+    const usecaseId = used.has(stepId) ? `${stepId}${entity}` : stepId;
+    used.add(usecaseId);
+    out.push({
+      usecase: { ...usecase, usecaseId, identity: usecaseId, routes: [], call: `${text(row.connectionId)}.${text(row.operationId)}`, status: 'toCreate', existing: '' },
+    });
+  }
+  return out;
 }
 
 /**

@@ -175,6 +175,15 @@ function classify(ctx: Context, key: string, body: string, many: boolean, parent
     if (rule) ctx.computedBy.push({ path: key, rule });
     return;
   }
+  // d1_313: an interface nested in the interface of an entity output, under its `details` object (`details.lastCheck: BotLastCheck`), is that field of the
+  // same entity when every member is an ontology path under it: its members are fields of the parent by prefix, and it is no other entity and needs no relationship.
+  const embeddedPaths = parent && !many ? embeddedPathsOf(ctx, parent, key, [...leaves, ...computed]) : null;
+  if (parent && embeddedPaths) {
+    const output: D1RequestOutput = { key, entity: parent.entity, many: false, parent: parent.key, mapped: embeddedPaths };
+    ctx.outputs.push(output);
+    for (const item of nested) visit(ctx, `${key}.${item.path}`, item.type, output);
+    return;
+  }
   // d1_263: the output key of a list is a collection-object field of one entity and the leaves of the item are fields of it (`changes: { items: Entry[] }`
   // with `changes.changedAt…` in the entity): the items are that field, by prefix, without asking.
   const collection = many ? collectionOwner(ctx, key, leaves) : null;
@@ -449,6 +458,21 @@ function matchEntity(ctx: Context, leaves: readonly string[]): EntityMatch {
     return { found, reason: `fields ${leaves.join(', ')} fit ${found.map(item => item.entity).join(', ')} through N:1 relationships; the types do not say which.` };
   }
   return { found, reason: `fields ${leaves.join(', ')} are not all fields of one entity or of one entity linked to it by an N:1 relationship.` };
+}
+
+/** `{ field, path }` of every member of a nested interface when each is an ontology path of the parent's entity under the nested key (d1_313); null otherwise. */
+function embeddedPathsOf(ctx: Context, parent: D1RequestOutput, key: string, members: readonly string[]): D1RequestMappedField[] | null {
+  if (!members.length || !key.startsWith(`${parent.key}.`)) return null;
+  // Under an output whose own relationship is still a gap, only the gaps are kept (as `shadow` does): nothing below it is settled yet.
+  if (parent.parent && !parent.relationship) return null;
+  // A list item is not settled here: the fields of an item of a list stay as they were (the agents fixtures keep their outputs, d1_313).
+  if (parent.many) return null;
+  const relative = key.slice(parent.key.length + 1);
+  // Only under the `details` object of the entity, the one nested object every entity record has (`collect` reads it the same way).
+  if (relative !== 'details' && !relative.startsWith('details.')) return null;
+  const owned = ctx.fields.get(parent.entity);
+  if (!owned || !members.every(member => owned.has(`${relative}.${member}`))) return null;
+  return members.map(member => ({ field: member, path: `${relative}.${member}` }));
 }
 
 function ownedByAny(ctx: Context, path: string): boolean {
