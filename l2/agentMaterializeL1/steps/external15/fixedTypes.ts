@@ -83,6 +83,13 @@ export function fixedTypesOf(previous: string | null, facts: ExternalFacts): Fix
   const previousOperations = operationsOf(previous);
   if (!blocks.length || !previousOperations.length) return NONE;
   const staying = new Set(facts.operations.map(item => item.operationId));
+  // d1_310: an operation whose line the L4 changed (description or direction, as the file before recorded them) is not "the same operation": its types are
+  // free for the model to write again. The names stay in `operations`, so the files that import them keep compiling when the model keeps the names.
+  const lineNow = new Map(facts.operations.map(item => [item.operationId, item] as const));
+  const changed = new Set(previousOperations.filter(operation => {
+    const now = lineNow.get(text(operation.operationId));
+    return !!now && (now.description !== text(operation.description) || now.direction !== text(operation.direction));
+  }).map(operation => text(operation.operationId)));
   const rootsOf = (operation: Record<string, unknown>) => [text(operation.inputType), text(operation.outputType)].filter(name => byName.has(name));
   const kept = new Set<string>();
   const visit = (name: string) => {
@@ -95,6 +102,7 @@ export function fixedTypesOf(previous: string | null, facts: ExternalFacts): Fix
   for (const operation of previousOperations) {
     if (!staying.has(text(operation.operationId))) continue;
     operations.push({ operationId: text(operation.operationId), inputType: text(operation.inputType), outputType: text(operation.outputType) });
+    if (changed.has(text(operation.operationId))) continue;
     for (const name of rootsOf(operation)) visit(name);
   }
   // What only the operations that left use goes with them, in the order of the file.

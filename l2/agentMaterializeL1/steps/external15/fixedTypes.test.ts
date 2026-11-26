@@ -133,3 +133,33 @@ void test('d1_257: the trace names the units of the module that import a type th
   assert.match(lines[0], /imported by listPastas/u);
   assert.deepEqual(await removedTypesLines(ctxOf(RECORDED), [unit()]), []);
 });
+
+void test('d1_310: the types of an operation whose line the L4 changed are free; the ones of the operations that did not change stay byte by byte', () => {
+  const base = facts();
+  const changedId = base.operations[0].operationId;
+  const changedFacts: ExternalFacts = { ...base, operations: base.operations.map(item => item.operationId === changedId ? { ...item, description: `${item.description} It also returns the identifier of each part.` } : item) };
+  const previousOperations = declared.operations as Array<Record<string, string>>;
+  const changedOperation = previousOperations.find(item => item.operationId === changedId)!;
+  const whole = fixedTypesOf(RECORDED, base);
+  const fixed = fixedTypesOf(RECORDED, changedFacts);
+  // The changed operation keeps its type names (the importers still compile) and loses what only it uses.
+  assert.ok(fixed.operations.some(item => item.operationId === changedId && item.outputType === changedOperation.outputType), 'the names stay');
+  assert.equal(fixed.blocks.some(block => block.name === changedOperation.outputType), false, 'the output type of the changed operation is free');
+  assert.equal(fixed.blocks.some(block => block.name === changedOperation.inputType), false, 'the input type of the changed operation is free');
+  assert.deepEqual(fixed.removed, [], 'a changed operation does not make its types leave');
+  // The others stay as written, byte by byte.
+  const others = previousOperations.filter(item => item.operationId !== changedId);
+  for (const operation of others) {
+    for (const key of ['inputType', 'outputType'] as const) {
+      const before = whole.blocks.find(block => block.name === operation[key]);
+      const after = fixed.blocks.find(block => block.name === operation[key]);
+      if (before) assert.equal(after?.text, before.text, `${operation.operationId} ${key}`);
+    }
+  }
+  // An answer that rewrites the changed output is accepted by the gate; one that rewrites an unchanged type is not.
+  const rewritten = RECORDED.replace(new RegExp(`export type ${changedOperation.outputType} = \\{[\\s\\S]*?\\};`, 'u'), `export type ${changedOperation.outputType} = {\n  novo: string;\n};`);
+  assert.deepEqual(fixedTypeProblems(rewritten, fixed), []);
+  assert.ok(fixedTypeProblems(REINVENTED, fixed).length > 0, 'an unchanged type rewritten is still refused');
+  // Nothing changed: as before.
+  assert.deepEqual(fixedTypesOf(RECORDED, base).blocks.map(block => block.name), exportedTypeBlocks(RECORDED).map(block => block.name));
+});
