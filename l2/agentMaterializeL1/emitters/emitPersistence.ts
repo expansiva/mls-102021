@@ -20,6 +20,7 @@ import {
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
 import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
+import { domainOptionalPaths } from '/_102021_/l2/agentMaterializeL1/emitters/domainOptional.js';
 import { auditImports, importSpecifier, ontologyCollections, ontologyRef, type EmitFailure, type StructureRead } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { actorMdmSeedRows, l4ActorsOf, seedOntologyRef } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
 import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
@@ -244,7 +245,12 @@ async function emitAdapter(definition: M1Definition, output: string, read: Struc
   // The methods a workflow process or a route applies through the port (§11, children written with their parent) are
   // the adapter's too: the module's port def carries them when the run loaded it.
   const inModule = moduleDefinitions.find(item => item.artifactType === 'repositoryPort' && text(item.data.interfaceName) === text(port.definition.data.interfaceName));
-  const source = renderAdapter(output, port.path, inModule ?? withProcessMethods(port.definition, moduleDefinitions), built, uniqueKeys);
+  // d1_325: the one source of "is this path there?" is `domainOptionalPaths`, the same the type of the entity reads: an object comes back only when the entity requires it
+  // (and the `details` container, always); a collection is never absent, its empty is `[]`. An object that is optional and holds no value stays absent.
+  const ontologySource = await read(ontologyRef(entity, output));
+  const optional = domainOptionalPaths(entity, ontologySource);
+  const shape = adapterShape(built.bindings.map(binding => binding.field), optional, collections);
+  const source = renderAdapter(output, port.path, inModule ?? withProcessMethods(port.definition, moduleDefinitions), built, uniqueKeys, shape);
   if ('code' in source) return source;
   return { ...source, seeds: false, evidences: [] };
 }
@@ -746,12 +752,27 @@ function renderTable(output: string, definition: TableDefinition, plan: Additive
   ].join('\n');
 }
 
+/** The object paths a read record always carries and the collection paths whose empty is `[]` (d1_325). `optional` null (the l4 is unreadable): every parent object, as before. */
+export function adapterShape(fields: readonly string[], optional: ReadonlySet<string> | null, collections: ReadonlySet<string>): { objects: string[]; collections: string[] } {
+  const objects = new Set<string>();
+  for (const field of fields) {
+    const parts = field.split('.').filter(Boolean);
+    for (let at = 1; at < parts.length; at += 1) {
+      const path = parts.slice(0, at).join('.');
+      if (collections.has(path)) break;
+      if (path === JSON_COLUMN || optional === null || !optional.has(path)) objects.add(path);
+    }
+  }
+  return { objects: [...objects].sort(), collections: [...collections].filter(path => fields.includes(path)).sort() };
+}
+
 function renderAdapter(
   output: string,
   portPath: string,
   port: M1Definition,
   built: BuiltTable,
   uniqueKeys: readonly (readonly string[])[],
+  shape: { objects: readonly string[]; collections: readonly string[] },
 ): PersistenceEmit | EmitFailure {
   const entityName = text(port.data.entityId);
   const portName = text(port.data.interfaceName);
@@ -787,6 +808,8 @@ function renderAdapter(
     `const UNIQUE_KEYS: readonly (readonly string[])[] = ${JSON.stringify(uniqueKeys)};`,
     `const BINDINGS = ${JSON.stringify(built.bindings.map(binding => ({ field: binding.field, column: binding.column, placement: binding.placement })))} as const;`,
     `const JSON_COLUMN = ${JSON.stringify(JSON_COLUMN)};`,
+    `const OBJECTS: readonly string[] = ${JSON.stringify(shape.objects)};`,
+    `const COLLECTIONS: readonly string[] = ${JSON.stringify(shape.collections)};`,
     `const VERSION_FIELD = ${JSON.stringify(versionField)};`,
     '',
     'type Row = Record<string, unknown>;',
@@ -926,7 +949,7 @@ function helperSource(): string {
     '  const details: Row = {};',
     '  let json = false;',
     '  for (const binding of BINDINGS) {',
-    '    const value = readPath(record, binding.field);',
+    '    const value = readPath(record, binding.field) === undefined && COLLECTIONS.includes(binding.field) ? [] : readPath(record, binding.field);',
     '    if (binding.placement === \'json\') {',
     '      json = true;',
     '      if (value !== undefined) writePath(details, jsonKey(binding.field), value);',
@@ -944,16 +967,20 @@ function helperSource(): string {
     '    const value = binding.placement === \'json\' ? readPath(bag, jsonKey(binding.field)) : row[binding.column];',
     '    if (value !== undefined) writePath(record, binding.field, value);',
     '  }',
-    '  // A declared object comes back even when none of its fields holds a value (a comanda opens with empty details):',
-    '  // the entity type says it is there, and a usecase reads `details.x` without a guard.',
-    '  for (const binding of BINDINGS) {',
-    '    const parts = binding.field.split(\'.\').filter(Boolean);',
-    '    let node = record;',
+    '  // The shape of the empty is the entity (d1_325): an object it requires comes back even when none of its fields holds a value, an optional object that holds',
+    '  // nothing stays absent, and a collection is never absent: its empty is [].',
+    '  for (const path of OBJECTS) {',
+    '    const parts = path.split(\'.\');',
+    '    let node: Row | undefined = record;',
     '    for (const part of parts.slice(0, -1)) {',
-    '      const next = node[part];',
-    '      if (!next || typeof next !== \'object\' || Array.isArray(next)) node[part] = {};',
-    '      node = node[part] as Row;',
+    '      const next: unknown = node?.[part];',
+    '      node = next && typeof next === \'object\' && !Array.isArray(next) ? next as Row : undefined;',
     '    }',
+    '    const last = parts[parts.length - 1];',
+    '    if (node && (!node[last] || typeof node[last] !== \'object\' || Array.isArray(node[last]))) node[last] = {};',
+    '  }',
+    '  for (const path of COLLECTIONS) {',
+    '    if (readPath(record, path) === undefined) writePath(record, path, []);',
     '  }',
     '  return record;',
     '}',
