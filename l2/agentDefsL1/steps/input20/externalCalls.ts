@@ -60,13 +60,29 @@ export function externalCallsOf(args: D1ExternalCallsInput): D1ExternalCallMatch
       const bare = serving.filter(step => !calls.some(row => accepts(row) && strings(row.usedBy).includes(step.ref)));
       if (bare.length > 0 && bare.length < serving.length) serving = bare;
     }
+    // A read (`list`/`read`/`get`) belongs to the entity its `entityRefs` names first. A step of an entity the module stores that cites that read
+    // serves the named entity's read; the stored entity does not keep the call.
+    if (usecase.operation === 'list' || usecase.operation === 'get') {
+      const cited = steps.filter(step => step.entity !== usecase.entity && isLocalEntity(args.entityKind, step.entity) && calls.some(row =>
+        accepts(row) && readOfOther(row, step.entity) && strings(row.entityRefs)[0] === usecase.entity && readOperation(text(row.effect)) === usecase.operation && strings(row.usedBy).includes(step.ref)));
+      if (cited.length > 0) {
+        const have = new Set(serving.map(step => step.ref));
+        serving = [...serving, ...cited.filter(step => !have.has(step.ref))].sort((left, right) => left.ref.localeCompare(right.ref));
+      }
+    }
     const refs = serving.map(step => step.ref);
     const matched: D1ExternalCallRef[] = [];
     const seen = new Set<string>();
     for (const row of calls) {
       const cited = new Set(strings(row.usedBy));
-      if (!refs.some(ref => cited.has(ref))) continue;
+      const citing = serving.filter(step => cited.has(step.ref));
+      if (citing.length === 0) continue;
       if (!accepts(row)) continue;
+      // The read of another entity does not enter the group of an entity the module stores: it serves that entity's own read.
+      if (isLocalEntity(args.entityKind, usecase.entity) && readOfOther(row, usecase.entity)) continue;
+      // A step of another entity was added only for the read it cites. It does not bring the other calls of that step.
+      const ownedRead = strings(row.entityRefs)[0] === usecase.entity && readOperation(text(row.effect)) === usecase.operation;
+      if (!citing.some(step => step.entity === usecase.entity) && !ownedRead) continue;
       const connectionId = text(row.connectionId);
       const operationId = text(row.operationId);
       const key = `${connectionId}\0${operationId}`;
@@ -88,6 +104,26 @@ function storedByModule(kinds: ReadonlyMap<string, string> | undefined, entity: 
 /** An entity the module keeps and decides for itself (not `external`, not an MDM role): its usecase is never born per call by the groups of d1_285. */
 function isLocalEntity(kinds: ReadonlyMap<string, string> | undefined, entity: string): boolean {
   return storedByModule(kinds, entity) && kinds?.get(entity) !== 'role';
+}
+
+/** `list` stays `list`; `read` and `get` are the catalog's get. Anything else is not a read. */
+function readOperation(effect: string): 'list' | 'get' | '' {
+  if (effect === 'list') return 'list';
+  if (effect === 'read' || effect === 'get') return 'get';
+  return '';
+}
+
+/** A read whose first `entityRefs` is some entity other than `entity`. The call belongs to that first entity. */
+function readOfOther(row: Record<string, unknown>, entity: string): boolean {
+  if (!readOperation(text(row.effect))) return false;
+  const owner = strings(row.entityRefs)[0] ?? '';
+  return owner !== '' && owner !== entity;
+}
+
+/** True when the call line names `entity` first in `entityRefs` (the call belongs to that entity, not to an external one). */
+export function callNamesEntity(call: string, entity: string, connections: readonly unknown[]): boolean {
+  const line = connections.map(rec).find(row => text(row.direction) === 'call' && `${text(row.connectionId)}.${text(row.operationId)}` === call);
+  return strings(line?.entityRefs)[0] === entity;
 }
 
 interface JourneyStep {

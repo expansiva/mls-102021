@@ -401,3 +401,30 @@ void test('d1_280: a write usecase served by one call whose effect is a read kee
   });
   assert.deepEqual(only.usecases.map(item => [item.usecaseId, item.operation, item.call]), [['updatePersonalConduct', 'update', 'cm.readAgent']]);
 });
+
+void test('a stored entity step that cites a read of another entity and a call on itself: the read serves the named entity, the self call stays', () => {
+  const journeys = {
+    keep: { journeyId: 'keep', business: { steps: [
+      { stepId: 'save', kind: 'act', entity: 'Guarded', effect: 'update' },
+    ] } },
+  };
+  const connections = [
+    { connectionId: 'other', operationId: 'listThings', direction: 'call', effect: 'list', entityRefs: ['Outside'], usedBy: ['keep.save'] },
+    { connectionId: 'self', operationId: 'check', direction: 'call', effect: 'update', entityRefs: ['Guarded'], usedBy: ['keep.save'] },
+  ];
+  const kinds = new Map([['Guarded', 'entity'], ['Outside', 'external']]);
+  const planned = [usecase('updateGuarded', 'Guarded', 'update'), usecase('listOutside', 'Outside', 'list')];
+  const split = splitExternalUsecases({ journeys, connections, usecases: planned, entityKind: kinds, taken: new Set(), splitStored: true });
+  assert.deepEqual(split.usecases.map(item => [item.usecaseId, item.entity, item.operation, item.call ?? '']), [
+    ['updateGuarded', 'Guarded', 'update', ''],
+    ['listOutside', 'Outside', 'list', 'other.listThings'],
+  ]);
+  const matches = externalCallsOf({ journeys, connections, usecases: split.usecases, entityKind: kinds, allEntities: true });
+  const byId = Object.fromEntries(matches.map(match => [match.usecaseId, match]));
+  assert.deepEqual(byId.listOutside, {
+    usecaseId: 'listOutside',
+    steps: ['keep.save'],
+    calls: [{ connectionId: 'other', operationId: 'listThings' }],
+  });
+  assert.deepEqual(byId.updateGuarded.calls, [{ connectionId: 'self', operationId: 'check' }]);
+});

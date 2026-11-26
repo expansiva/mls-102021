@@ -39,7 +39,7 @@ import { consumeLinesOf, deriveConsumeRequests } from '/_102021_/l2/agentDefsL1/
 import { deriveProcessUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/deriveProcess.js';
 import { deriveServeRequests, processTriggerServes, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
 import { callInputGaps, callInputsOf } from '/_102021_/l2/agentDefsL1/steps/input20/callInputs.js';
-import { externalCallsOf, externalUsecaseForCall, routeCallsOf, routeWriteCalls, splitExternalUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
+import { callNamesEntity, externalCallsOf, externalUsecaseForCall, routeCallsOf, routeWriteCalls, splitExternalUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import { parseD2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import type {
   PoolBackendEndpoint,
@@ -1240,9 +1240,11 @@ function oneRequest(
       }
       take(entity, operation, namedTransition ? written : '', resolved.calls);
       // An entity the module keeps has no usecase per call: its route also uses the usecase of the entity each call belongs to.
+      // A call whose `entityRefs` names this entity is already in the usecase the route took: with no external usecase for it, that is not an error (an external usecase that has it is still used).
       if (suffix.length > 0 && entityKind.get(entity) !== 'external') {
         for (const call of resolved.calls) {
           const found = externalUsecaseForCall({ call, usecases, entityKind, connections });
+          if (!found && callNamesEntity(call, entity, connections)) continue;
           if (!found) {
             error(problems, 'EXTERNAL_ROUTE_CALL_UNRESOLVED', path, `Route ${route.route} runs ${call}, and no usecase of an external entity has that call: only steps of entities the module keeps cite it.`, route.route);
           } else if (!uses.includes(found.usecaseId)) {
