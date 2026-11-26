@@ -5,12 +5,13 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
+import { tarefasTree } from '/_102021_/l2/agentMaterializeL1/testing/tarefasFixture.js';
 import { applySeedAnchors } from '/_102034_/l1/monitor/layer_3_usecases/testsUsecases.js';
 import { draftScenarioRow, referenceSeedUnit, seedRowProblems, seedScenariosOf } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
 import { completeInitialRows } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';
 import { takenSeedTables } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRows.js';
 
-const TAREFAS = '/Volumes/WagnerSSD1/collab/mls-base/mls-102047';
+const TAREFAS = tarefasTree();
 
 test('a tarefas read-by-id scenario row is the id the generated case cites', async () => {
   const plan = readFileSync(path.join(TAREFAS, 'l1/tarefas/layer_1_external/adapters/persistence/seeds.ts'), 'utf8');

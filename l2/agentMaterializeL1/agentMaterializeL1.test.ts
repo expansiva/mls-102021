@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/agentMaterializeL1.test.ts" enhancement="_blank"/>
 
+import { tarefasTree } from '/_102021_/l2/agentMaterializeL1/testing/tarefasFixture.js';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -1184,7 +1185,7 @@ test('the onboarding module sees the platform access-request signature; another 
   assert.equal(other.human.includes('registration.js'), false);
 });
 
-const TAREFAS_L4 = path.join(ROOT, `mls-${PROJECT}`, 'l4', 'tarefas');
+const TAREFAS_L4 = path.join(tarefasTree(), 'l4', 'tarefas');
 
 function probeErrors(source: string): readonly ts.Diagnostic[] {
   const fileName = path.join(tmpdir(), 'd1-171-transitionTo.ts');
@@ -1340,10 +1341,10 @@ test('the generated module engine opens with the process plan, does the owner ac
   await engine.advance(ctx, aviso, { commandId: 'c5', expectedRevision: 1, from: 'gerarAvisos', to: 'avisarResponsavel', actorNow: 'person-1', executor: { kind: 'routine', name: 'tarefas.avisoDiario.gerarAvisosDiarios' } });
   assert.ok(advances[4]?.message, 'an alert step carries the notice');
 
-  await assert.rejects(
-    () => engine.advance(ctx, { ...key, processId: 'pensarTarefa' }, { commandId: 'c6', expectedRevision: 1, from: 'pensar', to: 'pensar', actorNow: null, executor: person }),
-    (error: unknown) => (error as { code?: string }).code === 'STEP_OWNER_NOT_SUPPORTED',
-  );
+  // An llm step has an owner action today (the engine emits it): the advance is accepted and carries no notice, no wake. (It was refused with STEP_OWNER_NOT_SUPPORTED before the llm owner.)
+  stored = snapshot(generated.workflowPlans.pensarTarefa!, 'pensar', 'pensarTarefa');
+  await engine.advance(ctx, { ...key, processId: 'pensarTarefa' }, { commandId: 'c6', expectedRevision: 1, from: 'pensar', to: 'pensar', actorNow: null, executor: person });
+  assert.equal(advances[5]?.message, undefined, 'an llm step carries no notice');
   await assert.rejects(
     () => engine.advance(ctx, { ...key, processId: 'semPlano' }, { commandId: 'c7', expectedRevision: 1, from: 'a', to: 'b', actorNow: null, executor: person }),
     (error: unknown) => (error as { code?: string }).code === 'WORKFLOW_INCOMPATIBLE',

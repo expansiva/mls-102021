@@ -65,7 +65,7 @@ function installHost(): Host {
   const host: Host = { files: {}, deleted: [] };
   (globalThis as unknown as Record<string, unknown>).mls = {
     actualProject: PROJECT,
-    events: { addEventListener() {}, removeEventListener() {}, dispatch() {} },
+    events: { addEventListener() {}, removeEventListener() {}, dispatch() {}, fireFileAction() {} },
     stor: {
       files: host.files,
       getKeyToFile: keyOf,
