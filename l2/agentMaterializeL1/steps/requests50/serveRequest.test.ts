@@ -1,6 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/steps/requests50/serveRequest.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { keptRefusalText } from '/_102021_/l2/agentMaterializeL1/helpers/keptRefusal.js';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -424,7 +425,7 @@ void test('d1_218 s2: the route of a system outside the app is told the input is
   }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/repositoryChange.ts`);
   const withProcess = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [service, arrived], read } as never, service);
   const block = withProcess.human.slice(withProcess.human.indexOf('## Workflow service of process'));
-  assert.match(block, /after that call returns it throws `new AppError\(code, message, 422\)`/u, 'd1_307: an outside arrival keeps the refusal');
+  assert.ok(block.includes(keptRefusalText()), 'd1_308: the route says the same form of the refusal as the process');
   assert.equal(/robo|bot|telegram/iu.test(loaded.human.split('hookParams')[1]?.split('\n')[0] ?? ''), false, 'd1_297: generic text');
   // The recorded route takes the body as the declaration types it and hands the usecase the vocabulary of the module.
   const gate = { header: route.split('\n')[0], contractsInterface: loaded.contractsInterface, routes: loaded.routes, project: PROJECT, moduleName: MODULE, pageId: 'github', waived: new Set<string>() };
@@ -540,7 +541,7 @@ void test('d1_305 s1: a command route that reaches a process is told to open the
   assert.ok(block.startsWith('## Workflow service of process'), 'the process block is present');
   assert.ok(block.includes(TX), 'the process block tells the route to open the transaction');
   assert.equal(block.includes('hookParams'), false, 'd1_307: a platform arrival does not carry the address');
-  assert.equal(block.includes('AppError(code, message, 422)'), true, 'd1_307: the kept refusal is for every served route that calls a process (the cm too)');
+  assert.equal(block.includes(keptRefusalText()), true, 'd1_307: the kept refusal is for every served route that calls a process (the cm too)');
   const alone = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [arrived], read } as never, arrived);
   assert.equal(alone.human.includes('## Workflow service of process'), false);
   const started = unit('workflowProcess', 'openOnly', {

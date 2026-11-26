@@ -1,6 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/steps/workflows45/d1_307.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { keptRefusalText } from '/_102021_/l2/agentMaterializeL1/helpers/keptRefusal.js';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -26,7 +27,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BASE = path.resolve(HERE, '../../../../..');
 const REPO = path.join(BASE, 'mls-102047');
 const ADDRESS = 'Object.values(ctx.requestMeta?.connection?.context?.hookParams ?? {})[0]';
-const KEPT = 'after that call returns it throws `new AppError(code, message, 422)`';
+const KEPT = keptRefusalText();
 const CONFLICT = "AppError('CONFLICT', 'Unique key already stored.', 409)";
 
 function extract(root: string, commit: string, paths: string[]): void {
@@ -80,8 +81,7 @@ void test('d1_307 s1: the outside arrival reads the address from ctx; every func
     const text = await human(id);
     assert.equal(text.includes('hookParams'), false, `${id}: the address is only for an arrival from outside`);
     assert.ok(text.includes(KEPT), `${id}: the kept refusal is for every function a served route calls`);
-    assert.ok(text.includes('`code` is the `ruleId` when a rule of the L4 refuses; otherwise it names the cause'), `${id}: the code of the refusal`);
-    assert.ok(text.includes('the system outside failed or refused it'), `${id}: a failure of the outside system is a refusal too`);
+    assert.match(text, /type <Function>Result = \{ ok: true; output: <the catalog output> \} \| \{ ok: false; code: string; message: string \}/u, `${id}: the one form of the result`);
   }
   const agents = await loaded('agents', '/tmp/d1_307_agents_be5', 'be5e6203', 'l4/agents/workflows.defs.ts', ['l1/agents', 'l2/agents', 'l4/agents', 'l4/organization', 'l5']);
   for (const id of ['virtualEmployeeCreation', 'executionRecording', 'toolCatalogRefresh']) {
@@ -101,4 +101,13 @@ void test('d1_307 s1b: a process shows the unique keys of the entity table and t
   const texts = await Promise.all(['virtualEmployeeCreation', 'executionRecording', 'toolCatalogRefresh'].map(id => agents.human(id)));
   assert.ok(texts.some(text => text.includes(CONFLICT)), 'agents');
   assert.ok(texts.some(text => text.includes('{ agentId }')), 'agents');
+});
+
+void test('d1_308: the process of the cm request says the one form of the refusal that keeps its record (mls-102047@b43e4a35); a process of agents keeps the text of the L4 on throwing', async () => {
+  const { human } = await loaded('telegram', '/tmp/d1_308_real_b43', 'b43e4a35', 'l4/telegram/workflows.defs.ts', ['l1/telegram', 'l2/telegram', 'l4/telegram', 'l4/organization', 'l5']);
+  const send = await human('sendCmMessage');
+  assert.ok(send.includes(keptRefusalText()), 'sendCmMessage carries the form');
+  assert.match(send, /<Function>Result = \{ ok: true; output: <the catalog output> \} \| \{ ok: false; code: string; message: string \}/u);
+  assert.match(send, /if \(!result\.ok\) throw new AppError\(result\.code, result\.message, 422\)/u, 'the route throws after the commit');
+  assert.match(send, /otherwise `return result\.output`/u);
 });

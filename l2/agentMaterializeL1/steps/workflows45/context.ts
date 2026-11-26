@@ -5,6 +5,7 @@
 // the occurrence entity and its port, the module engine, the runtime engine signatures and the record-id rule.
 // And the gate of its answer.
 
+import { keptRefusalText } from '/_102021_/l2/agentMaterializeL1/helpers/keptRefusal.js';
 import { connectionCatalogSource, isCatalogImport, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { ArrivalUpsert } from '/_102021_/l2/helpers/l1Defs/arrivalUpsert.js';
@@ -954,7 +955,7 @@ export async function transactionSection(ctx: M12Context, unit: M12Unit, facts: 
   return section('The transaction of the route', [
     `The route that calls ${names.map(fn => `\`${fn}\``).join(', ')} already runs ${names.length > 1 ? 'them' : 'it'} inside \`ctx.data.moduleData.runInTransaction\` and passes ${names.length > 1 ? 'them' : 'it'} the context bound to that transaction, as \`ctx\`.`,
     'Every write through the ports and the usecases with that `ctx` is all or nothing. Write the function as one pass over that `ctx`; open no transaction of your own, and take the L4 requirement of all or nothing as met by this.',
-    ...(names.length ? ['When the L4 says this arrival can be refused and the record of that refusal must be kept, the function returns the refusal (its code and its reason) instead of throwing. This includes a request whose message does not go out because the system outside failed or refused it: when the L4 says such a request is answered as refused with the reason, the function records it (as `refused` or `failed`, as the L4 says) and returns the same. The route awaits `ctx.data.moduleData.runInTransaction`, and after that call returns it throws `new AppError(code, message, 422)`. `code` is the `ruleId` when a rule of the L4 refuses; otherwise it names the cause (for example the reason the system outside gave). It is never a code the platform turns into `invalid` or `conflict` (`VALIDATION_ERROR`, `INVALID_INPUT`, `VERSION_CONFLICT`, `CONCURRENCY_CONFLICT`); the engine then delivers the call as `refused`. When the L4 does not say the record must be kept, follow the L4 on whether the function throws.'] : []),
+    ...(names.length ? [keptRefusalText()] : []),
     ...(outsideCall ? ['A call to a system outside the module is not undone by the transaction. The function makes that call once and stores the result. What stops a repeat send is what the L4 says (for example, look the request up by its reference before calling). Without that in the L4, a failure between the call and the commit can repeat the call, and that does not ask for a protocol of its own.'] : []),
   ].join('\n'));
 }
