@@ -151,7 +151,7 @@ async function main() {
       const scope = item.actor ? [plan.module + ':' + item.actor] : [];
       const person = { mdmId: '00000000-0000-4000-8000-000000000001', name: 'Smoke Person' };
       const session = { actorId: item.actor || undefined, actorScope: scope, actorSession: { actorId: item.actor || undefined, scope }, person, organizationId: '00000000-0000-4000-8000-0000000000aa' };
-      const ctx = createRequestContext(createMemoryDataRuntime({ sandbox: true }), { sandbox: true, sessionContext: session });
+      const ctx = createRequestContext(createMemoryDataRuntime({ sandbox: true }), { sandbox: true, sessionContext: session, moduleId: plan.module });
       // An arrival comes through the message path: the process reads the identity of the arrival from the meta of the request.
       if (item.arrival) { counter += 1; ctx.requestMeta = { requestId: 'smoke-' + counter, source: 'message', connection: { idempotencyKey: 'smoke-' + counter } }; }
       try {
