@@ -540,7 +540,7 @@ void test('d1_305 s1: a command route that reaches a process is told to open the
   assert.ok(block.startsWith('## Workflow service of process'), 'the process block is present');
   assert.ok(block.includes(TX), 'the process block tells the route to open the transaction');
   assert.equal(block.includes('hookParams'), false, 'd1_307: a platform arrival does not carry the address');
-  assert.equal(block.includes('AppError(code, message, 422)'), false, 'd1_307: a platform arrival does not carry the kept refusal');
+  assert.equal(block.includes('AppError(code, message, 422)'), true, 'd1_307: the kept refusal is for every served route that calls a process (the cm too)');
   const alone = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [arrived], read } as never, arrived);
   assert.equal(alone.human.includes('## Workflow service of process'), false);
   const started = unit('workflowProcess', 'openOnly', {

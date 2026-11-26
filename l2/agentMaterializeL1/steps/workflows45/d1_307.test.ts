@@ -70,7 +70,7 @@ async function loaded(moduleName: string, root: string, commit: string, marker: 
   return { human, units };
 }
 
-void test('d1_307 s1: the two outside arrivals read the address from ctx and keep a refusal; a platform arrival does not', async () => {
+void test('d1_307 s1: the outside arrival reads the address from ctx; every function a served route calls keeps a refusal (the cm too)', async () => {
   const { human } = await loaded('telegram', '/tmp/d1_307_real_3f4', '3f481f59', 'l4/telegram/workflows.defs.ts', ['l1/telegram', 'l2/telegram', 'l4/telegram', 'l4/organization', 'l5']);
   const deliver = await human('deliverIncomingMessage');
   assert.ok(deliver.includes(ADDRESS), 'deliverIncomingMessage');
@@ -78,14 +78,13 @@ void test('d1_307 s1: the two outside arrivals read the address from ctx and kee
   assert.equal(/robo|bot/iu.test(deliver.split('hookParams')[1]?.split('\n')[0] ?? ''), false, 'deliverIncomingMessage');
   for (const id of ['sendCmMessage', 'applyCmDisable', 'applyCmIdentity']) {
     const text = await human(id);
-    assert.equal(text.includes('hookParams'), false, id);
-    assert.equal(text.includes(KEPT), false, id);
+    assert.equal(text.includes('hookParams'), false, `${id}: the address is only for an arrival from outside`);
+    assert.ok(text.includes(KEPT), `${id}: the kept refusal is for every function a served route calls`);
   }
   const agents = await loaded('agents', '/tmp/d1_307_agents_be5', 'be5e6203', 'l4/agents/workflows.defs.ts', ['l1/agents', 'l2/agents', 'l4/agents', 'l4/organization', 'l5']);
   for (const id of ['virtualEmployeeCreation', 'executionRecording', 'toolCatalogRefresh']) {
     const text = await agents.human(id);
     assert.equal(text.includes('hookParams'), false, id);
-    assert.equal(text.includes(KEPT), false, id);
   }
 });
 
