@@ -1,6 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/agentMaterializeL1.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -30,7 +31,7 @@ import { reconcileL5Backend, type L5FileFact } from '/_102021_/l2/agentMateriali
 import { workflowRouteProblems, workflowRoutes } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 import { mdmLinks, mdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { USECASE_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
-import { authorityActorIds, authorityActorsText, citedEntities, mdmContextSection, ontologyNames, ruleNames, transitionTarget, usesMdm } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { authorityActorIds, authorityActorsText, citedEntities, citesState, mdmContextSection, ontologyNames, ruleNames, transitionTarget, usesMdm } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { REQUEST_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/requests50/agentM12RequestService.js';
 import { delegatedRuleProblems, mdmInputProblems, mdmInputRoutes, mdmPlatformSectionForRequest, normalizeRequestsTyping, requestGate, requestsTypeOf, unownedMdmEntities, unownedMdmSection, untypedInputProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 import { buildM12PlannedSteps as planSteps, runArgsJson, type M12Layer } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
@@ -687,6 +688,32 @@ test('a rule text names the entities of the module by their l4 title', () => {
   assert.deepEqual(citedEntities('Um item só pode ser lançado em uma comanda aberta.', titles), ['Comanda']);
   assert.deepEqual(citedEntities('As mesas livres', titles), ['Mesa'], 'a plural in s still names the entity');
   assert.deepEqual(citedEntities('Comandante', titles), [], 'a title is matched as whole words');
+});
+
+test('d1_306: a rule that cites a parent counts as about the parent only when it also names a state of that parent', () => {
+  const comanda = 'export const x = {"title": "Comanda", "lifecycleStates": [{"state": "open"}, {"state": "closed"}], "record": {"fields": {"status": {"type": "enum", "values": [{"value": "open", "title": "Aberta"}, {"value": "closed", "title": "Fechada"}]}}}} as const;';
+  const names = ontologyNames('Comanda', comanda);
+  assert.deepEqual(names?.states?.sort(), ['Aberta', 'Fechada', 'closed', 'open']);
+  assert.equal(citesState('Um item só pode ser lançado em uma comanda aberta.', names?.states), true, 'the title of the state, as the l4 writes it');
+  assert.equal(citesState('The comanda is closed.', names?.states), true, 'the id of the state');
+  assert.equal(citesState('Um item é lançado em uma comanda.', names?.states), false, 'the parent alone');
+  assert.equal(citesState('Qualquer texto', undefined), false);
+  assert.equal(ontologyNames('Mesa', 'export const x = {"title": "Mesa"} as const;')?.states?.length, 0, 'an entity without lifecycle has no state to check');
+});
+
+test('d1_306: the audit rule of the telegram (mls-102047@6df20c2b) names the bot and the conversation but no state of them', () => {
+  const git = (file: string): string => {
+    const shown = spawnSync('git', ['-C', path.join(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..'), 'mls-102047'), 'show', `6df20c2b:${file}`], { maxBuffer: 16 * 1024 * 1024 });
+    if (shown.status !== 0) throw new Error(shown.stderr?.toString() || file);
+    return shown.stdout.toString();
+  };
+  const rules = JSON.parse(/=\s*(\{[\s\S]*\})\s*as const/u.exec(git('l4/telegram/rules.defs.ts'))![1]) as { rules: Record<string, string> };
+  const text = rules.rules.auditEveryMessage;
+  const entities = ['MessageAudit', 'TelegramBot', 'TelegramConversation'].map(id => ontologyNames(id, git(`l4/telegram/ontology/${id}.defs.ts`))!);
+  const own = entities.find(entity => entity.entityId === 'MessageAudit')!;
+  const parentsCited = citedEntities(text, ruleNames('MessageAudit', entities)).filter(cited => own.parents.includes(cited));
+  assert.equal(parentsCited.length > 0, true, 'the rule does cite a parent (the old criterion marked it)');
+  for (const parent of parentsCited) assert.equal(citesState(text, entities.find(entity => entity.entityId === parent)?.states), false, `${parent}: no state named`);
 });
 
 test('a rule names an entity through a relationship of the usecase entity (itens → ItemComanda)', () => {

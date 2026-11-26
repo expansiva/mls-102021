@@ -105,6 +105,8 @@ export interface M12EntityNames {
   derived: string[];
   /** Entities this one points to by its own foreign key (`ItemComanda.comandaId` → Comanda). */
   parents: string[];
+  /** The lifecycle states the l4 gives the entity: each state id and, where an enum field lists it, the title of that state ("open" / "Aberta"). */
+  states?: string[];
 }
 
 /** The paths of `fields` (nested through `fields`) the ontology marks derived, without id and version. */
@@ -119,6 +121,32 @@ function derivedPaths(fields: unknown, prefix = ''): string[] {
     out.push(...derivedPaths(field.fields, path));
   }
   return out;
+}
+
+/** Ids of the lifecycle states of an l4 entity, plus the titles an enum field gives to those same values. */
+function lifecycleStateNames(entity: { lifecycleStates?: unknown; record?: { fields?: unknown } }): string[] {
+  const ids = Array.isArray(entity.lifecycleStates)
+    ? entity.lifecycleStates.map(item => (item && typeof item === 'object' ? (item as { state?: unknown }).state : undefined)).filter((item): item is string => typeof item === 'string' && item !== '')
+    : [];
+  if (ids.length === 0) return [];
+  const names = new Set(ids);
+  const fields = entity.record?.fields;
+  if (fields && typeof fields === 'object') {
+    for (const meta of Object.values(fields as Record<string, unknown>)) {
+      const values = meta && typeof meta === 'object' ? (meta as { values?: unknown }).values : undefined;
+      if (!Array.isArray(values)) continue;
+      for (const item of values) {
+        const row = item && typeof item === 'object' ? item as { value?: unknown; title?: unknown } : {};
+        if (typeof row.value === 'string' && names.has(row.value) && typeof row.title === 'string' && row.title.trim()) names.add(row.title.trim());
+      }
+    }
+  }
+  return [...names];
+}
+
+/** True when the rule text names one of the states of the entity (by id or title): the rule then depends on the state of that record. */
+export function citesState(text: string, states: readonly string[] | undefined): boolean {
+  return citedEntities(text, (states ?? []).map(state => ({ entityId: state, title: state }))).length > 0;
 }
 
 /** The title and relationships of an l4 ontology entity; null when the file is not the expected JSON. */
@@ -145,7 +173,7 @@ export function ontologyNames(entityId: string, source: string | null): M12Entit
       if (typeof target.title === 'string') relationships.push({ entityId: target.to, title: target.title });
     }
   }
-  return typeof entity.title === 'string' ? { entityId, title: entity.title, relationships, derived: derivedPaths(entity.record?.fields), parents } : null;
+  return typeof entity.title === 'string' ? { entityId, title: entity.title, relationships, derived: derivedPaths(entity.record?.fields), parents, states: lifecycleStateNames(value as { lifecycleStates?: unknown; record?: { fields?: unknown } }) } : null;
 }
 
 /** The names of each entity of the module, read from its l4 ontology. */
@@ -774,7 +802,8 @@ export async function parentRulesOf(ctx: M12Context, unit: M12Unit, entities: re
   const out: M12ParentRule[] = [];
   for (const rule of ruleTexts(rulesSource, allRuleIds(rulesSource))) {
     const parents = citedEntities(rule.text, titles)
-      .filter(cited => own.parents.includes(cited) && portOf.has(cited))
+      // d1_306: citing the parent is not enough: the rule must also name a state of it, which is what the gate asks the file to check.
+      .filter(cited => own.parents.includes(cited) && portOf.has(cited) && citesState(rule.text, entities.find(entity => entity.entityId === cited)?.states))
       .map(cited => ({ entityId: cited, port: portOf.get(cited)! }));
     if (parents.length) out.push({ ruleId: rule.ruleId, parents });
   }
