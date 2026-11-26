@@ -367,7 +367,7 @@ async function actorDatasets(moduleName: string, output: string, read: Structure
 }
 
 const CALL_CONNECTION = '/_102034_/l1/server/layer_1_external/connections/callConnection.js';
-const CONNECTION_STATUS: Record<string, number> = {
+export const CONNECTION_STATUS: Record<string, number> = {
   not_found: 404,
   disabled: 409,
   unavailable: 503,

@@ -127,6 +127,7 @@ whether it opens the occurrence or advances its step, who acts now, what it tell
   conflict, 403 for an actor who may not act now, 400 for a missing or invalid value, 404 for a record not found.
 - No silent fallback: no empty `catch`, no invented default. An error names its cause.
 - When the source does not give something the code needs (a field, a formula, a value, an operation), do not write code that refuses at run time to stand for it: list it in `sourceGaps` as `{ needs, why }` and the unit stops with that list. `sourceGaps` is `[]` when the source gives everything.
+- Guarantees the L4 and the platform do not give are not a SOURCE_GAP. Those are exactly two classes: exclusion beyond unique keys and the transaction; exactly once with a system outside. The code does what is written, and a gap is only what stops the code from being written. What the L4 does not say and the code needs in order to be written is still a gap.
 - No `as unknown as`, no `as any`: build each value with its type. The file must compile under `strict`.
 - An exported field that carries the value of an entity field uses that field's type (`<Entity>['<field>']`, named in the task), never `string`.
 

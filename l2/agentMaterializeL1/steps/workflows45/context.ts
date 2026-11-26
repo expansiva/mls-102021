@@ -5,6 +5,7 @@
 // the occurrence entity and its port, the module engine, the runtime engine signatures and the record-id rule.
 // And the gate of its answer.
 
+import { CONNECTION_STATUS } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { keptRefusalText } from '/_102021_/l2/agentMaterializeL1/helpers/keptRefusal.js';
 import { connectionCatalogSource, isCatalogImport, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
@@ -560,7 +561,7 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
 
   // The calls this process runs (its tasks cite them in `usedBy`): the same gateway section a usecase gets.
   const gateways = await connectionGatewaySection(ctx, facts.processId, unit.definition.artifactId);
-  if (gateways) parts.push(gateways);
+  if (gateways) parts.push(`${gateways}\n${GATEWAY_CALL_ERROR}`);
   const received = await receivedInputSection(ctx, unit.definition.data, focus);
   if (received) parts.push(received);
   const transaction = await transactionSection(ctx, unit, facts, focus, Boolean(gateways));
@@ -571,6 +572,7 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     const lines = await Promise.all(stepCalls.map(async call => {
       const step = stepOf.get(call.stepId);
       const input = await catalogInputOf(ctx, call);
+      const output = await catalogOutputOf(ctx, call);
       const usecaseUnit = call.usecase ? ctx.units.find(item => item.definition.artifactType === 'usecase' && usecaseNames(item).includes(call.usecase ?? '')) : undefined;
       const where = `\`${call.stepId}\`${step ? ` (${step.kind}${step.title ? `, ${step.title}` : ''})` : ''}`;
       const run = call.usecase
@@ -579,10 +581,12 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
       return [
         `- step ${where} → ${run}`,
         input ? `  input ${input.type} =\n${fence('ts', input.text)}` : '',
+        output ? `  output ${output.type} =\n${fence('ts', output.text)}` : '',
       ].filter(Boolean).join('\n');
     }));
     parts.push(section('Calls of the steps (the L4 `usedBy`: each step runs its call; the file must make every call below)', [
       'The step that runs a call is the code of its function. When a usecase of the module consumes the call, call that usecase: it runs the call, and the file needs no gateway for it. Only a call that no usecase consumes goes through the gateway: resolve it and call the method with the input below. Importing a usecase or the gateway type is not calling it.',
+      CALL_OUTPUT_RESOLVE,
       ...lines,
     ].join('\n')));
   }
@@ -682,11 +686,13 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
         arrivalSeedLines(),
         'An arrival from a system outside the platform has no person.',
         'That context returns the occurrence record id on the first `newId` and delegates every later id to the parent generator. Check, on that usecase, that the record is the first `newId`.',
+        FIRST_NEW_ID,
         'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
       ].join('\n')
       : [
       `On creation, \`recordId = occurrenceRecordId(ctx, '${facts.processId}')\` and the create usecase is called with \`createOccurrenceContext(ctx, recordId)\`.`,
       'That context returns the occurrence record id on the first `newId` and delegates every later id to the parent generator. Check, on that usecase, that the record is the first `newId`.',
+      FIRST_NEW_ID,
       'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
     ].join('\n')));
   parts.push(section('How every process function uses the engine', engineUseRules(moduleName, facts.processId, facts.trigger.kind)));
@@ -882,6 +888,18 @@ function arrivalSeedLines(): string {
   ].join('\n');
 }
 
+/** `createOccurrenceContext` serves the record id on the first `newId`; the generated create usecase writes `id` from that call. */
+const FIRST_NEW_ID = '`createOccurrenceContext(ctx, recordId)` makes the first `newId` the id of the record. The generated usecase uses that first `newId` for the `id` (`ctx.idGenerator.newId()`).';
+
+/** Output of a `call`, same resolver as the input, three levels down (d1_309). */
+const CALL_OUTPUT_RESOLVE = 'The output type of a `call` is resolved the same way as the input (`resolveInputType`, cited types three levels down).';
+
+/** What the generated gateway throws. The codes are the keys of `CONNECTION_STATUS`, the map the emitter writes into the gateway (`STATUS`). */
+const GATEWAY_CALL_ERROR = 'When the call is not ok, the gateway throws `new AppError(result.code, result.message, STATUS[result.code], result.code === \'disabled\' && result.missing ? { missing: result.missing } : undefined)`. `code` is one of ' + Object.keys(CONNECTION_STATUS).map(code => `\`${code}\``).join(', ') + '. `disabled` carries `missing` when the gateway has it.';
+
+/** A `CONFLICT` from a unique key, or a version conflict, ends the function. A database error aborts the transaction; the repository check does not (d1_309, measured on `runInTransaction`). */
+const CONFLICT_ENDS_THE_FUNCTION = 'When a write throws `CONFLICT` (a unique key) or a version conflict, the function ends there: it returns the repeat result or the refusal the L4 states, and it writes nothing more in that transaction. An error from the database aborts the transaction; the repository check does not, and the rule is the same.';
+
 /** The catalog input type of a call, resolved (d1_200). Null when the catalog or the operation is not readable. */
 async function catalogInputOf(ctx: M12Context, call: { connectionId: string; operationId: string }): Promise<{ type: string; text: string } | null> {
   const source = (await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, call.connectionId)).source;
@@ -889,6 +907,20 @@ async function catalogInputOf(ctx: M12Context, call: { connectionId: string; ope
   if (!source || !operation) return null;
   const resolved = await resolveInputType({ entry: source, typeName: operation.inputType, readImport: async specifier => (specifier.startsWith('/_') ? ctx.read(specifier.replace(/\.js$/u, '.ts')) : null) });
   return resolved.text ? { type: operation.inputType, text: resolved.text } : null;
+}
+
+/** The catalog output type of a `call`, resolved like the input (`resolveInputType`, three levels). Null when the catalog or the operation is not readable. */
+async function catalogOutputOf(ctx: M12Context, call: { connectionId: string; operationId: string }): Promise<{ type: string; text: string } | null> {
+  const source = (await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, call.connectionId)).source;
+  const operation = source ? catalogOperations(source)?.find(item => item.operationId === call.operationId && item.direction === 'call') : undefined;
+  if (!source || !operation?.outputType) return null;
+  const resolved = await resolveInputType({
+    entry: source,
+    typeName: operation.outputType,
+    depth: 3,
+    readImport: async specifier => (specifier.startsWith('/_') ? ctx.read(specifier.replace(/\.js$/u, '.ts')) : null),
+  });
+  return resolved.text ? { type: operation.outputType, text: resolved.text } : null;
 }
 
 /**
@@ -955,6 +987,7 @@ export async function transactionSection(ctx: M12Context, unit: M12Unit, facts: 
   return section('The transaction of the route', [
     `The route that calls ${names.map(fn => `\`${fn}\``).join(', ')} already runs ${names.length > 1 ? 'them' : 'it'} inside \`ctx.data.moduleData.runInTransaction\` and passes ${names.length > 1 ? 'them' : 'it'} the context bound to that transaction, as \`ctx\`.`,
     'Every write through the ports and the usecases with that `ctx` is all or nothing. Write the function as one pass over that `ctx`; open no transaction of your own, and take the L4 requirement of all or nothing as met by this.',
+    CONFLICT_ENDS_THE_FUNCTION,
     ...(names.length ? [keptRefusalText()] : []),
     ...(outsideCall ? ['A call to a system outside the module is not undone by the transaction. The function makes that call once and stores the result. What stops a repeat send is what the L4 says (for example, look the request up by its reference before calling). Without that in the L4, a failure between the call and the commit can repeat the call, and that does not ask for a protocol of its own.'] : []),
   ].join('\n'));
