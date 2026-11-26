@@ -45,10 +45,14 @@ export function exportSignatures(source: string): string {
       // Keep a declared shape whole: it is the contract the model must type against.
       const block = [line];
       let depth = (line.match(/\{/gu)?.length ?? 0) - (line.match(/\}/gu)?.length ?? 0);
-      while (depth > 0 && index + 1 < lines.length) {
+      // d1_321: a type alias that goes on to the next lines (`export type R =` then `| { … }` per line) is kept whole, up to the `;` that ends it.
+      let open = /^export\s+type\s/u.test(line) && !/;\s*$/u.test(line) && !/\{\s*$/u.test(line);
+      while ((depth > 0 || open) && index + 1 < lines.length) {
+        if (open && depth <= 0 && (lines[index + 1].trim() === '' || /^export\s/u.test(lines[index + 1]))) break;
         index += 1;
         block.push(lines[index]);
         depth += (lines[index].match(/\{/gu)?.length ?? 0) - (lines[index].match(/\}/gu)?.length ?? 0);
+        if (depth <= 0 && /;\s*$/u.test(lines[index])) open = false;
       }
       out.push(block.join('\n'));
       continue;
