@@ -414,6 +414,7 @@ void test('d1_218 s2: the route of a system outside the app is told the input is
   assert.match(loaded.human, /The route translates it into the input of the usecase or of the process it calls, which is in the vocabulary of the module, reading what the L4 says of the line/u);
   assert.match(loaded.human, /## What the module does with the message of these routes/u, 'the L4 text of the line is the source (d1_207)');
   assert.match(loaded.human, /`context\.hookParams` \(optional, `Record<string, string>`, at most one key/u, 'd1_297: the parameter of the address');
+  assert.match(loaded.human, /reads the only value of `context\.hookParams`[^\n]*whatever the name of the key/u, 'd1_300: the name does not matter');
   assert.equal(/robo|bot|telegram/iu.test(loaded.human.split('hookParams')[1]?.split('\n')[0] ?? ''), false, 'd1_297: generic text');
   // The recorded route takes the body as the declaration types it and hands the usecase the vocabulary of the module.
   const gate = { header: route.split('\n')[0], contractsInterface: loaded.contractsInterface, routes: loaded.routes, project: PROJECT, moduleName: MODULE, pageId: 'github', waived: new Set<string>() };

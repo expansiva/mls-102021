@@ -36,7 +36,7 @@ export async function loadAdapterContext(ctx: M12Context, unit: M12Unit, repair?
     `Write the adapter of the system \`${facts.systemId}\` of module ${moduleName}, file \`${unit.outputRef}\`.`,
     `It default-exports one function per \`call\` operation of the declaration and no other key: \`import type { ExternalSystemAdapter, ExternalAdapterContext } from '${DECLARATION_TYPES_IMPORT}';\`, \`import type { <types> } from '${declarationImport}';\`, \`const adapter: ExternalSystemAdapter = { ... };\`, \`export default adapter;\`.`,
     'Each function receives the input of its operation and the context, builds the request, sends it with `ctx.send` and turns the response into the output type. A `serve` operation has no function.',
-    '`ctx.hookUrl(operationId)` returns the address without a parameter. When the L4 says the address carries a value, the adapter appends one parameter only, `?<name>=<value>`, with the value passed through `encodeURIComponent`; the name is the one the route of the arrival reads.',
+    '`ctx.hookUrl(operationId)` returns the address without a parameter. When the L4 says the address carries a value, the adapter appends one parameter only, `?<name>=<value>`, with the value passed through `encodeURIComponent`; the name is free and short, because the route of the arrival reads the only value of the parameter, whatever its name.',
   ].join('\n')));
   parts.push(section('The declaration of the system (generated, source)', declaration ? fence('ts', declaration) : '(the declaration of this system was not generated: run the phase before this one)'));
   if (lines.length) {
