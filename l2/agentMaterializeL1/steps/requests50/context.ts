@@ -1175,8 +1175,8 @@ export function requestGate(code: string, input: {
 }): string[] {
   const problems: string[] = [];
   if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
-  // The declared type may contain `=>` (the type the prompt asks for): match up to the `= {` of the value.
-  if (!/export\s+const\s+requests\b[\s\S]{0,400}?=\s*\{/u.test(code)) problems.push('The file must export `const requests = { … }`, one function per contract route.');
+  // The declared type may contain `=>` (the type the prompt asks for) and grows with the routes (one line each): match up to the `= {` of the value, with no fixed window (d1_309: a module with three routes passed 400 characters).
+  if (!/export\s+const\s+requests\b[\s\S]*?=\s*\{/u.test(code)) problems.push('The file must export `const requests = { … }`, one function per contract route.');
   if (input.contractsInterface?.startsWith('{')) {
     const annotation = /export\s+const\s+requests\s*:\s*([\s\S]*?)\s*=\s*\{/u.exec(code);
     const flatType = (text: string) => text.replace(/;\s*\}/u, '}').replace(/\s+/gu, '');

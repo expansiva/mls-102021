@@ -582,3 +582,13 @@ void test('d1_275: the route of the arrival a process receives gets the function
   assert.equal(workflowRouteProblems("// receiveDraftOutcome(x)\nconst y = 1;\n", flows).length, 1, 'no import: the old problem is the one reported');
   assert.equal(workflowRouteProblems(`${imported}// await receiveDraftOutcome(x)\n`, flows).length, 1, 'a comment is not a call');
 });
+
+void test('d1_309: the `export const requests` check does not depend on the length of the declared type (a module with several routes)', () => {
+  const route = (name: string) => `  '${MODULE}.cm.${name}': (input: Cm${name}Input, ctx: RequestContext) => Promise<Cm${name}Output>;`;
+  const names = ['disableChannel', 'sendChannelMessage', 'setChannelConversationIdentity', 'anotherLongRouteName'];
+  const header = `/// <mls fileReference="_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/cm.ts" enhancement="_blank"/>`;
+  const code = `${header}\nexport const requests: {\n${names.map(route).join('\n')}\n} = {\n};\n`;
+  assert.ok(/export\s+const\s+requests\b[\s\S]{0,400}?=\s*\{/u.test(code) === false, 'the old window of 400 characters refused it');
+  const problems = requestGate(code, { header, contractsInterface: undefined, routes: [], project: PROJECT, moduleName: MODULE, pageId: 'cm', waived: new Set<string>() } as never);
+  assert.equal(problems.some(item => item.includes('The file must export `const requests')), false);
+});
