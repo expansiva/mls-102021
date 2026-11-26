@@ -661,8 +661,10 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   const adapter = workflowEngineFile(project, moduleName);
   const adapterSource = await readOptional(adapter);
   if (adapterSource) parts.push(section('The module engine (one engine per process, the step tables, the destination status of each operation)', [`Import from \`${moduleSpecifier(adapter)}\`. Open and advance through it. \`transitionTo\` is the destination status of each operation. The function that returns the person of a human step calls \`resolveStepPerson\` from this file.`, fence('ts', workflowEngineShown(adapterSource))].join('\n\n')));
-  const createsOccurrence = Boolean(facts.occurrence) && (facts.operations.some(row => row.operation === `${facts.occurrence}.create`) || upserts.some(item => item.entityId === facts.occurrence));
-  const perArrival = processReceives(unit.definition.data).size > 0 && !createsOccurrence;
+  // d1_304: an upsert of the occurrence entity is not a creation (the record exists from the second arrival on): only a plain `<entity>.create` is (a create that the process also upserts is not).
+  const createsOccurrence = Boolean(facts.occurrence) && facts.operations.some(row => row.operation === `${facts.occurrence}.create`) && !upserts.some(item => item.entityId === facts.occurrence);
+  const receivesArrival = processReceives(unit.definition.data).size > 0;
+  const perArrival = receivesArrival && !createsOccurrence;
   parts.push(section('Occurrence record id', perArrival
     ? [
       `The occurrence is one per arrival: \`recordId = occurrenceRecordId(ctx, '${facts.processId}', seed)\`.`,
@@ -671,7 +673,14 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
       'The form is the one of `executionRecording` (the seed is `executionRef`) and of `toolCatalogRefresh` (it updates records that already exist).',
       'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
     ].join('\n')
-    : [
+    : receivesArrival && facts.trigger.kind === 'event'
+      ? [
+        `On creation in an arrival, \`recordId = occurrenceRecordId(ctx, '${facts.processId}', seed)\` and the create usecase is called with \`createOccurrenceContext(ctx, recordId)\`.`,
+        '`seed` is the key of the message the L4 names, or `ctx.requestMeta.requestId` when the L4 names none. An arrival from a system outside the platform has no person, and without a seed `occurrenceRecordId` throws.',
+        'That context returns the occurrence record id on the first `newId` and delegates every later id to the parent generator. Check, on that usecase, that the record is the first `newId`.',
+        'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
+      ].join('\n')
+      : [
       `On creation, \`recordId = occurrenceRecordId(ctx, '${facts.processId}')\` and the create usecase is called with \`createOccurrenceContext(ctx, recordId)\`.`,
       'That context returns the occurrence record id on the first `newId` and delegates every later id to the parent generator. Check, on that usecase, that the record is the first `newId`.',
       'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',

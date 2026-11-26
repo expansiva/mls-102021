@@ -31,6 +31,7 @@ const SECTION = 'The transaction of the route';
 const OUTSIDE = 'A call to a system outside the module is not undone by the transaction.';
 const PER_ARRIVAL = 'The occurrence is one per arrival:';
 const ON_CREATION = 'On creation, `recordId = occurrenceRecordId';
+const CREATION_IN_ARRIVAL = 'On creation in an arrival, `recordId = occurrenceRecordId(ctx, ';
 
 function extract(): void {
   if (existsSync(path.join(ROOT, 'l4/telegram/workflows.defs.ts'))) return;
@@ -82,12 +83,17 @@ void test('d1_302 s1: arrival context names the reference port, the per-arrival 
   const send = texts.get('sendCmMessage') ?? '';
   assert.match(send, /TelegramBotRepository/u);
   assert.match(send, /CmSendChannelMessageOutput/u);
-  assert.ok(send.includes(ON_CREATION), 'sendCmMessage creates the occurrence entity');
-  assert.ok(!send.includes(PER_ARRIVAL));
+  // d1_304: the arrival that creates the occurrence entity still takes a seed (no person on an arrival from a system outside).
+  assert.ok(send.includes(CREATION_IN_ARRIVAL), 'sendCmMessage creates the occurrence entity');
+  assert.match(send, /occurrenceRecordId\(ctx, 'sendCmMessage', seed\)/u);
+  assert.match(send, /createOccurrenceContext\(ctx, recordId\)/u);
+  assert.ok(!send.includes(ON_CREATION) && !send.includes(PER_ARRIVAL));
   const deliver = texts.get('deliverIncomingMessage') ?? '';
   assert.match(deliver, /MessageArrivedOutput/u);
-  assert.ok(deliver.includes(ON_CREATION), 'deliverIncomingMessage creates the occurrence entity');
-  assert.ok(!deliver.includes(PER_ARRIVAL));
+  // d1_304: an upsert of the occurrence entity is not a creation: the second message of a conversation must not open `existing`.
+  assert.ok(deliver.includes(PER_ARRIVAL), 'deliverIncomingMessage upserts the occurrence entity');
+  assert.match(deliver, /occurrenceRecordId\(ctx, 'deliverIncomingMessage', seed\)/u);
+  assert.ok(!deliver.includes(ON_CREATION) && !deliver.includes(CREATION_IN_ARRIVAL));
   for (const id of ['applyCmDisable', 'applyCmIdentity'] as const) {
     const text = texts.get(id) ?? '';
     assert.ok(text.includes(PER_ARRIVAL), id);
