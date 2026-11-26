@@ -118,7 +118,7 @@ export function buildD1InputSnapshot(
     error(problems, 'DIVERGENT_SOURCE', paths.effort, `meta.sourceBackend must be ${D1_EFFORT_BACKEND_REF}.`);
   }
 
-  const plannerRun = readPlannerRun(problems, planner, paths, moduleName);
+  const plannerRun = readPlannerRun(problems, planner, paths, moduleName, sources.some(source => source.path === paths.backend && !!source.sha256));
   const journeyIds = idList(journeyIndex.journeys, 'journeyId');
   const entityRows = rows(ontologyIndex.entities);
   const entityIds = idList(entityRows, 'entityId');
@@ -1421,18 +1421,32 @@ function noteStale(
   }
 }
 
+/**
+ * d1_315: the planner runs inside the revision of a New Release and writes that root's paths (`l4/<mod>/pipeline/changes/<id>/revisions/<id>/l4/<rest>`); the promotion
+ * copies the state without rewriting them. The state is read as the canonical path `l4/<mod>/<rest>`: the revision may have been compacted, so nothing is read from it.
+ */
+export function canonicalPlannerPath(moduleName: string, artifact: string): string {
+  const match = new RegExp(`^l4/${moduleName}/pipeline/changes/[^/]+/revisions/[^/]+/l4/(.+)$`, 'u').exec(artifact);
+  return match ? `l4/${moduleName}/${match[1]}` : artifact;
+}
+
 function readPlannerRun(
   problems: D1InputProblem[],
   planner: Record<string, unknown>,
   paths: ReturnType<typeof inputPaths>,
   moduleName: string,
+  backendOnDisk: boolean,
 ): D1InputSnapshot['plannerRun'] {
   if (!Object.keys(planner).length) return null;
   const plan20 = rec(rec(planner.steps).plan20);
-  const artifacts = strings(plan20.artifactPaths);
+  const recorded = strings(plan20.artifactPaths);
+  const artifacts = recorded.map(artifact => canonicalPlannerPath(moduleName, artifact));
   const backendArtifact = `l4/${moduleName}/${BACKEND_PATH_TAIL}`;
+  const fromRevision = recorded.find(artifact => canonicalPlannerPath(moduleName, artifact) === backendArtifact && artifact !== backendArtifact);
   if (text(planner.flowId) !== D1_PLANNER_FLOW || text(plan20.status) !== 'approved' || !artifacts.includes(backendArtifact) || !text(planner.thread)) {
     error(problems, 'PLANNER_RUN_DIVERGENT', paths.planner, 'Planner run does not approve this backend.json for this module.');
+  } else if (fromRevision && !backendOnDisk) {
+    error(problems, 'PLANNER_RUN_DIVERGENT', paths.planner, `Planner run approves ${fromRevision}, read as ${backendArtifact}, and that file is not in the module.`);
   }
   if (!text(planner.thread)) return null;
   return {

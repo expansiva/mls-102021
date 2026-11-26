@@ -166,7 +166,7 @@ void test('d1_313: when every update step cites the call, nothing is born', () =
 void test('d1_313: telegram — checkBot has its own usecase and the call; the generic update has none; the output has no unresolved details.*', async () => {
   const host = stateHost();
   const round = await command(host, '/run');
-  assert.deepEqual(errorsOf(round.input), ['PLANNER_RUN_DIVERGENT undefined']);
+  assert.deepEqual(errorsOf(round.input), []);
   const selection = (round.input as unknown as { selection: { usecases: Array<Record<string, unknown>>; requests: Array<Record<string, unknown>> } }).selection;
   const bots = selection.usecases.filter(item => item.entity === 'TelegramBot' && item.operation === 'update').map(item => [item.usecaseId, item.call ?? '', item.routes]);
   assert.deepEqual(bots, [
