@@ -18,6 +18,7 @@ import { createAgent } from '/_102021_/l2/agentDefsL1/agentDefsL1.js';
 import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import { createD1AgentStep, D1_FLOW_STEP_IDS, pipelineFile, derivationFile, type D1PipelineState, type D1StepId } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { fileKey, installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import { executeP1Plan } from '/_102021_/l2/agentPlannerL1/steps/plan20/agentP1Plan.js';
 import { type D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
@@ -127,7 +128,7 @@ async function command(host: TestHost, text: string): Promise<Round> {
 
 const errorsOf = (input: D1InputSnapshot): string[] => (input.problems || []).filter(item => item.severity === 'error').map(item => `${item.code} ${item.ownerRef}`);
 
-void test('d1_298: the telegram input20 has no unresolved route call and no external step without a call', async () => {
+void test('d1_298: with the pool planned before d1_299, the telegram input20 has no unresolved route call and no external step without a call', async () => {
   const host = stateHost();
   const round = await command(host, '/run');
   const errors = errorsOf(round.input);
@@ -135,4 +136,24 @@ void test('d1_298: the telegram input20 has no unresolved route call and no exte
     'REQUEST_USECASE_UNPLANNED telegram.cm.disableChannel',
     'REQUEST_USECASE_UNPLANNED telegram.cm.disableChannel',
   ]);
+});
+
+void test('d1_299 s2: after plan20 runs again on the same L4, the input20 of the telegram has no error', async () => {
+  const host = stateHost();
+  const result = await executeP1Plan(MODULE, new Date('2026-11-26T12:00:00Z'));
+  // The effort plan is the L2 estimate of the same pool: it lists the usecases of the backend plan (the L2 step is not run here).
+  const effortInfo = fileInfoFromDisplay(PROJECT, 'l4/telegram/pool/l2/web/effort.json')!;
+  const effort = JSON.parse(content(host, effortInfo) as string) as { totals: { usecases: Record<string, number> }; usecases: Array<{ usecaseId: string; entity: string; operation: string; status: string; existing: string }> };
+  const have = new Set(effort.usecases.map(row => row.usecaseId));
+  const backend = result.backend as unknown as { usecases: Array<{ usecaseId: string; entity: string; operation: string; status: string; existing: string }> };
+  const added = backend.usecases.filter(row => !have.has(row.usecaseId));
+  assert.deepEqual(added.map(row => row.usecaseId).sort(), ['blockByCm', 'pauseByCm'], 'the plan now has the two transitions that only the process applies');
+  for (const row of added) effort.usecases.push({ usecaseId: row.usecaseId, entity: row.entity, operation: row.operation, status: row.status, existing: row.existing });
+  effort.totals.usecases.toCreate = effort.usecases.filter(row => row.status === 'toCreate').length;
+  seed(host, effortInfo, JSON.stringify(effort), 'effort');
+  const round = await command(host, '/run');
+  assert.equal(round.stoppedAt, '', round.steps.map(item => item.trace).join('\n'));
+  // The open `OUTPUT_UNRESOLVED` items are `review`, not `error`: resolve25 asks the model for them.
+  assert.equal((round.input.problems || []).every(item => item.severity !== 'error'), true);
+  assert.deepEqual(errorsOf(round.input), []);
 });
