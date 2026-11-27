@@ -176,3 +176,11 @@ void test('d1_336 s1: a text the catalog says is ISO 8601 is sampled as a date; 
   const plan = planSmoke(tree, 102099, 'demo', '/nowhere');
   assert.equal(plan.routes.find(item => item.route === 'demo.hub.arrived')?.hookSeed, 'TicketBot.id');
 });
+
+void test('d1_339 s0: a column that is not nullable and has no default refuses a row with no value for it (the database does; the smoke now does too)', async () => {
+  const source = readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), 'runSmoke.ts'), 'utf8');
+  assert.match(source, /function withNotNull\(runtime\)/u);
+  assert.match(source, /violates not-null constraint/u);
+  assert.match(source, /code: '23502'/u);
+  assert.match(source, /\\d\{5\}/u, 'a SQLSTATE is an exception with a stack, not a decision of the route');
+});

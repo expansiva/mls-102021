@@ -175,6 +175,37 @@ function useGateways(plan, pass) {
   }
 }
 
+// The memory store does not check what the database checks. A column of the table that is not nullable and has no default refuses a row that has no value for it (an absent key or a null):
+// the check is made here, on every insert, upsert and update, with the definition of the table of the module (listTables). The platform does not change.
+function withNotNull(runtime) {
+  const moduleData = runtime.moduleData;
+  const original = moduleData.getTable.bind(moduleData);
+  let tables;
+  moduleData.getTable = async name => {
+    const repository = await original(name);
+    tables = tables ?? await moduleData.listTables();
+    const definition = tables.find(item => item.repositoryName === name || item.tableName === name);
+    if (!definition) return repository;
+    const refuse = (record, mode) => {
+      for (const column of definition.columns) {
+        if (column.nullable || column.defaultSql !== undefined) continue;
+        if (mode === 'patch' && !(column.name in record)) continue;
+        if (record[column.name] === undefined || record[column.name] === null) throw Object.assign(new Error('null value in column "' + column.name + '" of relation "' + definition.tableName + '" violates not-null constraint'), { code: '23502' });
+      }
+    };
+    return new Proxy(repository, {
+      get(target, property) {
+        const value = target[property];
+        if (typeof value !== 'function') return value;
+        if (property === 'insert' || property === 'upsert') return async input => { refuse(input.record, 'row'); return value.call(target, input); };
+        if (property === 'update') return async input => { refuse(input.patch ?? {}, 'patch'); return value.call(target, input); };
+        return value.bind(target);
+      },
+    });
+  };
+  return runtime;
+}
+
 function resetShim() {
   for (const key of Object.keys(globalThis.__smokeHttp ?? {})) delete globalThis.__smokeHttp[key];
   if (globalThis.__smokeThrown) globalThis.__smokeThrown.length = 0;
@@ -185,7 +216,8 @@ let counter = 0;
 function describe(error) {
   const status = typeof error?.status === 'number' ? error.status : null;
   const skippedCase = error?.name === 'SmokeUnresolved' || String(error?.cause?.name ?? '') === 'SmokeUnresolved';
-  const isApp = error instanceof AppError || typeof error?.code === 'string';
+  // A database error (SQLSTATE, five digits) is not a decision of the route: it is an exception, with its stack.
+  const isApp = error instanceof AppError || (typeof error?.code === 'string' && !/^\\d{5}$/.test(error.code));
   const verdict = skippedCase ? 'skipped' : isApp ? (status !== null && status >= 500 ? 'failed' : 'refused') : 'error';
   return { verdict, status, code: error?.code ?? 'ERROR', message: String(error?.message ?? error).slice(0, 300), stack: verdict === 'refused' || verdict === 'skipped' ? null : String(error?.stack ?? error).slice(0, 4000) };
 }
@@ -232,7 +264,7 @@ async function main() {
         const scope = item.actor ? [plan.module + ':' + item.actor] : [];
         const person = { mdmId: '00000000-0000-4000-8000-000000000001', name: 'Smoke Person' };
         const session = { actorId: item.actor || undefined, actorScope: scope, actorSession: { actorId: item.actor || undefined, scope }, person, organizationId: '00000000-0000-4000-8000-0000000000aa' };
-        const ctx = createRequestContext(createMemoryDataRuntime({ sandbox: true }), { sandbox: true, sessionContext: session, moduleId: plan.module });
+        const ctx = createRequestContext(withNotNull(createMemoryDataRuntime({ sandbox: true })), { sandbox: true, sessionContext: session, moduleId: plan.module });
         // An arrival comes through the message path: the process reads the identity of the arrival, and the parameter of the delivery address, from the meta of the request.
         if (item.arrival) {
           counter += 1;
@@ -270,7 +302,7 @@ async function main() {
       globalThis.__smokePort?.reset();
       const person = { mdmId: '00000000-0000-4000-8000-000000000001', name: 'Smoke Person' };
       const sessionOf = actor => { const scope = actor ? [plan.module + ':' + actor] : []; return { actorId: actor || undefined, actorScope: scope, actorSession: { actorId: actor || undefined, scope }, person, organizationId: '00000000-0000-4000-8000-0000000000aa' }; };
-      const runtime = createMemoryDataRuntime({ sandbox: true });
+      const runtime = withNotNull(createMemoryDataRuntime({ sandbox: true }));
       const ctx = createRequestContext(runtime, { sandbox: true, sessionContext: sessionOf(''), moduleId: plan.module });
       const setup = [];
       for (const step of scenario.steps ?? []) {

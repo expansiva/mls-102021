@@ -198,12 +198,20 @@ export async function emitPersistence(
   return { code: 'NO_NAMED_HANDLER', detail: `${id} is not a persistence body.` };
 }
 
+export function columnNullable(name: string, primaryKey: readonly string[], uniqueKeys: ReadonlyArray<readonly string[]>, timeField: string, optional: ReadonlySet<string> | null | undefined): boolean {
+  if (primaryKey.includes(name)) return false;
+  const inUniqueKey = uniqueKeys.some(key => key.includes(name));
+  if (!inUniqueKey) return true;
+  if (name === timeField || !optional) return false;
+  return optional.has(name);
+}
+
 async function emitTable(definition: M1Definition, output: string, read: StructureRead): Promise<PersistenceEmit | EmitFailure> {
   const pending = pendingOf(definition.data);
   if (pending) return { code: pending, detail: `${definition.artifactId} is pending ${pending}. No table was written.` };
   const entity = await loadEntity(definition, read);
   if ('code' in entity) return entity;
-  const built = buildLocalTable(definition, entity);
+  const built = buildLocalTable(definition, entity, domainOptionalPaths(entity, await read(ontologyRef(entity, output))));
   if ('code' in built) return built;
   const plan = additivePlan([built.planned], null);
   const source = renderTable(output, built.definition, plan);
@@ -230,7 +238,9 @@ async function emitAdapter(definition: M1Definition, output: string, read: Struc
   if ('code' in port) return port;
   const entity = await loadEntity(table.definition, read);
   if ('code' in entity) return entity;
-  const built = buildLocalTable(table.definition, entity);
+  const ontologySource = await read(ontologyRef(entity, output));
+  const optional = domainOptionalPaths(entity, ontologySource);
+  const built = buildLocalTable(table.definition, entity, optional);
   if ('code' in built) return built;
   const declaredRows = declaredBindings(definition);
   if ('code' in declaredRows) return declaredRows;
@@ -247,8 +257,6 @@ async function emitAdapter(definition: M1Definition, output: string, read: Struc
   const inModule = moduleDefinitions.find(item => item.artifactType === 'repositoryPort' && text(item.data.interfaceName) === text(port.definition.data.interfaceName));
   // d1_325: the one source of "is this path there?" is `domainOptionalPaths`, the same the type of the entity reads: an object comes back only when the entity requires it
   // (and the `details` container, always); a collection is never absent, its empty is `[]`. An object that is optional and holds no value stays absent.
-  const ontologySource = await read(ontologyRef(entity, output));
-  const optional = domainOptionalPaths(entity, ontologySource);
   const shape = adapterShape(built.bindings.map(binding => binding.field), optional, collections);
   const source = renderAdapter(output, port.path, inModule ?? withProcessMethods(port.definition, moduleDefinitions), built, uniqueKeys, shape);
   if ('code' in source) return source;
@@ -561,7 +569,12 @@ function gatewayMethod(connectionId: string, item: CatalogOperation): string {
   return lines.join('\n');
 }
 
-export function buildLocalTable(definition: M1Definition, entity: M1Definition): BuiltTable | EmitFailure {
+/**
+ * `optional`: the paths the l4 leaves optional (`domainOptionalPaths`, the one source). d1_339: a column is NOT NULL when it is in the primary key, is the time column of a series,
+ * or is in a unique key AND the l4 requires it. Being in a unique key does not make a field required: the database lets many rows have no value in a unique column, which is what
+ * an l4 that says "optional" asks for (the audit of an incoming message has no telegramMessageId; one that was refused has none either). Without `optional` (the l4 not read) the old rule stays.
+ */
+export function buildLocalTable(definition: M1Definition, entity: M1Definition, optional?: ReadonlySet<string> | null): BuiltTable | EmitFailure {
   const storage = text(entity.data.storageTarget);
   if (storage !== LOCAL_STORAGE) {
     const code = STORAGE_BLOCK[storage] ?? 'STORAGE_UNDECLARED';
@@ -615,7 +628,7 @@ export function buildLocalTable(definition: M1Definition, entity: M1Definition):
     bindings.push({
       field: leaf.name,
       column: placement === 'json' ? `${JSON_PREFIX}${leaf.name}` : leaf.name,
-      nullable: placement === 'column' ? !primaryKey.includes(leaf.name) && !uniqueKeys.some(key => key.includes(leaf.name)) : leaf.name !== 'version',
+      nullable: placement === 'column' ? columnNullable(leaf.name, primaryKey, uniqueKeys, timeField, optional) : leaf.name !== 'version',
       placement,
     });
   }
