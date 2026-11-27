@@ -2,7 +2,7 @@
 
 // d1_333: `smokeCli <module> <repository> --write`: the smoke of the WORKING TREE of a module, compared with the commit of the last smoke without a block, and its result written
 // to `l1/<module>/pipeline/agentMaterializeL1/smoke.json` (what `buildM12Report` reads to give `complete`). The differences the operator accepts go to `smokeAccepted.json`
-// by `--accept <case>` or `--accept-all`, with `--reason` and `--by`, one entry per exact difference. Node only.
+// by `--accept "<case>" --reason "<why>"` (repeatable, a reason for each case, in the order) and `--by`, one entry per exact difference. There is no way to accept all of them. Node only.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -15,9 +15,8 @@ import { smokeModule } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smoke
 
 export interface SmokeWriteOptions {
   outDir?: string;
-  /** Case keys to accept (`happy telegram.cm.x [variant]`), or 'all' for every difference of this run. */
-  accept?: string[] | 'all';
-  reason?: string;
+  /** The differences to accept, one by one: the exact case text of the difference and the reason for THAT difference (d1_335: there is no way to accept all of them). */
+  accept?: Array<{ case: string; reason: string }>;
   by?: string;
   /** Only compute and print: nothing is written. */
   dry?: boolean;
@@ -68,17 +67,16 @@ export async function smokeWrite(module: string, repo: string, options: SmokeWri
   const acceptedPath = path.join(runFolder(repo, module), 'smokeAccepted.json');
   const known = readJson<SmokeAcceptedFile>(acceptedPath)?.entries ?? [];
   const entries: SmokeAcceptedEntry[] = [...known];
-  if (options.accept) {
-    const wanted = options.accept === 'all' ? differences.filter(item => !item.arrival) : differences.filter(item => !item.arrival && (options.accept as string[]).includes(item.key));
-    for (const key of options.accept === 'all' ? [] : options.accept) if (!wanted.some(item => item.key === key)) problems.push(`No difference named "${key}" in this run.`);
-    if (!against && wanted.length === 0) problems.push('There is nothing to accept: no earlier smoke to compare against.');
-    const stamp = { reason: options.reason ?? '', by: options.by ?? '' };
-    problems.push(...(wanted.length ? acceptedEntryProblems(stamp) : []));
-    if (problems.length === 0) {
-      for (const item of wanted) {
-        if (entries.some(entry => entry.case === item.key && entry.before === item.before && entry.after === item.after && entry.against === against)) continue;
-        entries.push({ case: item.key, before: item.before, after: item.after, against: against as string, reason: stamp.reason.trim(), by: stamp.by.trim(), at: new Date().toISOString() });
-      }
+  if (options.accept?.length) {
+    const by = options.by ?? '';
+    for (const wanted of options.accept) {
+      const item = differences.find(candidate => !candidate.arrival && candidate.key === wanted.case);
+      if (!item) { problems.push(`No difference named "${wanted.case}" in this run (copy the text of the BLOCK line).`); continue; }
+      const own = acceptedEntryProblems({ reason: wanted.reason, by });
+      problems.push(...own.map(text => `${wanted.case}: ${text}`));
+      if (own.length || !against) continue;
+      if (entries.some(entry => entry.case === item.key && entry.before === item.before && entry.after === item.after && entry.against === against)) continue;
+      entries.push({ case: item.key, before: item.before, after: item.after, against, reason: wanted.reason.trim(), by: by.trim(), at: new Date().toISOString() });
     }
   }
   const verdict = evaluateSmoke({ results: now.results, differences, accepted: entries, against });
@@ -99,7 +97,7 @@ export async function smokeWrite(module: string, repo: string, options: SmokeWri
   const lines = [
     `smoke ${module}: ${file.blocks.length ? `BLOCKED (${file.blocks.length})` : 'no block'}; against ${against ?? 'nothing (criteria 1 to 3 only)'}.`,
     `cases ${file.counts.executed} (ok ${file.counts.ok}, refused ${file.counts.refused}, 5xx ${file.counts.failed}, exception ${file.counts.error}, skipped ${file.counts.skipped}, outside the type ${file.counts.outsideType}); arrivals ${file.arrivals.cases} (report only).`,
-    ...file.blocks.map(item => `  BLOCK ${item.kind}: ${item.key} — ${item.detail}`),
+    ...file.blocks.flatMap(item => [`  BLOCK ${item.kind}: ${item.key} — ${item.detail}`, ...(item.kind === 'difference' ? [`    to accept it, on purpose: --accept "${item.key}" --reason "<why this one changed>" --by <name>`] : [])]),
     ...file.accepted.map(item => `  accepted: ${item.case} (${item.reason}; ${item.by})`),
     ...file.stale.map(item => `  stale accepted entry: ${item.case} ${item.before} → ${item.after} against ${item.against}`),
     ...file.skipped.map(item => `  skipped (type not resolved): ${item}`),

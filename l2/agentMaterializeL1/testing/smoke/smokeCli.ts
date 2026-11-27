@@ -74,30 +74,51 @@ export function smokeAgainst(module: string, after: string, before: string, outD
   return { differences, text };
 }
 
-if (process.argv[1] && process.argv[1].endsWith('smokeCli.ts')) void (async () => {
-  const args = process.argv.slice(2);
-  const take = (flag: string): string => { const at = args.indexOf(flag); return at >= 0 ? args.splice(at, 2)[1] : ''; };
-  const takeAll = (flag: string): string[] => { const out: string[] = []; for (let at = args.indexOf(flag); at >= 0; at = args.indexOf(flag)) out.push(args.splice(at, 2)[1]); return out; };
+export interface SmokeCliArgs {
+  module: string;
+  subject: string;
+  outDir: string | undefined;
+  against: string;
+  write: boolean;
+  dry: boolean;
+  by: string;
+  accept: Array<{ case: string; reason: string }>;
+}
+
+export const SMOKE_USAGE = 'usage: smokeCli.ts <module> <commit|dir> [outDir] [--against <commit|dir>]\n       smokeCli.ts <module> <repository> --write [--dry] [--accept "<case>" --reason "<why, 20 characters or more>"]... [--by <name>]';
+
+/** The command line. An option it does not know is refused (there is no "accept all"); each `--accept` takes the `--reason` at the same place. */
+export function parseSmokeArgs(argv: readonly string[]): SmokeCliArgs {
+  const args = [...argv];
+  const take = (flag: string): string => { const at = args.indexOf(flag); if (at < 0) return ''; const [, value] = args.splice(at, 2); if (value === undefined) throw new Error(`${flag} needs a value.\n${SMOKE_USAGE}`); return value; };
+  const takeAll = (flag: string): string[] => { const out: string[] = []; for (let at = args.indexOf(flag); at >= 0; at = args.indexOf(flag)) { const [, value] = args.splice(at, 2); if (value === undefined) throw new Error(`${flag} needs a value.\n${SMOKE_USAGE}`); out.push(value); } return out; };
   const flag = (name: string): boolean => { const at = args.indexOf(name); if (at >= 0) args.splice(at, 1); return at >= 0; };
   const against = take('--against');
-  const reason = take('--reason');
   const by = take('--by');
-  const accept = takeAll('--accept');
-  const acceptAll = flag('--accept-all');
+  const cases = takeAll('--accept');
+  const reasons = takeAll('--reason');
   const write = flag('--write');
   const dry = flag('--dry');
-  const [module, commit, outDir] = args;
-  if (!module || !commit) throw new Error('usage: smokeCli.ts <module> <commit|dir> [outDir] [--against <commit|dir>] | smokeCli.ts <module> <repository> --write [--dry] [--accept <case>]... [--accept-all] --reason <text> --by <name>');
-  if (write) {
+  const unknown = args.find(item => item.startsWith('--'));
+  if (unknown) throw new Error(`Unknown option ${unknown}. A difference is accepted one by one: --accept "<case>" --reason "<why>".\n${SMOKE_USAGE}`);
+  if (cases.length !== reasons.length) throw new Error(`Each --accept needs its own --reason (${cases.length} --accept, ${reasons.length} --reason).\n${SMOKE_USAGE}`);
+  const [module, subject, outDir] = args;
+  if (!module || !subject) throw new Error(SMOKE_USAGE);
+  return { module, subject, outDir, against, write, dry, by, accept: cases.map((item, index) => ({ case: item, reason: reasons[index] })) };
+}
+
+if (process.argv[1] && process.argv[1].endsWith('smokeCli.ts')) void (async () => {
+  const args = parseSmokeArgs(process.argv.slice(2));
+  if (args.write) {
     const { smokeWrite } = await import('/_102021_/l2/agentMaterializeL1/testing/smoke/smokeWrite.js');
-    const result = await smokeWrite(module, commit, { outDir, dry, reason, by, ...(acceptAll ? { accept: 'all' as const } : accept.length ? { accept } : {}) });
+    const result = await smokeWrite(args.module, args.subject, { outDir: args.outDir, dry: args.dry, by: args.by, ...(args.accept.length ? { accept: args.accept } : {}) });
     console.log(result.text);
     process.exit(result.problems.length || result.file.blocks.length ? 1 : 0);
-  } else if (against) {
-    const { differences, text } = smokeAgainst(module, commit, against, outDir);
-    console.log(`${module}: ${against} -> ${commit}: ${differences.length} difference(s)\n${text}`);
+  } else if (args.against) {
+    const { differences, text } = smokeAgainst(args.module, args.subject, args.against, args.outDir);
+    console.log(`${args.module}: ${args.against} -> ${args.subject}: ${differences.length} difference(s)\n${text}`);
   } else {
-    const report = smokeModule(module, commit, outDir);
-    console.log(`${module}@${commit}: ${report.routes} routes, ${report.executed} runs, ${report.seconds}s`);
+    const report = smokeModule(args.module, args.subject, args.outDir);
+    console.log(`${args.module}@${args.subject}: ${report.routes} routes, ${report.executed} runs, ${report.seconds}s`);
   }
 })();

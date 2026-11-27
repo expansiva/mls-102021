@@ -97,3 +97,15 @@ void test('d1_333: the hash on disk is the one of the receipts and contracts of 
   const head = git('rev-parse', 'HEAD').stdout.trim();
   assert.equal(lastCleanSmokeCommit(repo, 'm'), head);
 });
+
+import { parseSmokeArgs } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokeCli.js';
+
+void test('d1_335: there is no "accept all": the option is refused, and each --accept takes its own --reason', () => {
+  assert.throws(() => parseSmokeArgs(['m', '/repo', '--write', '--accept-all', '--reason', 'a reason of enough characters', '--by', 'x']), /Unknown option --accept-all/u);
+  assert.throws(() => parseSmokeArgs(['m', '/repo', '--write', '--accept', 'happy a', '--accept', 'happy b', '--reason', 'only one reason given here ok']), /Each --accept needs its own --reason \(2 --accept, 1 --reason\)/u);
+  assert.throws(() => parseSmokeArgs(['m', '/repo', '--write', '--accept', 'happy a']), /Each --accept needs its own --reason/u);
+  const ok = parseSmokeArgs(['m', '/repo', '--write', '--accept', 'happy a', '--reason', 'first reason long enough', '--accept', 'failure a [v]', '--reason', 'second reason long enough', '--by', 'dono']);
+  assert.deepEqual(ok.accept, [{ case: 'happy a', reason: 'first reason long enough' }, { case: 'failure a [v]', reason: 'second reason long enough' }]);
+  assert.deepEqual([ok.module, ok.subject, ok.write, ok.by], ['m', '/repo', true, 'dono']);
+  assert.equal(parseSmokeArgs(['m', 'abc123', '--against', 'def456']).against, 'def456');
+});
