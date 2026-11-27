@@ -348,38 +348,9 @@ function operationTransitionIds(units: readonly M12Unit[]): Set<string> {
   return ids;
 }
 
-/**
- * The module engine (the engine on the cm Task port, the plan of each process, the destination status of each operation),
- * written and compiled before any workflow worker runs. An engine.ts that is already there stays; delete it to regenerate.
- * The lines go to the phase trace.
- */
-export async function prepareWorkflows(ctx: M12Context, selectedProcesses?: readonly M12Unit[]): Promise<string[]> {
+/** The engine as this generator writes it now (no model, nothing written): the source and the human pages it could not bind. */
+export async function freshEngineSource(ctx: M12Context): Promise<{ source: string; unresolved: string[] }> {
   const { project, module: moduleName } = ctx.run;
-  let { force } = ctx.run;
-  const info = workflowEngineFile(project, moduleName);
-  // d1_347 s6 (stage 2): the engine is used by EVERY process of the module and its types are the plan of all of them. A run that rewrites it without regenerating every process leaves the other processes on the old
-  // API (they compile or break only when someone touches them). So a `force` rewrites an engine that exists only in a run that selects all the processes of the module (`scope` of the workflows layer with `force`);
-  // a `target` of one process, or a run of another layer, keeps and proves it. A `target` of the engine file alone is refused with its name.
-  const everyProcess = (): boolean => {
-    const all = ctx.units.filter(unit => unit.layer === 'workflows');
-    return all.length > 0 && (selectedProcesses ?? []).length > 0 && all.every(unit => (selectedProcesses ?? []).some(item => item.unitId === unit.unitId));
-  };
-  if (stage2.on && force && storExists(info) && !everyProcess()) {
-    if (emitterTargetLayer(project, moduleName, ctx.run.target) === 'workflows') {
-      const diagnostic = `ENGINE_NEEDS_PROCESSES: ${ctx.run.target} would rewrite the engine of module ${moduleName} alone, and every process of the module uses it. Regenerate the engine with the processes: scope "${moduleName}/layer_2_application/workflows" with force.`;
-      await writeUnitStatus(project, moduleName, { layer: 'workflows', unitId: 'engine', defRef: '', status: 'failed', code: 'ENGINE_NEEDS_PROCESSES', attempt: 0, diagnostic, inputHash: '', outputs: {} });
-      return [`workflowEngine: ${diagnostic}`];
-    }
-    force = false;
-    const kept = await readOptional(info);
-    return [`workflowEngine: kept: a run that does not regenerate every process of the module does not rewrite the engine (scope "${moduleName}/layer_2_application/workflows" with force does)${kept === null ? '' : `; ${(await proveEngine(ctx, info, kept)).line}`}`];
-  }
-  if (!force && storExists(info)) {
-    // A kept engine is proved again: an old file with a type error must not pass as written (d1_196).
-    const kept = await readOptional(info);
-    if (kept === null) return ['workflowEngine: kept: exists'];
-    return [`workflowEngine: kept: exists; ${(await proveEngine(ctx, info, kept)).line}`];
-  }
   const workflows = await ctx.read(`_${project}_/l4/${moduleName}/workflows.defs.ts`);
   const ontologySources: string[] = [];
   for (const item of ctx.units) {
@@ -403,9 +374,51 @@ export async function prepareWorkflows(ctx: M12Context, selectedProcesses?: read
     unresolved.push(...bound.unresolved);
   }
   const source = workflowEngineSource(project, moduleName, tables, transitionDestinations(ontologySources, operations.size ? operations : undefined));
+  return { source, unresolved };
+}
+
+/**
+ * The module engine (the engine on the cm Task port, the plan of each process, the destination status of each operation),
+ * written and compiled before any workflow worker runs. An engine.ts that is already there stays; delete it to regenerate.
+ * The lines go to the phase trace.
+ */
+export async function prepareWorkflows(ctx: M12Context, selectedProcesses?: readonly M12Unit[]): Promise<string[]> {
+  const { project, module: moduleName } = ctx.run;
+  let { force } = ctx.run;
+  const info = workflowEngineFile(project, moduleName);
+  // d1_347 s6, out of the stage 2 key by d1_349 s1: the engine is used by EVERY process of the module and its types are the plan of all of them. A run that rewrites it without regenerating every process leaves the other
+  // processes on the old API (they compile or break only when someone touches them). So a `force` rewrites an engine that exists only in a run that selects all the processes of the module (`scope` of the workflows
+  // layer with `force`); a `target` of one process, or a run of another layer, keeps and proves it. A `target` of the engine file alone is refused with its name.
+  const everyProcess = (): boolean => {
+    const all = ctx.units.filter(unit => unit.layer === 'workflows');
+    return all.length > 0 && (selectedProcesses ?? []).length > 0 && all.every(unit => (selectedProcesses ?? []).some(item => item.unitId === unit.unitId));
+  };
+  if (force && storExists(info) && !everyProcess()) {
+    if (emitterTargetLayer(project, moduleName, ctx.run.target) === 'workflows') {
+      const diagnostic = `ENGINE_NEEDS_PROCESSES: ${ctx.run.target} would rewrite the engine of module ${moduleName} alone, and every process of the module uses it. Regenerate the engine with the processes: scope "${moduleName}/layer_2_application/workflows" (a process with a model is kept or repaired, not rewritten, unless "force").`;
+      await writeUnitStatus(project, moduleName, { layer: 'workflows', unitId: 'engine', defRef: '', status: 'failed', code: 'ENGINE_NEEDS_PROCESSES', attempt: 0, diagnostic, inputHash: '', outputs: {} });
+      return [`workflowEngine: ${diagnostic}`];
+    }
+    force = false;
+    const kept = await readOptional(info);
+    return [`workflowEngine: kept: a run that does not regenerate every process of the module does not rewrite the engine (scope "${moduleName}/layer_2_application/workflows" does)${kept === null ? '' : `; ${(await proveEngine(ctx, info, kept)).line}`}`];
+  }
+  // d1_349 s2: a scope run that selects every process of the module, without `force`, writes the engine again (no model) and puts every process in keep-or-repair against it: the dispatcher compiles each file
+  // on disk against the new engine (kept when it compiles and passes the gate, repaired with the errors when it does not). An engine that comes out with the bytes it had changes nothing.
+  const everyProcessRun = !force && !ctx.run.target && everyProcess();
+  let kept: string | null = null;
+  if (!force && storExists(info)) {
+    // A kept engine is proved again: an old file with a type error must not pass as written (d1_196).
+    kept = await readOptional(info);
+    if (kept === null) return ['workflowEngine: kept: exists'];
+    if (!everyProcessRun) return [`workflowEngine: kept: exists; ${(await proveEngine(ctx, info, kept)).line}`];
+  }
+  const { source, unresolved } = await freshEngineSource(ctx);
+  if (kept !== null && kept === source) return [`workflowEngine: kept: exists, and it is what this generator writes; ${(await proveEngine(ctx, info, kept)).line}`, ...unresolved.map(item => `PAGE_UNRESOLVED: ${item}`)];
   const stored = await writeSource(info, source);
   const proved = await proveEngine(ctx, info, stored.text);
-  return [`workflowEngine: ${proved.line}`, ...unresolved.map(item => `PAGE_UNRESOLVED: ${item}`)];
+  if (kept !== null) ctx.engineMoved = true;
+  return [`workflowEngine: ${kept !== null ? 'rewritten (it was not what this generator writes; every process goes to keep-or-repair against it); ' : ''}${proved.line}`, ...unresolved.map(item => `PAGE_UNRESOLVED: ${item}`)];
 }
 
 /**

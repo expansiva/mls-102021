@@ -84,6 +84,23 @@ void test('d1_343: `{"report":true}` rewrites the report from the receipts and g
   assert.ok(!Object.keys(files).some(key => key.includes('/layer_2_application/workflows/proc.ts')), 'dry wrote no unit file');
 });
 
+void test('d1_349 s2: the dry run of a scope over every process says which ones are kept or repaired against a stale engine (no call), and puts the engine back', async () => {
+  const { files } = await install();
+  const proc = add(files, 'mod/layer_2_application/workflows', 'proc', '.ts', CODE);
+  const engineInfo = { project: PROJECT, level: 1, folder: 'mod/layer_1_external/adapters/workflow', shortName: 'engine', extension: '.ts' };
+  const stale = 'export const stale = 1;\n';
+  const engine = add(files, engineInfo.folder, engineInfo.shortName, engineInfo.extension, stale);
+  const dry = await pendingScope(PROJECT, { scope: 'mod/layer_2_application/workflows', target: '', force: false });
+  assert.match(dry, /model units this run will generate 0; keep-or-repair \d/u, dry);
+  assert.match(dry, /workflows\/proc/u);
+  assert.doesNotMatch(dry, /will generate 1/u);
+  assert.equal(engine.content, stale, 'the engine on disk is the one it was');
+  assert.equal(proc.content, CODE, 'the process file is untouched');
+  // A target is the old behavior: the engine does not move, and the file is only kept or repaired when a dependency moves.
+  const target = await pendingScope(PROJECT, { scope: '', target: DEF_REF.replace('usecases/gone', 'workflows/proc'), force: true });
+  assert.doesNotMatch(target, /rewritten engine/u);
+});
+
 void test('d1_343: the invocations `report` and `dry` are parsed, and refused where they do not belong', async () => {
   const { parseM12MessageInvocation } = await import('/_102021_/l2/agentMaterializeL1/helpers/m12Core.js');
   assert.deepEqual(parseM12MessageInvocation('@@agentMaterializeL1 {"report":true,"scope":"agents"}', 102047), { kind: 'report', project: 102047, scope: 'agents' });

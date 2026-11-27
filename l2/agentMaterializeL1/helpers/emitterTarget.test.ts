@@ -13,6 +13,7 @@ import { M1_DEFINITION_SCHEMA, renderDefinition } from '/_102021_/l2/helpers/l1D
 import { emitterTarget, requestModules, storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { fileRef, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { workflowEngineFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
+import { readUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 
 const PROJECT = 1;
 const ENGINE = fileRef(workflowEngineFile(PROJECT, 'mod'));
@@ -106,7 +107,7 @@ test('d1_246: a module with no workflow process has no engine to name', async ()
   assert.match(plan.refusal, /Accepted: |matches no l1 def/u);
 });
 
-test('d1_246: the workflows step of that plan rewrites the engine over an old file and dispatches no model worker', async () => {
+test('d1_246, d1_349 s1: the workflows step of that plan keeps the engine over an old file (ENGINE_NEEDS_PROCESSES: a target of the engine alone does not rewrite it) and dispatches no model worker', async () => {
   const files = install([processDef()]);
   const info = workflowEngineFile(PROJECT, 'mod');
   const engineFile = (): FakeFile | undefined => files[keyOf(info)];
@@ -122,6 +123,7 @@ test('d1_246: the workflows step of that plan rewrites the engine over an old fi
   type Hook = (a: IAgentMeta, c: mls.msg.ExecutionContext, p: mls.msg.AIAgentStep, s: mls.msg.AIAgentStep, h: number, args?: string) => Promise<Array<Record<string, any>>>;
   const out = await ((workflowsAgent().beforePromptStep as unknown) as Hook)(meta, context, { stepId: 1 } as mls.msg.AIAgentStep, { ...step, stepId: 10 } as mls.msg.AIAgentStep, 1, step.prompt);
   assert.equal(out.filter(item => item.type === 'add-step').length, 0, 'no worker');
-  assert.notEqual(engineFile()?.content, '// old engine', 'the engine was written again');
-  assert.ok(engineFile()?.content.startsWith('/// <mls fileReference="_1_/l1/mod/layer_1_external/adapters/workflow/engine.ts"'), engineFile()?.content.slice(0, 200));
+  assert.equal(engineFile()?.content, '// old engine', 'the engine stays: every process of the module uses it and this run does not regenerate them');
+  const status = await readUnitStatus(PROJECT, 'mod', 'workflows', 'engine');
+  assert.equal(status?.code, 'ENGINE_NEEDS_PROCESSES');
 });

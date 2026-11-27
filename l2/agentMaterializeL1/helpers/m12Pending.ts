@@ -12,6 +12,11 @@ import { testsInputParts, testsKeepPlan } from '/_102021_/l2/agentMaterializeL1/
 import { fileRef, pageTestsFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { requestModules, storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { checkKept } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
+import { workflowEngineFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
+import { freshEngineSource } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { WORKFLOW_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/agentM12WorkflowUnit.js';
+import { storExists, writeText } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 
 /** The layers whose units the model writes (the others are recipes). */
 const MODEL_LAYERS = ['external', 'adapter', 'usecases', 'workflows', 'requests'] as const;
@@ -22,15 +27,52 @@ export interface M12PendingWork {
   generate: string[];
   /** `target` on a unit that has its file: kept when it compiles against what moved, repaired (a call) when it does not. */
   keepOrRepair: string[];
+  /** d1_349 s2: processes that compile against the rewritten engine as they are (no call). */
+  kept: string[];
   /** Pages that serve a connection and have no page test: skipped, nothing generated. */
   skipped: string[];
 }
 
+/**
+ * d1_349 s2: a scope run that selects every process of the module, without `force`, rewrites an engine that is not what the generator writes now and compiles each process file against it. Said here without
+ * running it: the engine is put in place, each file is checked (no model, same check as the run) and the previous engine is written back. The unit id and `kept` or the first problems that send it to the repair; an empty map when the engine stays.
+ */
+async function engineRewriteVerdicts(ctx: Awaited<ReturnType<typeof loadRun>>['ctx'], selected: readonly { layer: string; unitId: string }[]): Promise<Map<string, 'kept' | string> | null> {
+  const all = ctx.units.filter(unit => unit.layer === 'workflows');
+  const chosen = selected.filter(unit => unit.layer === 'workflows');
+  if (!all.length || !all.every(unit => chosen.some(item => item.unitId === unit.unitId))) return null;
+  const info = workflowEngineFile(ctx.run.project, ctx.run.module);
+  if (!storExists(info)) return null;
+  const previous = await readOptional(info);
+  const fresh = (await freshEngineSource(ctx)).source;
+  if (previous === null || previous === fresh) return null;
+  const verdicts = new Map<string, string>();
+  try {
+    await writeText(info, fresh);
+    for (const unit of all) {
+      if ((await reuseDecision([unit.output], false)).kind !== 'reuse') continue;
+      const prior = await readUnitStatus(ctx.run.project, ctx.run.module, 'workflows', unit.unitId);
+      const checked = await checkKept(ctx, unit, WORKFLOW_SPEC, prior);
+      verdicts.set(unit.unitId, checked.problems.length ? `${checked.problems.length} problem(s): ${checked.problems.slice(0, 3).map(problem => problem.replace(/\s+/gu, ' ').slice(0, 220)).join(' | ')}` : 'kept');
+    }
+  } finally {
+    await writeText(info, previous);
+  }
+  return verdicts;
+}
+
 export async function pendingModelWork(project: number, moduleName: string, request: M12Request): Promise<M12PendingWork> {
   const { ctx, selected } = await loadRun({ project, module: moduleName, scope: request.scope, target: request.target, force: request.force, ...(request.scratch === undefined ? {} : { scratch: request.scratch }) });
-  const work: M12PendingWork = { module: moduleName, generate: [], keepOrRepair: [], skipped: [] };
+  const work: M12PendingWork = { module: moduleName, generate: [], keepOrRepair: [], kept: [], skipped: [] };
   const scratch = request.scratch === true;
+  const engineVerdicts = scratch || request.target ? null : await engineRewriteVerdicts(ctx, selected);
   for (const unit of selected) {
+    if (engineVerdicts && unit.layer === 'workflows' && engineVerdicts.has(unit.unitId)) {
+      // d1_349 s2: the scope run rewrites the engine; this process is compiled against it (kept or repaired), never written from scratch while its file exists.
+      if (engineVerdicts.get(unit.unitId) === 'kept') work.kept.push(`${unit.layer}/${unit.unitId}`);
+      else work.keepOrRepair.push(`${unit.layer}/${unit.unitId} (repair, a call; ${engineVerdicts.get(unit.unitId)})`);
+      continue;
+    }
     const name = `${unit.layer}/${unit.unitId}`;
     if ((MODEL_LAYERS as readonly string[]).includes(unit.layer)) {
       const onDisk = (await reuseDecision([unit.output], false)).kind === 'reuse';
@@ -64,7 +106,7 @@ export async function pendingModelWork(project: number, moduleName: string, requ
 export function pendingText(works: readonly M12PendingWork[]): string[] {
   const lines: string[] = [];
   for (const work of works) {
-    lines.push(`- ${work.module}: model units this run will generate ${work.generate.length}${work.generate.length ? ` (${work.generate.join(', ')})` : ''}; keep-or-repair ${work.keepOrRepair.length}${work.keepOrRepair.length ? ` (${work.keepOrRepair.join(', ')})` : ''}; serve pages without a test, skipped ${work.skipped.length}`);
+    lines.push(`- ${work.module}: model units this run will generate ${work.generate.length}${work.generate.length ? ` (${work.generate.join(', ')})` : ''}; keep-or-repair ${work.keepOrRepair.length}${work.keepOrRepair.length ? ` (${work.keepOrRepair.join(', ')})` : ''}${work.kept.length ? `; kept against the rewritten engine ${work.kept.length} (${work.kept.join(', ')})` : ''}; serve pages without a test, skipped ${work.skipped.length}`);
   }
   const total = works.reduce((sum, work) => sum + work.generate.length, 0);
   const repair = works.reduce((sum, work) => sum + work.keepOrRepair.length, 0);

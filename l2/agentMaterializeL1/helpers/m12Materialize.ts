@@ -66,6 +66,8 @@ export interface M12Context {
   referenceSeeds?: readonly ReferenceSeedDataset[];
   /** d1_342: the scenario seed rows the last `emitSeedsWhenReady` left out, one line each (`table/scenario: reason`). */
   seedDrops?: string[];
+  /** d1_349 s2: the module engine was rewritten in this run; every process that has its file is kept or repaired against it. */
+  engineMoved?: boolean;
 }
 
 export function createContext(run: M12RunArgs, units: readonly M12Unit[], appEnv: string, compiler?: M12Compiler): M12Context {

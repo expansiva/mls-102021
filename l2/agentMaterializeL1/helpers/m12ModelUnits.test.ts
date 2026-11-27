@@ -403,6 +403,29 @@ void test('d1_329: a run by scope reuses a unit with its file, as before', async
   assert.deepEqual(workersOf(await dispatchRun({ scope: MODULE })), []);
 });
 
+// d1_349 s2: the engine of the module was rewritten by this run (`engineMoved`, set by prepareWorkflows): a scope run compiles each unit with its file against it, whatever moved in the receipt; it never generates from scratch.
+const ENGINE_MOVED_SPEC: M12ModelLayerSpec = { ...OPEN_SPEC, prepare: async ctx => { ctx.engineMoved = true; return []; } };
+
+async function dispatchEngineMoved(): Promise<Array<Record<string, unknown>>> {
+  const agent = modelDispatcherAgent(M12_USECASES_AGENT_NAME, 'test', ENGINE_MOVED_SPEC);
+  return agent.beforePromptStep!(meta, exec, { stepId: 1 } as mls.msg.AIAgentStep, { stepId: 2, prompt: '' } as mls.msg.AIAgentStep, 0,
+    JSON.stringify({ project: PROJECT, module: MODULE, scope: MODULE, target: '', force: false })) as Promise<Array<Record<string, unknown>>>;
+}
+
+void test('d1_349 s2: engine rewritten, a scope run keeps the files that compile (whatever the receipt says) and sends the ones that do not to the repair, never from scratch', async () => {
+  for (const change of ['deps', 'own', 'noParts', 'none'] as const) {
+    await seedReceipt(KEPT_TEXT, change);
+    assert.deepEqual(workersOf(await dispatchEngineMoved()), [], change);
+    assert.equal(await readOptional(usecaseTs), KEPT_TEXT, change);
+  }
+  const broken = 'export const openItem = 1; // FORCE_COMPILE_ERROR\n';
+  for (const change of ['deps', 'own', 'noParts'] as const) {
+    await seedReceipt(broken, change);
+    assert.deepEqual(workersOf(await dispatchEngineMoved()), [{ project: PROJECT, module: MODULE, unitId: 'openItem', attempt: 2, force: false }], change);
+    assert.equal(JSON.parse(receiptFile().content).code, 'MODEL_REPAIR', change);
+  }
+});
+
 void test('d1_329: a reuse stamps the halves only when the hash did not move', async () => {
   seedDefs(KEPT_TEXT);
   await writeText(usecaseTs, KEPT_TEXT);

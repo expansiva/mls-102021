@@ -1235,7 +1235,7 @@ test('the module engine copies the l4 step tables and the ontology destination o
   assert.ok(source.includes('export function createModuleWorkflowEngine(port: TaskOccurrencePort)'));
   assert.ok(source.includes('processId: "cicloTarefa"') && source.includes('processId: "avisoDiario"'));
   assert.ok(source.includes('title: "Ciclo da tarefa"') && source.includes('title: "Aviso diário de vencimentos"'));
-  assert.match(source, /async advance\(ctx: RequestContext, key: OccurrenceKey, command: TaskWorkflowAdvance\)/u);
+  assert.match(source, /async advance<P extends string>\(ctx: RequestContext, key: OccurrenceKey & \{ processId: P \}, command: /u);
   assert.equal(source.includes('table: WorkflowTable'), false);
   assert.ok(source.includes('iniciar: "emAndamento"') && source.includes('cancelar: "cancelada"'));
   assert.equal(source.includes('taskOccurrence'), false);

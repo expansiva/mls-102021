@@ -179,14 +179,18 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
         let repairWith: { source: string; problems: string[] } | null = null;
         let kept = false;
         let asserted = false;
-        if (onDisk && !scratch && run.target) {
+        // d1_349 s2: the engine of the module was rewritten in this run (prepareWorkflows): every process with its file is compiled against it, like a dependency that moved.
+        const againstEngine = ctx.engineMoved === true && !run.target;
+        if (onDisk && !scratch && (run.target || againstEngine)) {
           // d1_329: a target without "force" does not redo a unit from scratch. Only a dependency moved: compile the file against it.
           let move = await dragOf(unit, prior, parts);
+          // A scope run never rewrites a file that exists (it reuses it); here it only compiles it: the def or the receipt moving does not send it to the model from scratch, the compiler decides (kept, or repaired).
+          if (againstEngine) move = 'deps';
           // d1_331: the operator asserts that the def and the L4 did not move; only a receipt without halves (stamping was not possible) is taken so.
           if (move === 'other' && run.asserted && await assertedOk(unit, prior)) { move = 'deps'; asserted = true; }
           if (move === 'other') decision = { kind: 'generate' };
           else if (move === 'deps') {
-            const checked = await checkKept(ctx, unit, spec, prior as M12UnitStatus);
+            const checked = await checkKept(ctx, unit, spec, prior);
             if (checked.problems.length) { repairWith = checked; decision = { kind: 'generate' }; } else kept = true;
           }
         }
@@ -265,9 +269,9 @@ export async function assertedOk(unit: M12Unit, prior: M12UnitStatus | null): Pr
 }
 
 /** The file on disk against the dependencies of now: the gate of the layer, the imports, the compiler, the rules of a usecase. */
-export async function checkKept(ctx: M12Context, unit: M12Unit, spec: M12ModelLayerSpec, prior: M12UnitStatus): Promise<{ source: string; problems: string[] }> {
+export async function checkKept(ctx: M12Context, unit: M12Unit, spec: M12ModelLayerSpec, prior: M12UnitStatus | null): Promise<{ source: string; problems: string[] }> {
   const source = (await readOptional(unit.output)) ?? '';
-  const waived = prior.notApplicable ?? [];
+  const waived = prior?.notApplicable ?? [];
   const problems = [...await spec.gate(ctx, unit, source, waived), ...await missingImports(ctx, source)];
   const dropped = unit.definition.artifactType === 'usecase' ? rulesNotEmitted(unit.definition, source).filter(ruleId => !waived.some(item => item.ruleId === ruleId)) : [];
   if (dropped.length) problems.push(`RULE_NOT_EMITTED: ${dropped.join(', ')} are in the rulePlan of ${unit.defRef} and absent from ${unit.outputRef}.`);
