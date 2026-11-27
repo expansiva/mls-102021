@@ -96,6 +96,8 @@ holder.__smokeHttp = holder.__smokeHttp ?? {};
 holder.__smokeThrown = holder.__smokeThrown ?? [];
 
 export async function callConnection(connectionId: string, operationId: string, input: unknown, context: CallConnectionContext, _opts?: CallConnectionOptions): Promise<{ ok: true; output: unknown } | { ok: false; code: string; message: string; missing?: string[] }> {
+  // d1_347 s2: the cm is not a system of the module: its call goes to the platform, where the cm of the script answers it.
+  if (connectionId === 'cm') return (await import('/_102034_/l1/server/layer_1_external/connections/callConnection.js')).callConnection(connectionId, operationId, input, context, _opts) as never;
   const load = LOADERS[connectionId];
   if (!load) return { ok: false, code: 'unavailable', message: 'smoke: no adapter of the module for ' + connectionId };
   const adapter = (await load()).default;

@@ -27,6 +27,9 @@ export interface SmokeRoute {
   variant?: string;
   /** d1_336: a seed (`Entity.id`) whose id the delivery address of the arrival carries (`connection.context.hookParams`), when the declaration says the operation is delivered to one of that entity. */
   hookSeed?: string;
+  /** d1_347 s2: the connection and operation an arrival serves (`cm.sendChannelMessage`): the cm of the script calls it through `connectionServe`. */
+  connection?: string;
+  operation?: string;
 }
 
 export interface SmokeGatewayMethod {
@@ -54,6 +57,8 @@ export interface SmokePlan {
   repositories: string[];
   /** Where the types of the outputs live, for the check of the answers: the declarations of every contract page. */
   typeSources: Record<string, string>;
+  /** d1_347 s2: the platform has the cm of the script (`installCmBench`) and the module serves an operation of the cm: the arrivals of the cm go through the real `connectionServe` and the calls to the cm through the script. */
+  cmEdge: boolean;
 }
 
 function readIf(file: string): string | null {
@@ -240,7 +245,7 @@ function arrivalRoutes(tree: string, module: string, base: string): { routes: Sm
         }
       }
       const hookSeed = candidates[1] === undefined || source !== readIf(candidates[1]) ? undefined : hookSeedOf(line, entities);
-      for (const [label, input] of samples) routes.push({ page, route: request.route, kind: 'arrival', actor: '', input: input as Record<string, unknown>, inputType, outputType, arrival: true, ...(hookSeed ? { hookSeed } : {}), ...(samples.size > 1 ? { variant: label } : {}) });
+      for (const [label, input] of samples) routes.push({ page, route: request.route, kind: 'arrival', actor: '', input: input as Record<string, unknown>, inputType, outputType, arrival: true, connection, operation, ...(hookSeed ? { hookSeed } : {}), ...(samples.size > 1 ? { variant: label } : {}) });
     }
   }
   return { routes, typeSources };
@@ -273,5 +278,5 @@ export function planSmoke(tree: string, project: number, module: string, base: s
   const arrivals = arrivalRoutes(tree, module, base);
   const registered = readIf(path.join(tree, 'l1', module, 'layer_1_external', 'adapters', 'persistence', 'registerRepositories.ts')) ?? '';
   const repositories = [...registered.matchAll(/registerRepository\(\s*['"](\w+Repository)['"]/gu)].map(match => match[1]);
-  return { module, routes: [...routes, ...arrivals.routes], gateways: gatewaysOf(tree, project, module, base, moduleAdapterIds(tree, module)), repositories, typeSources: { ...typeSources, ...arrivals.typeSources } };
+  return { module, routes: [...routes, ...arrivals.routes], gateways: gatewaysOf(tree, project, module, base, moduleAdapterIds(tree, module)), repositories, typeSources: { ...typeSources, ...arrivals.typeSources }, cmEdge: existsSync(path.join(base, 'mls-102034', 'l1', 'server', 'layer_1_external', 'connections', 'cm', 'cmBench.ts')) && arrivals.routes.some(route => route.connection === 'cm') };
 }

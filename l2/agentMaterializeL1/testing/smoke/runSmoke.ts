@@ -118,6 +118,7 @@ import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/ex
 import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
 import { registerRepository, resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
 import { runAsCallerModule } from '/_102034_/l1/server/layer_1_external/connections/callerModule.js';
+import { getSharedDataRuntime, resetSharedDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/runtimeFactory.js';
 ${parts.register ? `import '/_${project}_/l1/${module}/layer_1_external/adapters/persistence/registerRepositories.js';` : ''}
 ${imports}
 ${parts.seeds ? `import * as seeds from '/_${project}_/l1/${module}/layer_1_external/adapters/persistence/seeds.js';` : 'const seeds = {};'}
@@ -172,13 +173,15 @@ function stubFor(gateway, pass) {
 function useGateways(plan, pass) {
   const own = () => {
     for (const gateway of plan.gateways) {
+      // d1_347 s2: with the cm of the script the bridge of the module to the cm is the module's own ('createCmGateway', registered by its composition root): 'callConnection' reaches the script.
+      if (globalThis.__cmBench && gateway.name === 'CmGateway') continue;
       const factory = gateway.real && pass === 'failure' ? outbound['create' + gateway.name] : undefined;
       registerRepository(gateway.name, factory ? ctx => factory(ctx) : () => stubFor(gateway, pass), { module: plan.module });
     }
   };
   // d1_341: the registry of the platform is global by name, the last registration wins. The other modules of the app register their bridges too (stubs with the methods of THEIR catalog), before or after this one.
   const others = () => {
-    for (const neighbour of plan.neighbours ?? []) for (const gateway of neighbour.gateways) registerRepository(gateway.name, () => stubFor(gateway, pass), { module: neighbour.module });
+    for (const neighbour of plan.neighbours ?? []) for (const gateway of neighbour.gateways) if (!(globalThis.__cmBench && gateway.name === 'CmGateway')) registerRepository(gateway.name, () => stubFor(gateway, pass), { module: neighbour.module });
   };
   if (plan.neighboursFirst) { others(); own(); } else { own(); others(); }
 }
@@ -233,6 +236,36 @@ function resetShim() {
   if (globalThis.__smokeThrown) globalThis.__smokeThrown.length = 0;
 }
 
+// d1_347 s2: with the cm of the script, the data of a case is the shared runtime of the platform (what 'connectionServe' runs on), one per case; the same checks of the memory store apply on top.
+function newRuntime() {
+  if (globalThis.__cmBench) { resetSharedDataRuntime(); return withNotNull(getSharedDataRuntime()); }
+  return withNotNull(createMemoryDataRuntime({ sandbox: true }));
+}
+
+// The cm of the script answers what the catalog says for the operations the module calls (the same answers the stub gave): success in the happy pass, the failure member (or 'unavailable') in the failure pass.
+function cmScript(plan) {
+  const script = {};
+  const gateway = plan.gateways.find(item => item.name === 'CmGateway');
+  for (const method of gateway?.methods ?? []) {
+    script[method.name] = async () => {
+      calls['CmGateway.' + method.name] = (calls['CmGateway.' + method.name] ?? 0) + 1;
+      if (method.unresolved) return { ok: false, code: 'unavailable', message: 'smoke: the output type of ' + method.name + ' is not declared in the catalog files' };
+      if (globalThis.__smokePass === 'failure') return method.failure === null ? { ok: false, code: 'unavailable', message: 'smoke: the outside system is unavailable' } : JSON.parse(JSON.stringify(method.failure));
+      return { ok: true, output: JSON.parse(JSON.stringify(method.success)) };
+    };
+  }
+  return script;
+}
+
+// An arrival of the cm reaches the route the way the cm reaches it: 'bench.serve' → the real 'connectionServe' (index of the release, authorize, 'serveCm', transaction).
+async function serveFromCm(item, ctx, datasets, at) {
+  const connection = ctx.requestMeta?.connection ?? {};
+  const answered = await globalThis.__cmBench.serve(item.operation, bind(item.input, datasets, at), { organizationId: 'org-bench', ...(connection.context ?? {}) }, { idempotencyKey: connection.idempotencyKey });
+  if (answered.ok) return { verdict: 'ok', status: 200, code: null, message: null, stack: null, output: answered.output ?? null };
+  const down = answered.code === 'unavailable';
+  return { verdict: down ? 'failed' : 'refused', status: down ? 503 : 422, code: answered.code, message: String(answered.message ?? '').slice(0, 300), stack: null, output: null };
+}
+
 let counter = 0;
 
 function describe(error) {
@@ -246,6 +279,7 @@ function describe(error) {
 
 async function call(route, item, ctx, datasets, session, at) {
   try {
+    if (globalThis.__cmBench && item.arrival && item.connection === 'cm' && item.operation) return await serveFromCm(item, ctx, datasets, at);
     // d1_341: as the platform runs a route (execBff): the code of the module that owns it, so a port registered by the module resolves to the module's own.
     const response = await runAsCallerModule(globalThis.__smokeModule, () => route.handler({ request: { routine: item.route, params: bind(item.input, datasets, at), meta: { source: 'test', session } }, ctx }));
     return { verdict: response && response.ok === false ? 'refused' : 'ok', status: response?.status ?? 200, code: null, message: null, stack: null, output: response && response.ok === false ? null : response?.data ?? null };
@@ -259,7 +293,7 @@ async function rowCounts(plan, ctx) {
   const out = {};
   lastRows = {};
   for (const name of plan.repositories ?? []) {
-    try { const repository = resolveRepository(ctx, name); const rows = await repository.list({}); out[name] = Array.isArray(rows) ? rows.length : -1; if (Array.isArray(rows)) lastRows[name] = rows.slice(-2); } catch { out[name] = -1; }
+    try { const rows = await runAsCallerModule(globalThis.__smokeModule, () => resolveRepository(ctx, name).list({})); out[name] = Array.isArray(rows) ? rows.length : -1; if (Array.isArray(rows)) lastRows[name] = rows.slice(-2); } catch { out[name] = -1; }
   }
   return out;
 }
@@ -267,6 +301,10 @@ async function rowCounts(plan, ctx) {
 async function main() {
   const plan = JSON.parse(readFileSync(process.argv[2], 'utf8'));
   globalThis.__smokeModule = plan.module;
+  if (plan.cmEdge) {
+    const { installCmBench } = await import('/_102034_/l1/server/layer_1_external/connections/cm/cmBench.js');
+    globalThis.__cmBench = installCmBench(String(process.env.SMOKE_PROJECT), cmScript(plan), { projectRoot: process.env.SMOKE_TREE, people: { '00000000-0000-4000-8000-000000000001': 'cm-user-smoke' } });
+  }
   const datasets = seedRows();
   // An arrival is run once per stored row of the entity it points at (an open conversation and a blocked one answer differently); the other cases on the first row.
   const rowsOf = item => {
@@ -275,6 +313,7 @@ async function main() {
     return Math.min(4, Math.max(1, ...specs.map(spec => setOf(spec, datasets)?.rows?.length ?? 1)));
   };
   for (const pass of ['happy', 'failure']) {
+    globalThis.__smokePass = pass;
     for (const base of plan.routes) {
       const route = ROUTES.find(candidate => candidate.key === base.route);
       if (!route) { process.stdout.write('RESULT ' + JSON.stringify({ route: base.route, pass, kind: base.kind, variant: base.variant ?? null, verdict: 'error', status: null, code: 'NO_HANDLER', message: 'no controller route', output: null }) + '\\n'); continue; }
@@ -288,7 +327,7 @@ async function main() {
         const scope = item.actor ? [plan.module + ':' + item.actor] : [];
         const person = { mdmId: '00000000-0000-4000-8000-000000000001', name: 'Smoke Person' };
         const session = { actorId: item.actor || undefined, actorScope: scope, actorSession: { actorId: item.actor || undefined, scope }, person, organizationId: '00000000-0000-4000-8000-0000000000aa' };
-        const ctx = createRequestContext(withNotNull(createMemoryDataRuntime({ sandbox: true })), { sandbox: true, sessionContext: session, moduleId: plan.module });
+        const ctx = createRequestContext(newRuntime(), { sandbox: true, sessionContext: session, moduleId: plan.module });
         // An arrival comes through the message path: the process reads the identity of the arrival, and the parameter of the delivery address, from the meta of the request.
         if (item.arrival) {
           counter += 1;
@@ -314,6 +353,7 @@ async function main() {
   }
   // Scenarios (d1_336): steps by the routes of the module that leave the store in a state, then the arrival, twice, as above.
   for (const pass of ['happy', 'failure']) {
+    globalThis.__smokePass = pass;
     for (const scenario of plan.scenarios ?? []) {
       const base = plan.routes.find(item => item.arrival && item.route === scenario.arrival.route && (!scenario.arrival.variant || (item.variant ?? '') === scenario.arrival.variant) && (!scenario.arrival.variantIncludes || (item.variant ?? '').includes(scenario.arrival.variantIncludes)));
       const route = base && ROUTES.find(candidate => candidate.key === base.route);
@@ -326,7 +366,7 @@ async function main() {
       globalThis.__smokePort?.reset();
       const person = { mdmId: '00000000-0000-4000-8000-000000000001', name: 'Smoke Person' };
       const sessionOf = actor => { const scope = actor ? [plan.module + ':' + actor] : []; return { actorId: actor || undefined, actorScope: scope, actorSession: { actorId: actor || undefined, scope }, person, organizationId: '00000000-0000-4000-8000-0000000000aa' }; };
-      const runtime = withNotNull(createMemoryDataRuntime({ sandbox: true }));
+      const runtime = newRuntime();
       const ctx = createRequestContext(runtime, { sandbox: true, sessionContext: sessionOf(''), moduleId: plan.module });
       const setup = [];
       for (const step of scenario.steps ?? []) {
@@ -352,7 +392,7 @@ async function main() {
     }
   }
 }
-main().then(() => process.exit(0)).catch(error => { process.stdout.write('MAINFAIL ' + String(error?.stack ?? error) + '\\n'); process.exit(1); });
+main().then(() => { globalThis.__cmBench?.restore(); process.exit(0); }).catch(error => { globalThis.__cmBench?.restore(); process.stdout.write('MAINFAIL ' + String(error?.stack ?? error) + '\\n'); process.exit(1); });
 `;
 }
 
@@ -401,11 +441,11 @@ export function runSmoke(input: { tree: string; project: number; module: string;
   writeFileSync(path.join(input.workDir, 'hooks.mjs'), HOOKS);
   const persistence = path.join(input.tree, 'l1', input.module, 'layer_1_external', 'adapters', 'persistence');
   writeFileSync(path.join(input.workDir, 'run.ts'), runnerSource(input.project, input.module, controllers, { outbound: existsSync(path.join(input.tree, 'l1', input.module, 'layer_1_external', 'adapters', 'integration', 'outbound.ts')), register: existsSync(path.join(persistence, 'registerRepositories.ts')), seeds: existsSync(path.join(persistence, 'seeds.ts')) }));
-  writeFileSync(path.join(input.workDir, 'plan.json'), JSON.stringify({ module: plan.module, routes: plan.routes, gateways: plan.gateways, repositories: plan.repositories, scenarios: scenariosOf(input.module), neighbours: (input.neighbours ?? []).map(module => ({ module, gateways: planSmoke(input.tree, input.project, module, input.base).gateways })), neighboursFirst: input.neighboursFirst === true }));
+  writeFileSync(path.join(input.workDir, 'plan.json'), JSON.stringify({ module: plan.module, cmEdge: plan.cmEdge, routes: plan.routes, gateways: plan.gateways, repositories: plan.repositories, scenarios: scenariosOf(input.module), neighbours: (input.neighbours ?? []).map(module => ({ module, gateways: planSmoke(input.tree, input.project, module, input.base).gateways })), neighboursFirst: input.neighboursFirst === true }));
   if (controllers.length === 0 || plan.routes.length === 0) return { module: input.module, routes: plan.routes.length, executed: 0, results: [], raw: controllers.length === 0 ? 'no controllers in the module' : 'no routes in the contracts', seconds: Math.round((Date.now() - started) / 100) / 10 };
   const run = spawnSync(path.join(input.base, 'node_modules/.bin/tsx'), ['--import', path.join(input.workDir, 'register.mjs'), '--import', path.join(input.base, 'test/setup-l2.ts'), path.join(input.workDir, 'run.ts'), path.join(input.workDir, 'plan.json')], {
     cwd: projectsDir(input.workDir, input.tree, input.base, input.project, input.module),
-    env: { ...process.env, SMOKE_BASE: input.base, SMOKE_TREE: input.tree, SMOKE_PROJECT: String(input.project) },
+    env: { ...process.env, SMOKE_BASE: input.base, SMOKE_TREE: input.tree, SMOKE_PROJECT: String(input.project), ...(plan.cmEdge ? { PROJECT_ID: String(input.project) } : {}) },
     encoding: 'utf8',
     timeout: input.timeoutMs ?? 300000,
     maxBuffer: 64 * 1024 * 1024,

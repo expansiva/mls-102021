@@ -6,7 +6,10 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { entityOfIdParam, planSmoke } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokePlan.js';
+import { smokeModule } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokeCli.js';
 
 function fixtureTree(): string {
   const tree = mkdtempSync(path.join(os.tmpdir(), 'smoke-plan-'));
@@ -190,4 +193,26 @@ void test('d1_340 s0: the smoke checks the value written against the type of the
   assert.match(source, /const badType = \(column, value\)/u);
   assert.match(source, /invalid input syntax for type /u);
   assert.match(source, /code: wrong === 'timestamp with time zone' \? '22007' : '22P02'/u);
+});
+
+// d1_347 s2: the cm of the script (installCmBench) and `bench.serve`: the arrival of the cm goes through the real `connectionServe`, the calls to the cm go through the script.
+const BASE = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
+const HAS_BENCH = existsSync(path.join(BASE, 'mls-102034/l1/server/layer_1_external/connections/cm/cmBench.ts'))
+  && spawnSync('git', ['-C', path.join(BASE, 'mls-102047'), 'cat-file', '-e', '25b9ae8d:l1/telegram']).status === 0;
+
+void test('d1_347 s2: telegram at 25b9ae8d with the cm of the script: the arrivals of the cm run through connectionServe, a refusal is audited and a repeat does not duplicate', { skip: !HAS_BENCH && 'needs mls-102034 with cmBench and mls-102047@25b9ae8d' }, () => {
+  const report = smokeModule('telegram', '25b9ae8d', mkdtempSync(path.join(os.tmpdir(), 'smoke-cmedge-')));
+  assert.equal(report.results.filter(item => item.verdict === 'error' || item.verdict === 'failed').length, 0, 'no exception and no 5xx');
+  const send = report.results.filter(item => item.kind === 'arrival' && item.route === 'telegram.cm.sendChannelMessage');
+  assert.ok(send.length > 0);
+  // The cm sees the code of the border (`refused`) and the message of the module; the module's own code is inside the module.
+  const blocked = send.find(item => item.message === 'The conversation is blocked.');
+  assert.ok(blocked, 'a blocked conversation is refused through the border');
+  assert.equal(blocked.code, 'refused');
+  assert.deepEqual(blocked.rows?.MessageAuditRepository?.slice(1), [6, 6], 'the refusal is audited once, and the repeat adds nothing');
+  const sent = send.find(item => item.verdict === 'ok' && item.pass === 'happy');
+  assert.ok(sent, 'a scenario row sends');
+  assert.deepEqual(sent.calls?.['TelegramGateway.sendText'], [1, 1], 'the repeat does not send twice');
+  const disable = report.results.filter(item => item.kind === 'arrival' && item.route === 'telegram.cm.disableChannel');
+  assert.ok(disable.length > 0, 'disableChannel is executed through the border (pauseByCm)');
 });
