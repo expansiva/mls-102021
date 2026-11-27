@@ -8,6 +8,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 
+import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { moduleAdapterIds } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokePort.js';
 import { hasUnresolved, sampleOf, typeNodeOf, typeTableOf, type TypeTable } from '/_102021_/l2/agentMaterializeL1/testing/smoke/typeModel.js';
 
@@ -152,6 +153,41 @@ function seedTargets(tree: string, module: string, pageId: string): Map<string, 
 
 /** The gateways of `outbound.ts` with the answers made from the catalog types the file imports. */
 function gatewaysOf(tree: string, project: number, module: string, base: string, adapterIds: readonly string[] = []): SmokeGateway[] {
+  const gateways = outboundGatewaysOf(tree, project, module, base, adapterIds);
+  // d1_347 s7: a module that calls the cm through the platform client (`cm(ctx)`, stage 2) has no `CmGateway` in its outbound.ts: the cm of the script answers the operations the module calls from the catalog of the cm.
+  if (!gateways.some(gateway => gateway.name === 'CmGateway') && modulesCallCm(tree, module)) {
+    const catalogFile = specifierFile('/_102034_/l2/shared/contracts/connections/cm.js', tree, project, base);
+    const catalog = catalogFile ? readFileSync(catalogFile, 'utf8') : '';
+    const operations = (catalog ? catalogOperations(catalog) : null)?.filter(operation => operation.direction === 'call') ?? [];
+    if (operations.length > 0) {
+      const table = typeTableOf([catalog]);
+      const methods: SmokeGatewayMethod[] = operations.map(operation => {
+        const output = typeNodeOf(operation.outputType);
+        const success = sampleOf(output, table, { prefer: 'success', optional: true, filled: true });
+        const failure = sampleOf(output, table, { prefer: 'failure', optional: true, filled: true });
+        return { name: operation.operationId, ...(hasUnresolved(output, table) ? { unresolved: true } : {}), success, failure: JSON.stringify(failure) === JSON.stringify(success) ? null : failure, outputType: operation.outputType };
+      });
+      gateways.push({ name: 'CmGateway', methods });
+    }
+  }
+  return gateways;
+}
+
+/** True when a file of the L1 of the module imports the platform client of the cm (`cm(ctx)`). */
+function modulesCallCm(tree: string, module: string): boolean {
+  const walk = (dir: string): boolean => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) { if (entry.name !== 'pipeline' && walk(file)) return true; continue; }
+      if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts') && /import \{[^}]*\bcm\b[^}]*\} from '\/_102034_\/l1\/server\/layer_1_external\/connections\/cm\/index\.js'/u.test(readFileSync(file, 'utf8'))) return true;
+    }
+    return false;
+  };
+  const root = path.join(tree, 'l1', module);
+  return existsSync(root) && walk(root);
+}
+
+function outboundGatewaysOf(tree: string, project: number, module: string, base: string, adapterIds: readonly string[] = []): SmokeGateway[] {
   const file = path.join(tree, 'l1', module, 'layer_1_external', 'adapters', 'integration', 'outbound.ts');
   const source = readIf(file);
   if (!source) return [];
