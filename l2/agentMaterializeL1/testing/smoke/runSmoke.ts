@@ -249,7 +249,7 @@ function cmScript(plan) {
   for (const method of gateway?.methods ?? []) {
     script[method.name] = async () => {
       calls['CmGateway.' + method.name] = (calls['CmGateway.' + method.name] ?? 0) + 1;
-      if (method.unresolved) return { ok: false, code: 'unavailable', message: 'smoke: the output type of ' + method.name + ' is not declared in the catalog files' };
+      if (method.unresolved) { globalThis.__smokeUnresolved = method.name; return { ok: false, code: 'unavailable', message: 'smoke: the output type of ' + method.name + ' is not declared in the catalog files' }; }
       if (globalThis.__smokePass === 'failure') return method.failure === null ? { ok: false, code: 'unavailable', message: 'smoke: the outside system is unavailable' } : JSON.parse(JSON.stringify(method.failure));
       return { ok: true, output: JSON.parse(JSON.stringify(method.success)) };
     };
@@ -257,13 +257,58 @@ function cmScript(plan) {
   return script;
 }
 
-// An arrival of the cm reaches the route the way the cm reaches it: 'bench.serve' → the real 'connectionServe' (index of the release, authorize, 'serveCm', transaction).
+// An arrival of the cm reaches the route the way the cm reaches it: 'bench.serve' -> the real 'connectionServe' (index of the release, authorize, serveCm, transaction).
+// 'connectionServe' answers a refusal with its code, and EVERY failure of the route as 'unavailable'; the cause only reaches the log (the line of the connection, and the line of the monitor with the stack
+// and the same request id). The smoke reads that log while the route runs, so an exception stays an 'error' with its stack, a 5xx a 'failed' with its cause, and a type the catalog does not declare 'skipped'.
 async function serveFromCm(item, ctx, datasets, at) {
   const connection = ctx.requestMeta?.connection ?? {};
-  const answered = await globalThis.__cmBench.serve(item.operation, bind(item.input, datasets, at), { organizationId: 'org-bench', ...(connection.context ?? {}) }, { idempotencyKey: connection.idempotencyKey });
+  const lines = [];
+  const original = { log: console.log, error: console.error, warn: console.warn, info: console.info };
+  for (const level of Object.keys(original)) console[level] = (...args) => { lines.push(args.map(part => (typeof part === 'string' ? part : String(part?.stack ?? part))).join(' ')); };
+  globalThis.__smokeUnresolved = false;
+  let answered;
+  try {
+    answered = await globalThis.__cmBench.serve(item.operation, bind(item.input, datasets, at), { organizationId: 'org-bench', ...(connection.context ?? {}) }, { idempotencyKey: connection.idempotencyKey });
+  } finally {
+    for (const [level, fn] of Object.entries(original)) console[level] = fn;
+  }
   if (answered.ok) return { verdict: 'ok', status: 200, code: null, message: null, stack: null, output: answered.output ?? null };
-  const down = answered.code === 'unavailable';
-  return { verdict: down ? 'failed' : 'refused', status: down ? 503 : 422, code: answered.code, message: String(answered.message ?? '').slice(0, 300), stack: null, output: null };
+  if (answered.code !== 'unavailable') return { verdict: 'refused', status: 422, code: answered.code, message: String(answered.message ?? '').slice(0, 300), stack: null, output: null };
+  if (globalThis.__smokeUnresolved) return { verdict: 'skipped', status: null, code: 'ERROR', message: 'smoke: the output type of ' + globalThis.__smokeUnresolved + ' is not declared in the catalog files', stack: null, output: null };
+  const log = lines.join('\\n');
+  const threw = /exec threw requestId=\\S+: ([\\s\\S]*)/u.exec(log);
+  const status = /status=(\\d{3})\\s+error=(\\S+)\\s+requestId=\\S+\\s+message=("(?:[^"\\\\]|\\\\.)*")/u.exec(log);
+  if (threw) return { verdict: 'error', status: null, code: 'ERROR', message: String(threw[1]).split('\\n')[0].slice(0, 300), stack: String(threw[1]).slice(0, 4000), output: null };
+  if (status) {
+    const code = status[2];
+    const cause = JSON.parse(status[3]);
+    // An exception that is not an AppError reaches the border as INTERNAL_ERROR (execBff): that is an exception, an 'error'; its stack is not in the log of the border, so the call is repeated on the route itself, once, only to read it.
+    // An AppError 5xx the route chose has its own code: that one is 'failed' with its cause.
+    return code === 'INTERNAL_ERROR'
+      ? { verdict: 'error', status: Number(status[1]), code, message: String(cause).slice(0, 300), stack: log.slice(0, 4000), output: null }
+      : { verdict: 'failed', status: Number(status[1]), code, message: String(cause).slice(0, 300), stack: null, output: null };
+  }
+  return { verdict: 'failed', status: 503, code: 'unavailable', message: String(answered.message ?? '').slice(0, 300), stack: log ? log.slice(0, 4000) : null, output: null };
+}
+
+// The people the smoke puts, each linked to a user of the cm so a call that names one of them is not 'unlinked': the person of the session, the people of the seeds, the text the catalog samples use for a user of the cm
+// ('sample'), and any MDM id a route meets (linked when first asked, so the way back works for it too).
+function peopleOfSmoke(datasets) {
+  // The first person of the seeds is the one the catalog samples name ('sample'): an answer of the cm that carries it reaches the module as a person the MDM has. The person of the session is another one.
+  const known = {};
+  const seeded = [];
+  for (const set of datasets) if (set.seedFor === 'mdmEntityIndex') for (const row of set.rows) if (typeof row.mdmId === 'string' && row.subtype === 'Person') seeded.push(row.mdmId);
+  if (seeded.length > 0) known[seeded[0]] = 'sample';
+  known['00000000-0000-4000-8000-000000000001'] = 'cm-user-smoke';
+  known.sample = 'sample';
+  let n = 0;
+  for (const set of datasets) if (set.seedFor === 'mdmEntityIndex') for (const row of set.rows) if (typeof row.mdmId === 'string' && !(row.mdmId in known)) { n += 1; known[row.mdmId] = 'cm-user-' + n; }
+  return new Proxy(known, {
+    get(target, key) {
+      if (typeof key === 'string' && !(key in target) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(key)) target[key] = 'cm-' + key;
+      return target[key];
+    },
+  });
 }
 
 let counter = 0;
@@ -278,12 +323,21 @@ function describe(error) {
 }
 
 async function call(route, item, ctx, datasets, session, at) {
+  globalThis.__smokeUnresolved = false;
   try {
-    if (globalThis.__cmBench && item.arrival && item.connection === 'cm' && item.operation) return await serveFromCm(item, ctx, datasets, at);
+    if (globalThis.__cmBench && item.arrival && item.connection === 'cm' && item.operation) {
+      const out = await serveFromCm(item, ctx, datasets, at);
+      if (out.verdict === 'error' && route) {
+        try { await runAsCallerModule(globalThis.__smokeModule, () => route.handler({ request: { routine: item.route, params: bind(item.input, datasets, at), meta: { source: 'test', session } }, ctx })); }
+        catch (thrown) { if (!(thrown instanceof AppError) && thrown?.stack) out.stack = String(thrown.stack).slice(0, 4000); }
+      }
+      return out;
+    }
     // d1_341: as the platform runs a route (execBff): the code of the module that owns it, so a port registered by the module resolves to the module's own.
     const response = await runAsCallerModule(globalThis.__smokeModule, () => route.handler({ request: { routine: item.route, params: bind(item.input, datasets, at), meta: { source: 'test', session } }, ctx }));
     return { verdict: response && response.ok === false ? 'refused' : 'ok', status: response?.status ?? 200, code: null, message: null, stack: null, output: response && response.ok === false ? null : response?.data ?? null };
   } catch (error) {
+    if (globalThis.__smokeUnresolved) { const method = globalThis.__smokeUnresolved; globalThis.__smokeUnresolved = false; return { verdict: 'skipped', status: null, code: 'ERROR', message: 'smoke: the output type of ' + method + ' is not declared in the catalog files', stack: null, output: null }; }
     return { ...describe(error), output: null };
   }
 }
@@ -301,11 +355,11 @@ async function rowCounts(plan, ctx) {
 async function main() {
   const plan = JSON.parse(readFileSync(process.argv[2], 'utf8'));
   globalThis.__smokeModule = plan.module;
+  const datasets = seedRows();
   if (plan.cmEdge) {
     const { installCmBench } = await import('/_102034_/l1/server/layer_1_external/connections/cm/cmBench.js');
-    globalThis.__cmBench = installCmBench(String(process.env.SMOKE_PROJECT), cmScript(plan), { projectRoot: process.env.SMOKE_TREE, people: { '00000000-0000-4000-8000-000000000001': 'cm-user-smoke' } });
+    globalThis.__cmBench = installCmBench(String(process.env.SMOKE_PROJECT), cmScript(plan), { projectRoot: process.env.SMOKE_TREE, people: peopleOfSmoke(datasets) });
   }
-  const datasets = seedRows();
   // An arrival is run once per stored row of the entity it points at (an open conversation and a blocked one answer differently); the other cases on the first row.
   const rowsOf = item => {
     if (!item.arrival) return 1;

@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/testing/smoke/smoke.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -9,7 +9,7 @@ import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { entityOfIdParam, planSmoke } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokePlan.js';
-import { smokeModule } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokeCli.js';
+import { extractModule, smokeModule } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokeCli.js';
 
 function fixtureTree(): string {
   const tree = mkdtempSync(path.join(os.tmpdir(), 'smoke-plan-'));
@@ -215,4 +215,29 @@ void test('d1_347 s2: telegram at 25b9ae8d with the cm of the script: the arriva
   assert.deepEqual(sent.calls?.['TelegramGateway.sendText'], [1, 1], 'the repeat does not send twice');
   const disable = report.results.filter(item => item.kind === 'arrival' && item.route === 'telegram.cm.disableChannel');
   assert.ok(disable.length > 0, 'disableChannel is executed through the border (pauseByCm)');
+});
+
+void test('d1_347 s2b: by the border of the cm a route that throws is an error with its stack, one that answers a 5xx is failed with its code, and a type the catalog does not declare is skipped', { skip: !HAS_BENCH && 'needs mls-102034 with cmBench and mls-102047@25b9ae8d' }, () => {
+  const tree = mkdtempSync(path.join(os.tmpdir(), 'smoke-cmedge-bad-'));
+  extractModule(path.join(BASE, 'mls-102047'), '25b9ae8d', 'telegram', tree);
+  const file = path.join(tree, 'l1/telegram/layer_2_application/requests/cm.ts');
+  const text = readFileSync(file, 'utf8')
+    .replace("  'telegram.cm.disableChannel': async function (input, ctx) {\n", "  'telegram.cm.disableChannel': async function (input, ctx) {\n    throw new Error('boom: the route threw');\n")
+    .replace("  'telegram.cm.setChannelConversationIdentity': async function (input, ctx) {\n", "  'telegram.cm.setChannelConversationIdentity': async function (input, ctx) {\n    throw new AppError('UPSTREAM_DOWN', 'the upstream is down', 503);\n");
+  assert.ok(text.includes('boom') && text.includes('UPSTREAM_DOWN'), 'the fixture was patched');
+  writeFileSync(file, text);
+  const report = smokeModule('telegram', tree, mkdtempSync(path.join(os.tmpdir(), 'smoke-cmedge-bad-out-')));
+  const of = (operation: string) => report.results.filter(item => item.kind === 'arrival' && item.route === `telegram.cm.${operation}`);
+  const thrown = of('disableChannel');
+  assert.ok(thrown.length > 0 && thrown.every(item => item.verdict === 'error'), 'an exception is an error');
+  assert.ok(thrown.every(item => /boom: the route threw/u.test(item.stack ?? '')), 'with its stack');
+  const answered = of('setChannelConversationIdentity');
+  assert.ok(answered.length > 0 && answered.every(item => item.verdict === 'failed' && item.status === 503 && item.code === 'UPSTREAM_DOWN'), 'a 5xx is failed, with its code');
+  assert.ok(of('sendChannelMessage').some(item => item.verdict === 'refused'), 'a refusal stays a refusal');
+  // A call whose output type the catalog files do not declare (the agents' releaseCatalogChanged calls listCmTools) is skipped by the script, as the stub did.
+  const agentsTree = mkdtempSync(path.join(os.tmpdir(), 'smoke-cmedge-agents-'));
+  extractModule(path.join(BASE, 'mls-102047'), '25b9ae8d', 'agents', agentsTree);
+  const agents = smokeModule('agents', agentsTree, mkdtempSync(path.join(os.tmpdir(), 'smoke-cmedge-agents-out-')));
+  const unresolved = agents.results.filter(item => item.route === 'agents.platform.releaseCatalogChanged');
+  assert.ok(unresolved.length > 0 && unresolved.every(item => item.verdict === 'skipped'), 'a type the catalog does not declare is skipped');
 });
