@@ -24,6 +24,8 @@ export interface SmokeRoute {
   arrival?: boolean;
   /** d1_330: which member of a union input this case calls ('' when the input has one shape): the leaf paths of the input. */
   variant?: string;
+  /** d1_336: a seed (`Entity.id`) whose id the delivery address of the arrival carries (`connection.context.hookParams`), when the declaration says the operation is delivered to one of that entity. */
+  hookSeed?: string;
 }
 
 export interface SmokeGatewayMethod {
@@ -45,6 +47,8 @@ export interface SmokePlan {
   module: string;
   routes: SmokeRoute[];
   gateways: SmokeGateway[];
+  /** d1_336: the repositories the module registers (names): the smoke counts their rows before and after a process. */
+  repositories: string[];
   /** Where the types of the outputs live, for the check of the answers: the declarations of every contract page. */
   typeSources: Record<string, string>;
 }
@@ -187,6 +191,17 @@ function bindRefs(value: unknown, entities: readonly string[], key = ''): unknow
  * d1_330: the operations the module serves. A request service def line with `serves: "<connection>.<operation>"` is an arrival; its input is made from the type the catalog
  * names for the operation (the platform's file, or the declaration the module emitted), one case per way a union input can be called.
  */
+/** The entity the delivery address of an operation of the module's own declaration is for: the entity of the module whose name ends with a word the description of the operation uses (`bot` for `TelegramBot`). */
+function hookSeedOf(operationText: string, entities: readonly string[]): string | undefined {
+  const description = (/"description":\s*"((?:[^"\\]|\\.)*)"/u.exec(operationText)?.[1] ?? '').toLowerCase();
+  const words = new Set(description.match(/[a-z]+/gu) ?? []);
+  const entity = entities.find(name => {
+    const last = (name.match(/[A-Z][a-z0-9]*/gu) ?? [name]).pop()?.toLowerCase() ?? '';
+    return last.length > 2 && (words.has(last) || words.has(`${last}s`));
+  });
+  return entity ? `${entity}.id` : undefined;
+}
+
 function arrivalRoutes(tree: string, module: string, base: string): { routes: SmokeRoute[]; typeSources: Record<string, string> } {
   const routes: SmokeRoute[] = [];
   const typeSources: Record<string, string> = {};
@@ -213,12 +228,16 @@ function arrivalRoutes(tree: string, module: string, base: string): { routes: Sm
       typeSources[page] = source;
       const table = typeTableOf([source]);
       const samples = new Map<string, unknown>();
-      for (let variant = 0; variant < 4; variant += 1) {
-        const sample = sampleOf(typeNodeOf(inputType), table, { variant });
-        const input = bindRefs(sample && typeof sample === 'object' && !Array.isArray(sample) ? sample : {}, entities);
-        samples.set(leafPaths(input).sort().join('+'), input);
+      // Each way a union is called, with the optional members left out and with them in (an optional `identity` is how a process is asked to set it, and absent how it is asked to clear it).
+      for (const optional of [false, true]) {
+        for (let variant = 0; variant < 4; variant += 1) {
+          const sample = sampleOf(typeNodeOf(inputType), table, { variant, optional });
+          const input = bindRefs(sample && typeof sample === 'object' && !Array.isArray(sample) ? sample : {}, entities);
+          samples.set(leafPaths(input).sort().join('+'), input);
+        }
       }
-      for (const [label, input] of samples) routes.push({ page, route: request.route, kind: 'arrival', actor: '', input: input as Record<string, unknown>, inputType, outputType, arrival: true, ...(samples.size > 1 ? { variant: label } : {}) });
+      const hookSeed = candidates[1] === undefined || source !== readIf(candidates[1]) ? undefined : hookSeedOf(line, entities);
+      for (const [label, input] of samples) routes.push({ page, route: request.route, kind: 'arrival', actor: '', input: input as Record<string, unknown>, inputType, outputType, arrival: true, ...(hookSeed ? { hookSeed } : {}), ...(samples.size > 1 ? { variant: label } : {}) });
     }
   }
   return { routes, typeSources };
@@ -249,5 +268,7 @@ export function planSmoke(tree: string, project: number, module: string, base: s
     }
   }
   const arrivals = arrivalRoutes(tree, module, base);
-  return { module, routes: [...routes, ...arrivals.routes], gateways: gatewaysOf(tree, project, module, base), typeSources: { ...typeSources, ...arrivals.typeSources } };
+  const registered = readIf(path.join(tree, 'l1', module, 'layer_1_external', 'adapters', 'persistence', 'registerRepositories.ts')) ?? '';
+  const repositories = [...registered.matchAll(/registerRepository\(\s*['"](\w+Repository)['"]/gu)].map(match => match[1]);
+  return { module, routes: [...routes, ...arrivals.routes], gateways: gatewaysOf(tree, project, module, base), repositories, typeSources: { ...typeSources, ...arrivals.typeSources } };
 }

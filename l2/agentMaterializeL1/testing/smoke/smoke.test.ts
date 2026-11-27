@@ -142,3 +142,37 @@ void test('d1_333 s1a: a type the catalog files do not declare is unresolved, a 
   const plan = planSmoke(tree, 102099, 'demo', '/nowhere');
   assert.deepEqual(plan.gateways[0].methods.map(method => [method.name, method.unresolved === true]), [['ok', false], ['lost', true]]);
 });
+
+import { readFileSync } from 'node:fs';
+import { installMemoryPort } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokePort.js';
+
+void test('d1_336 s1: the engine of the COPY gets the occurrence port in memory; a tree without that engine is left alone', () => {
+  const tree = mkdtempSync(path.join(os.tmpdir(), 'smoke-port-'));
+  const write = (rel: string, text: string) => { mkdirSync(path.dirname(path.join(tree, rel)), { recursive: true }); writeFileSync(path.join(tree, rel), text); };
+  assert.equal(installMemoryPort(tree, 102099, 'demo'), false, 'no engine');
+  const head = "import { createRuntimeMessagesTaskPort } from '/_102034_/l1/workflow/index.js';\nexport const plans = {};\n";
+  write('l1/demo/layer_1_external/adapters/workflow/engine.ts', `${head}/** Production engine. */\nexport const workflowEngine = createModuleWorkflowEngine(createRuntimeMessagesTaskPort({\n  projectId: "102099",\n  moduleId: "demo",\n}));\n`);
+  assert.equal(installMemoryPort(tree, 102099, 'demo'), true);
+  const engine = readFileSync(path.join(tree, 'l1/demo/layer_1_external/adapters/workflow/engine.ts'), 'utf8');
+  assert.ok(engine.startsWith(head), 'what is above the engine is kept');
+  assert.match(engine, /export const workflowEngine = createModuleWorkflowEngine\(smokeTaskPort\);/u);
+  assert.doesNotMatch(engine, /createRuntimeMessagesTaskPort\(\{/u);
+  assert.match(readFileSync(path.join(tree, 'l1/demo/layer_1_external/adapters/workflow/smokeMemoryPort.ts'), 'utf8'), /kind: 'task'/u);
+  write('l1/other/layer_1_external/adapters/workflow/engine.ts', 'export const workflowEngine = somethingElse();\n');
+  assert.equal(installMemoryPort(tree, 102099, 'other'), false, 'an engine written another way is not touched');
+});
+
+void test('d1_336 s1: a text the catalog says is ISO 8601 is sampled as a date; optional members are sampled on request; the delivery address names the entity of the module', () => {
+  const table = typeTableOf(['export interface In {\n  /** When it was written, ISO 8601. */\n  writtenAt: string;\n  label: string;\n  note?: string;\n  identity?: { email: string } | { mdmId: string };\n}']);
+  const node = typeNodeOf('In');
+  assert.deepEqual(sampleOf(node, table), { writtenAt: '2026-01-01T00:00:00.000Z', label: 'sample' });
+  assert.deepEqual(sampleOf(node, table, { optional: true, variant: 1 }), { writtenAt: '2026-01-01T00:00:00.000Z', label: 'sample', note: 'sample', identity: { mdmId: 'sample' } });
+  const tree = mkdtempSync(path.join(os.tmpdir(), 'smoke-hook-'));
+  const write = (rel: string, text: string) => { mkdirSync(path.dirname(path.join(tree, rel)), { recursive: true }); writeFileSync(path.join(tree, rel), text); };
+  write('l1/demo/layer_3_domain/entities/ticketBot.ts', 'export interface TicketBot { id: string }\n');
+  write('l1/demo/layer_3_domain/entities/ticket.ts', 'export interface Ticket { id: string }\n');
+  write('l1/demo/layer_2_application/requests/hub.defs.ts', `export const definition = ${JSON.stringify({ data: { pageId: 'hub', requests: [{ route: 'demo.hub.arrived', kind: 'cmd', serves: 'hub.arrived' }] } })} as const;\n`);
+  write('l1/demo/layer_1_external/connections/hub.ts', 'export type ArrivedInput = { n: number };\nexport const hub = { "operations": [ { "operationId": "arrived", "direction": "serve", "description": "The hub delivers a message to the bot, on the delivery address of that bot.", "inputType": "ArrivedInput", "outputType": "ArrivedInput" } ] };\n');
+  const plan = planSmoke(tree, 102099, 'demo', '/nowhere');
+  assert.equal(plan.routes.find(item => item.route === 'demo.hub.arrived')?.hookSeed, 'TicketBot.id');
+});

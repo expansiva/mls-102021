@@ -27,12 +27,22 @@ export function typeNodeOf(text: string): ts.TypeNode {
   return alias.type;
 }
 
-function members(node: ts.TypeLiteralNode): Array<{ name: string; optional: boolean; type: ts.TypeNode }> {
-  const out: Array<{ name: string; optional: boolean; type: ts.TypeNode }> = [];
+/** The text of the comment of a member (`/** … *\/` above it): where the catalog says a text is a date. */
+function docOf(member: ts.Node): string {
+  try {
+    const text = member.getSourceFile().text;
+    return (ts.getLeadingCommentRanges(text, member.pos) ?? []).map(range => text.slice(range.pos, range.end)).join(' ');
+  } catch { return ''; }
+}
+
+const ISO_SAMPLE = '2026-01-01T00:00:00.000Z';
+
+function members(node: ts.TypeLiteralNode): Array<{ name: string; optional: boolean; type: ts.TypeNode; iso?: boolean }> {
+  const out: Array<{ name: string; optional: boolean; type: ts.TypeNode; iso?: boolean }> = [];
   for (const member of node.members) {
     if (!ts.isPropertySignature(member) || !member.type) continue;
     const name = ts.isIdentifier(member.name) || ts.isStringLiteral(member.name) ? member.name.text : '';
-    if (name) out.push({ name, optional: !!member.questionToken, type: member.type });
+    if (name) out.push({ name, optional: !!member.questionToken, type: member.type, ...(/ISO 8601/u.test(docOf(member)) ? { iso: true } : {}) });
   }
   return out;
 }
@@ -68,7 +78,7 @@ export function hasUnresolved(node: ts.TypeNode, table: TypeTable, seen: Readonl
 }
 
 /** The smallest valid value. `prefer`: for a union, the member that has a literal `true` (success) or `false` (failure) field, when asked. `variant`: otherwise the nth member of every union (d1_330: each way to call an arrival). */
-export function sampleOf(node: ts.TypeNode, table: TypeTable, options: { prefer?: 'success' | 'failure'; variant?: number } = {}, seen: ReadonlySet<string> = new Set(), depth = 0): unknown {
+export function sampleOf(node: ts.TypeNode, table: TypeTable, options: { prefer?: 'success' | 'failure'; variant?: number; optional?: boolean } = {}, seen: ReadonlySet<string> = new Set(), depth = 0): unknown {
   if (depth > 8) return undefined;
   const { node: type, seen: next } = resolved(node, table, seen);
   switch (type.kind) {
@@ -114,8 +124,8 @@ export function sampleOf(node: ts.TypeNode, table: TypeTable, options: { prefer?
   if (ts.isTypeLiteralNode(type)) {
     const out: Record<string, unknown> = {};
     for (const member of members(type)) {
-      if (member.optional) continue;
-      const value = sampleOf(member.type, table, options, next, depth + 1);
+      if (member.optional && !options.optional) continue;
+      const value = member.iso && typeof sampleOf(member.type, table, options, next, depth + 1) === 'string' ? ISO_SAMPLE : sampleOf(member.type, table, options, next, depth + 1);
       if (value !== undefined) out[member.name] = value;
     }
     return out;

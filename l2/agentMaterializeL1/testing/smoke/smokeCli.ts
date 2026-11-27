@@ -24,6 +24,31 @@ export function extractModule(repo: string, commit: string, module: string, targ
   if (extracted.status !== 0) throw new Error(extracted.stderr?.toString() || 'tar');
 }
 
+/** d1_336: the arrivals, the processes behind them: how far each went, the second delivery, the calls to each gateway, what the occurrence port was asked, the rows written, and the stack of what threw. */
+export function processesText(report: SmokeReport): string[] {
+  const arrivals = report.results.filter(item => item.kind === 'arrival');
+  if (arrivals.length === 0) return [];
+  const rowsText = (rows: Record<string, number[]> | undefined): string => Object.entries(rows ?? {}).filter(([, counts]) => counts[0] !== counts[2]).map(([name, counts]) => `${name} ${counts.join('→')}`).join('; ') || 'nothing written';
+  const lines = [
+    `## Processes (${report.memoryPort ? 'occurrence port in memory' : 'production port: the engine was not replaced'}); arrivals are report only`,
+    '',
+    '| pass | arrival | setup | first | second delivery | gateway calls (after 1st, 2nd) | port | rows |',
+    '|---|---|---|---|---|---|---|---|',
+  ];
+  for (const item of arrivals) {
+    const setup = (item.setup ?? []).map(step => `${step.route.split('.').pop()}: ${step.verdict}${step.code ? ` ${step.code}` : ''}`).join('; ') || '-';
+    const calls = Object.entries(item.calls ?? {}).map(([name, counts]) => `${name} ${counts.join('/')}`).join('; ') || 'none';
+    const steps = (item.port ?? []).filter(line => !line.startsWith('find')).length;
+    lines.push(`| ${item.pass} | ${item.route}${item.variant ? ` [${item.variant}]` : ''} | ${setup} | ${item.verdict} ${item.code ?? ''} ${(item.message ?? '').slice(0, 60)} | ${item.second ? `${item.second.verdict} ${item.second.code ?? ''}` : '-'} | ${calls} | ${steps} step call(s) | ${rowsText(item.rows)} |`);
+  }
+  const thrown = report.results.filter(item => item.stack);
+  if (thrown.length) {
+    lines.push('', '### Stacks of what threw', '');
+    for (const item of thrown) lines.push(`${item.pass} ${item.route}${item.variant ? ` [${item.variant}]` : ''}: ${item.code ?? ''}`, '```', (item.stack ?? '').split('\n').slice(0, 12).join('\n'), '```');
+  }
+  return lines;
+}
+
 /** The report as a table: one line per route and pass, with what the check against the contract type found. */
 export function reportText(report: SmokeReport, label: string): string {
   const count = (verdict: string) => report.results.filter(item => item.verdict === verdict).length;
@@ -37,6 +62,7 @@ export function reportText(report: SmokeReport, label: string): string {
     '|---|---|---|---|---|---|',
     ...report.results.map(item => `| ${item.pass} | ${item.route}${item.variant ? ` [${item.variant}]` : ''} | ${item.verdict} | ${item.status ?? ''} | ${item.code ?? ''} | ${item.conforms.slice(0, 3).join('; ')} |`),
     '',
+    ...processesText(report),
   ].join('\n');
 }
 

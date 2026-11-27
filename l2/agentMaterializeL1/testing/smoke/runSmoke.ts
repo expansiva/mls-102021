@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { installMemoryPort } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokePort.js';
 import { planSmoke, type SmokePlan } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokePlan.js';
 import { conformsTo, typeNodeOf, typeTableOf } from '/_102021_/l2/agentMaterializeL1/testing/smoke/typeModel.js';
 
@@ -25,6 +26,17 @@ export interface SmokeCaseResult {
   /** Problems of the output against the contract type (empty for a refusal). */
   conforms: string[];
   output: unknown;
+  /** d1_336: the stack of an exception or of a 5xx. */
+  stack?: string | null;
+  /** d1_336, arrivals: the same message delivered a second time on the same store (a retry of the sender). */
+  second?: { verdict: string; status: number | null; code: string | null; message: string | null; stack?: string | null } | null;
+  /** d1_336, arrivals: calls made to each gateway method, after the first and after the second delivery. */
+  calls?: Record<string, number[]>;
+  /** d1_336, arrivals: what the occurrence port was asked, and the rows of each repository of the module before, after the first and after the second delivery. */
+  port?: string[];
+  rows?: Record<string, number[]>;
+  /** d1_336, scenarios: the steps that left the store in the state, and what each answered. */
+  setup?: Array<{ route: string; verdict: string; status: number | null; code: string | null; message: string }>;
 }
 
 export interface SmokeReport {
@@ -34,6 +46,8 @@ export interface SmokeReport {
   results: SmokeCaseResult[];
   raw: string;
   seconds: number;
+  /** d1_336: the processes of the module ran on the occurrence port in memory (the engine of the copy was replaced). */
+  memoryPort?: boolean;
 }
 
 const REGISTER = `import { readdirSync, statSync, existsSync } from 'node:fs';
@@ -95,7 +109,7 @@ function runnerSource(project: number, module: string, controllers: readonly str
   return `import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
 import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
-import { registerRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import { registerRepository, resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
 ${parts.register ? `import '/_${project}_/l1/${module}/layer_1_external/adapters/persistence/registerRepositories.js';` : ''}
 ${imports}
 ${parts.seeds ? `import * as seeds from '/_${project}_/l1/${module}/layer_1_external/adapters/persistence/seeds.js';` : 'const seeds = {};'}
@@ -109,25 +123,32 @@ function seedRows() {
   return datasets;
 }
 
-function resolveSeed(spec, datasets) {
-  const [entity, field] = spec.split('.');
+function setOf(spec, datasets) {
+  const [entity] = spec.split('.');
   const wanted = entity.charAt(0).toLowerCase() + entity.slice(1);
-  const set = datasets.find(item => item.seedFor === wanted) ?? datasets.find(item => item.seedFor.toLowerCase() === entity.toLowerCase());
-  const row = set?.rows?.[0];
+  return datasets.find(item => item.seedFor === wanted) ?? datasets.find(item => item.seedFor.toLowerCase() === entity.toLowerCase());
+}
+
+function resolveSeed(spec, datasets, at = 0) {
+  const field = spec.split('.')[1];
+  const rows = setOf(spec, datasets)?.rows ?? [];
+  const row = rows[Math.min(at, rows.length - 1)];
   return row && row[field] !== undefined ? row[field] : 'sample';
 }
 
-function bind(value, datasets) {
-  if (typeof value === 'string') { const m = /^<seed:(.+)>$/.exec(value); return m ? resolveSeed(m[1], datasets) : value; }
-  if (Array.isArray(value)) return value.map(item => bind(item, datasets));
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, bind(item, datasets)]));
+function bind(value, datasets, at = 0) {
+  if (typeof value === 'string') { const m = /^<seed:(.+)>$/.exec(value); return m ? resolveSeed(m[1], datasets, at) : value; }
+  if (Array.isArray(value)) return value.map(item => bind(item, datasets, at));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, bind(item, datasets, at)]));
   return value;
 }
 
+const calls = {};
 function stubFor(gateway, pass) {
   const stub = {};
   for (const method of gateway.methods) {
     stub[method.name] = async () => {
+      calls[gateway.name + '.' + method.name] = (calls[gateway.name + '.' + method.name] ?? 0) + 1;
       if (method.unresolved) { const skip = new Error('smoke: the output type of ' + method.name + ' is not declared in the catalog files'); skip.name = 'SmokeUnresolved'; throw skip; }
       if (pass === 'failure') {
         if (method.failure === null) throw new AppError('unavailable', 'smoke: the outside system is unavailable', 503);
@@ -140,31 +161,112 @@ function stubFor(gateway, pass) {
 }
 
 let counter = 0;
+
+function describe(error) {
+  const status = typeof error?.status === 'number' ? error.status : null;
+  const skippedCase = error?.name === 'SmokeUnresolved' || String(error?.cause?.name ?? '') === 'SmokeUnresolved';
+  const isApp = error instanceof AppError || typeof error?.code === 'string';
+  const verdict = skippedCase ? 'skipped' : isApp ? (status !== null && status >= 500 ? 'failed' : 'refused') : 'error';
+  return { verdict, status, code: error?.code ?? 'ERROR', message: String(error?.message ?? error).slice(0, 300), stack: verdict === 'refused' || verdict === 'skipped' ? null : String(error?.stack ?? error).slice(0, 4000) };
+}
+
+async function call(route, item, ctx, datasets, session, at) {
+  try {
+    const response = await route.handler({ request: { routine: item.route, params: bind(item.input, datasets, at), meta: { source: 'test', session } }, ctx });
+    return { verdict: response && response.ok === false ? 'refused' : 'ok', status: response?.status ?? 200, code: null, message: null, stack: null, output: response && response.ok === false ? null : response?.data ?? null };
+  } catch (error) {
+    return { ...describe(error), output: null };
+  }
+}
+
+async function rowCounts(plan, ctx) {
+  const out = {};
+  for (const name of plan.repositories ?? []) {
+    try { const repository = resolveRepository(ctx, name); const rows = await repository.list({}); out[name] = Array.isArray(rows) ? rows.length : -1; } catch { out[name] = -1; }
+  }
+  return out;
+}
+
 async function main() {
   const plan = JSON.parse(readFileSync(process.argv[2], 'utf8'));
   const datasets = seedRows();
+  // An arrival is run once per stored row of the entity it points at (an open conversation and a blocked one answer differently); the other cases on the first row.
+  const rowsOf = item => {
+    if (!item.arrival) return 1;
+    const specs = [...JSON.stringify(item.input).matchAll(/<seed:([^>]+)>/g)].map(match => match[1]).concat(item.hookSeed ? [item.hookSeed] : []);
+    return Math.min(4, Math.max(1, ...specs.map(spec => setOf(spec, datasets)?.rows?.length ?? 1)));
+  };
   for (const pass of ['happy', 'failure']) {
-    for (const item of plan.routes) {
-      const route = ROUTES.find(candidate => candidate.key === item.route);
-      let line;
-      if (!route) { process.stdout.write('RESULT ' + JSON.stringify({ route: item.route, pass, kind: item.kind, variant: item.variant ?? null, verdict: 'error', status: null, code: 'NO_HANDLER', message: 'no controller route', output: null }) + '\\n'); continue; }
-      for (const gateway of plan.gateways) registerRepository(gateway.name, () => stubFor(gateway, pass));
-      const scope = item.actor ? [plan.module + ':' + item.actor] : [];
-      const person = { mdmId: '00000000-0000-4000-8000-000000000001', name: 'Smoke Person' };
-      const session = { actorId: item.actor || undefined, actorScope: scope, actorSession: { actorId: item.actor || undefined, scope }, person, organizationId: '00000000-0000-4000-8000-0000000000aa' };
-      const ctx = createRequestContext(createMemoryDataRuntime({ sandbox: true }), { sandbox: true, sessionContext: session, moduleId: plan.module });
-      // An arrival comes through the message path: the process reads the identity of the arrival from the meta of the request.
-      if (item.arrival) { counter += 1; ctx.requestMeta = { requestId: 'smoke-' + counter, source: 'message', connection: { idempotencyKey: 'smoke-' + counter, context: {} } }; }
-      try {
-        const response = await route.handler({ request: { routine: item.route, params: bind(item.input, datasets), meta: { source: 'test', session } }, ctx });
-        line = { route: item.route, pass, kind: item.kind, variant: item.variant ?? null, verdict: response && response.ok === false ? 'refused' : 'ok', status: response?.status ?? 200, code: null, message: null, output: response && response.ok === false ? null : (response?.data ?? response) };
-      } catch (error) {
-        const status = typeof error?.status === 'number' ? error.status : null;
-        const skippedCase = error?.name === 'SmokeUnresolved' || String(error?.cause?.name ?? '') === 'SmokeUnresolved';
-        const isApp = error instanceof AppError || typeof error?.code === 'string';
-        line = { route: item.route, pass, kind: item.kind, variant: item.variant ?? null, verdict: skippedCase ? 'skipped' : isApp ? (status !== null && status >= 500 ? 'failed' : 'refused') : 'error', status, code: error?.code ?? 'ERROR', message: String(error?.message ?? error).slice(0, 300), output: null };
+    for (const base of plan.routes) {
+      const route = ROUTES.find(candidate => candidate.key === base.route);
+      if (!route) { process.stdout.write('RESULT ' + JSON.stringify({ route: base.route, pass, kind: base.kind, variant: base.variant ?? null, verdict: 'error', status: null, code: 'NO_HANDLER', message: 'no controller route', output: null }) + '\\n'); continue; }
+      const rows = rowsOf(base);
+      for (let at = 0; at < rows; at += 1) {
+        const item = rows > 1 ? { ...base, variant: (base.variant ? base.variant + ' ' : '') + '@row' + at } : base;
+        for (const gateway of plan.gateways) registerRepository(gateway.name, () => stubFor(gateway, pass));
+        for (const key of Object.keys(calls)) delete calls[key];
+        globalThis.__smokePort?.reset();
+        const scope = item.actor ? [plan.module + ':' + item.actor] : [];
+        const person = { mdmId: '00000000-0000-4000-8000-000000000001', name: 'Smoke Person' };
+        const session = { actorId: item.actor || undefined, actorScope: scope, actorSession: { actorId: item.actor || undefined, scope }, person, organizationId: '00000000-0000-4000-8000-0000000000aa' };
+        const ctx = createRequestContext(createMemoryDataRuntime({ sandbox: true }), { sandbox: true, sessionContext: session, moduleId: plan.module });
+        // An arrival comes through the message path: the process reads the identity of the arrival, and the parameter of the delivery address, from the meta of the request.
+        if (item.arrival) {
+          counter += 1;
+          const context = item.hookSeed ? { hookParams: { smoke: bind('<seed:' + item.hookSeed + '>', datasets, at) } } : {};
+          ctx.requestMeta = { requestId: 'smoke-' + counter, source: 'message', connection: { idempotencyKey: 'smoke-' + counter, context } };
+        }
+        const before = item.arrival ? await rowCounts(plan, ctx) : null;
+        const first = await call(route, item, ctx, datasets, session, at);
+        let line = { route: item.route, pass, kind: item.kind, variant: item.variant ?? null, ...first };
+        if (item.arrival) {
+          const afterFirst = { ...calls };
+          const rowsFirst = await rowCounts(plan, ctx);
+          // The sender retries the same message (same idempotency key) on the same store: what the process does the second time.
+          const second = await call(route, item, ctx, datasets, session, at);
+          const rowsSecond = await rowCounts(plan, ctx);
+          const names = [...new Set([...Object.keys(afterFirst), ...Object.keys(calls)])];
+          line = { ...line, second: { verdict: second.verdict, status: second.status, code: second.code, message: second.message, stack: second.stack }, calls: Object.fromEntries(names.map(name => [name, [afterFirst[name] ?? 0, calls[name] ?? 0]])), port: globalThis.__smokePort?.log() ?? [], rows: Object.fromEntries(Object.keys(rowsSecond).map(name => [name, [before?.[name] ?? 0, rowsFirst[name], rowsSecond[name]]])) };
+        }
+        process.stdout.write('RESULT ' + JSON.stringify(line) + '\\n');
       }
-      process.stdout.write('RESULT ' + JSON.stringify(line) + '\\n');
+    }
+  }
+  // Scenarios (d1_336): steps by the routes of the module that leave the store in a state, then the arrival, twice, as above.
+  for (const pass of ['happy', 'failure']) {
+    for (const scenario of plan.scenarios ?? []) {
+      const base = plan.routes.find(item => item.arrival && item.route === scenario.arrival.route && (!scenario.arrival.variant || (item.variant ?? '') === scenario.arrival.variant));
+      const route = base && ROUTES.find(candidate => candidate.key === base.route);
+      const label = (scenario.arrival.variant ? scenario.arrival.variant + ' ' : '') + '[scenario:' + scenario.id + ']';
+      if (!base || !route) { process.stdout.write('RESULT ' + JSON.stringify({ route: scenario.arrival.route, pass, kind: 'arrival', variant: label, verdict: 'error', status: null, code: 'SCENARIO_NOT_PLANNED', message: 'the arrival of the scenario is not in the plan', output: null }) + '\\n'); continue; }
+      const at = scenario.row ?? 0;
+      for (const gateway of plan.gateways) registerRepository(gateway.name, () => stubFor(gateway, pass));
+      for (const key of Object.keys(calls)) delete calls[key];
+      globalThis.__smokePort?.reset();
+      const person = { mdmId: '00000000-0000-4000-8000-000000000001', name: 'Smoke Person' };
+      const sessionOf = actor => { const scope = actor ? [plan.module + ':' + actor] : []; return { actorId: actor || undefined, actorScope: scope, actorSession: { actorId: actor || undefined, scope }, person, organizationId: '00000000-0000-4000-8000-0000000000aa' }; };
+      const runtime = createMemoryDataRuntime({ sandbox: true });
+      const ctx = createRequestContext(runtime, { sandbox: true, sessionContext: sessionOf(''), moduleId: plan.module });
+      const setup = [];
+      for (const step of scenario.steps ?? []) {
+        const stepRoute = ROUTES.find(candidate => candidate.key === step.route);
+        const planned = plan.routes.find(item => item.route === step.route);
+        const stepCtx = createRequestContext(runtime, { sandbox: true, sessionContext: sessionOf(planned?.actor ?? ''), moduleId: plan.module });
+        const outcome = stepRoute ? await call(stepRoute, { route: step.route, input: step.input }, stepCtx, datasets, sessionOf(planned?.actor ?? ''), at) : { verdict: 'error', code: 'NO_HANDLER', message: 'no controller route', stack: null };
+        setup.push({ route: step.route, verdict: outcome.verdict, status: outcome.status ?? null, code: outcome.code ?? null, message: (outcome.message ?? '').slice(0, 160) });
+      }
+      counter += 1;
+      const context = base.hookSeed ? { hookParams: { smoke: bind('<seed:' + base.hookSeed + '>', datasets, at) } } : {};
+      ctx.requestMeta = { requestId: 'smoke-' + counter, source: 'message', connection: { idempotencyKey: 'smoke-' + counter, context } };
+      const session = sessionOf('');
+      const before = await rowCounts(plan, ctx);
+      const first = await call(route, base, ctx, datasets, session, at);
+      const afterFirst = { ...calls };
+      const rowsFirst = await rowCounts(plan, ctx);
+      const second = await call(route, base, ctx, datasets, session, at);
+      const rowsSecond = await rowCounts(plan, ctx);
+      const names = [...new Set([...Object.keys(afterFirst), ...Object.keys(calls)])];
+      process.stdout.write('RESULT ' + JSON.stringify({ route: base.route, pass, kind: 'arrival', variant: label, ...first, setup, second: { verdict: second.verdict, status: second.status, code: second.code, message: second.message, stack: second.stack }, calls: Object.fromEntries(names.map(name => [name, [afterFirst[name] ?? 0, calls[name] ?? 0]])), port: globalThis.__smokePort?.log() ?? [], rows: Object.fromEntries(Object.keys(rowsSecond).map(name => [name, [before[name] ?? 0, rowsFirst[name], rowsSecond[name]]])) }) + '\\n');
     }
   }
 }
@@ -197,18 +299,26 @@ function projectsDir(workDir: string, tree: string, base: string, project: numbe
   return dir;
 }
 
+/** The scenarios declared for a module (`testing/smoke/scenarios/<module>.json`), or none. */
+function scenariosOf(module: string): unknown[] {
+  const file = path.join(path.dirname(new URL(import.meta.url).pathname), 'scenarios', `${module}.json`);
+  try { return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as { scenarios?: unknown[] }).scenarios ?? [] : []; } catch { return []; }
+}
+
 /** Runs the smoke of `module` on `tree`. `base` is the mls-base root (the platform and the libraries). */
 export function runSmoke(input: { tree: string; project: number; module: string; base: string; workDir: string; timeoutMs?: number }): SmokeReport {
   const started = Date.now();
   const plan: SmokePlan = planSmoke(input.tree, input.project, input.module, input.base);
   mkdirSync(input.workDir, { recursive: true });
+  // The copy of the tree gets the occurrence port in memory in the place of the production one (d1_336); the repository is not touched.
+  const memoryPort = installMemoryPort(input.tree, input.project, input.module);
   const controllersDir = path.join(input.tree, 'l1', input.module, 'layer_1_external', 'adapters', 'http', 'controllers');
   const controllers = existsSync(controllersDir) ? readdirSync(controllersDir).filter(name => name.endsWith('.ts') && !name.endsWith('.defs.ts') && !name.endsWith('.test.ts')).map(name => name.replace(/\.ts$/u, '')).sort() : [];
   writeFileSync(path.join(input.workDir, 'register.mjs'), REGISTER);
   writeFileSync(path.join(input.workDir, 'hooks.mjs'), HOOKS);
   const persistence = path.join(input.tree, 'l1', input.module, 'layer_1_external', 'adapters', 'persistence');
   writeFileSync(path.join(input.workDir, 'run.ts'), runnerSource(input.project, input.module, controllers, { register: existsSync(path.join(persistence, 'registerRepositories.ts')), seeds: existsSync(path.join(persistence, 'seeds.ts')) }));
-  writeFileSync(path.join(input.workDir, 'plan.json'), JSON.stringify({ module: plan.module, routes: plan.routes, gateways: plan.gateways }));
+  writeFileSync(path.join(input.workDir, 'plan.json'), JSON.stringify({ module: plan.module, routes: plan.routes, gateways: plan.gateways, repositories: plan.repositories, scenarios: scenariosOf(input.module) }));
   if (controllers.length === 0 || plan.routes.length === 0) return { module: input.module, routes: plan.routes.length, executed: 0, results: [], raw: controllers.length === 0 ? 'no controllers in the module' : 'no routes in the contracts', seconds: Math.round((Date.now() - started) / 100) / 10 };
   const run = spawnSync(path.join(input.base, 'node_modules/.bin/tsx'), ['--import', path.join(input.workDir, 'register.mjs'), '--import', path.join(input.base, 'test/setup-l2.ts'), path.join(input.workDir, 'run.ts'), path.join(input.workDir, 'plan.json')], {
     cwd: projectsDir(input.workDir, input.tree, input.base, input.project, input.module),
@@ -220,7 +330,7 @@ export function runSmoke(input: { tree: string; project: number; module: string;
   const raw = `${run.stdout}\n${run.stderr}`;
   const lines = `${run.stdout}`.split('\n').filter(line => line.startsWith('RESULT ')).map(line => JSON.parse(line.slice('RESULT '.length)) as Omit<SmokeCaseResult, 'conforms'>);
   const results = lines.map(line => {
-    const route = plan.routes.find(item => item.route === line.route && (item.variant ?? null) === (line.variant ?? null));
+    const route = plan.routes.find(item => item.route === line.route && (item.variant ?? null) === (String(line.variant ?? '').replace(/ ?(@row\d+|\[scenario:[^\]]+\])$/u, '').trim() || null));
     let conforms: string[] = [];
     if (route && line.verdict === 'ok') {
       const table = typeTableOf([plan.typeSources[route.page] ?? '']);
@@ -229,5 +339,5 @@ export function runSmoke(input: { tree: string; project: number; module: string;
     const failed = line.verdict === 'failed' || line.status === 501 || line.code === 'NOT_IMPLEMENTED';
     return { ...line, verdict: failed ? 'failed' as const : line.verdict, conforms };
   });
-  return { module: input.module, routes: plan.routes.length, executed: results.length, results, raw: raw.slice(0, 20000), seconds: Math.round((Date.now() - started) / 100) / 10 };
+  return { module: input.module, routes: plan.routes.length, executed: results.length, results, raw: raw.slice(0, 20000), seconds: Math.round((Date.now() - started) / 100) / 10, memoryPort };
 }
