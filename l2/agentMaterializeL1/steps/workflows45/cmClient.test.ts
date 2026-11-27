@@ -78,7 +78,7 @@ void test('d1_347 s4: the phrases carry the three adjustments of the planner', (
   assert.ok(CM_SERVE_RULES.includes(CM_BEFORE_ONCE));
   assert.match(CM_BEFORE_ONCE, /^Before `once`, read only what that refusal needs \(for example, that the record it names exists\)\. A repeat of a request already answered is handled by `once` and by the process, not by you: do not read records to find it\.$/u);
   assert.match(CM_ONCE_IMPORT, /import \{ once \} from '\/_102034_\/l1\/server\/layer_1_external\/connections\/cm\/index\.js'/u);
-  assert.match(CM_ONCE_IMPORT, /once<T>\(ctx: RequestContext, where: \{ scope: string; key: string \}, work: \(\) => Promise<T>\): Promise<T>/u);
+  assert.match(CM_ONCE_IMPORT, /once<T>\(ctx: RequestContext, where: \{ scope: string; key: string \}, work: \(\) => Promise<T & Jsonable<T>>\): Promise<T>/u);
   assert.match(CM_REQUEST_ORDER, /read it with the read functions of the module/u);
   // d1_347 s7: the request service is told that the controller calls `serveCm`; the process keeps the order of the layers.
   assert.ok(CM_SERVE_RULES.includes(CM_REQUEST_ORDER) && !CM_SERVE_RULES.includes(CM_ORDER));
