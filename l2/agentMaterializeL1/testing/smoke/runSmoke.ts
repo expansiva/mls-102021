@@ -118,6 +118,7 @@ import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/ex
 import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
 import { registerRepository, resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
 import { runAsCallerModule } from '/_102034_/l1/server/layer_1_external/connections/callerModule.js';
+import { resetOnceMemory } from '/_102034_/l1/server/layer_1_external/connections/cm/once.js';
 import { getSharedDataRuntime, resetSharedDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/runtimeFactory.js';
 ${parts.register ? `import '/_${project}_/l1/${module}/layer_1_external/adapters/persistence/registerRepositories.js';` : ''}
 ${imports}
@@ -238,7 +239,8 @@ function resetShim() {
 
 // d1_347 s2: with the cm of the script, the data of a case is the shared runtime of the platform (what 'connectionServe' runs on), one per case; the same checks of the memory store apply on top.
 function newRuntime() {
-  if (globalThis.__cmBench) { resetSharedDataRuntime(); return withNotNull(getSharedDataRuntime()); }
+  // d1_347 s7: once keeps its answers in memory when there is no Postgres, and the memory outlives the case: the answer of an earlier case (same scope and key) would come back for the next one.
+  if (globalThis.__cmBench) { resetSharedDataRuntime(); resetOnceMemory(); return withNotNull(getSharedDataRuntime()); }
   return withNotNull(createMemoryDataRuntime({ sandbox: true }));
 }
 
