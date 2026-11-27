@@ -4,6 +4,7 @@
 // step tables every process function uses, and the module tick that runs the scheduled processes. The functions
 // themselves are written by the model from the l4 prose (steps/workflows45).
 
+import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { taskEffects } from '/_102021_/l2/helpers/l1Defs/taskEffects.js';
 import { MDM_LIST_USERS_PAGE_SIZE_MAX } from '/_102021_/l2/agentMaterializeL1/helpers/mdmPlatformLimits.js';
 import { workflowRecoverName, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -250,6 +251,30 @@ function planLiteral(table: WorkflowTableEmit): string[] {
 }
 
 /**
+ * d1_347 s5 (stage 2 only): the step of a process is typed by the plan of the module, in the file the module owns. `WorkflowSteps` lists, per process, the step ids of its plan and `'end'`; `open` and `advance` take
+ * the process in the key and the step as `StepOf<process>`, so a step the plan does not have (`'task:<id>'`) is a compile error and not a `WORKFLOW_INCOMPATIBLE` at run time. The engine stays emitted in the module.
+ */
+function typedStepSource(tables: readonly WorkflowTableEmit[], engineType: string, llm: boolean): string[] {
+  return [
+    '/** The step ids of each process of this module, from its plan, plus the end. */',
+    'export interface WorkflowSteps {',
+    ...tables.map(table => `  ${ident(table.processId)}: ${[...table.steps.map(step => JSON.stringify(step.stepId)), "'end'"].join(' | ')};`),
+    '}',
+    '',
+    'export type StepOf<K extends keyof WorkflowSteps> = WorkflowSteps[K];',
+    '',
+    '/** The engine of this module: the process is in the key and the step is typed by its plan. */',
+    'export interface ModuleWorkflowEngine {',
+    `  open<K extends keyof WorkflowSteps & string>(ctx: RequestContext, input: Omit<TaskWorkflowOpen, 'key' | 'firstStep'> & { key: OccurrenceKey & { processId: K }; firstStep: StepOf<K> }): ReturnType<${engineType}['open']>;`,
+    `  advance<K extends keyof WorkflowSteps & string>(ctx: RequestContext, key: OccurrenceKey & { processId: K }, command: Omit<TaskWorkflowAdvance, 'from' | 'to'> & { from: StepOf<K>; to: StepOf<K> }): ReturnType<${engineType}['advance']>;`,
+    `  find(ctx: RequestContext, key: OccurrenceKey): ReturnType<${engineType}['find']>;`,
+    ...(llm ? [`  requestLlmStep(ctx: RequestContext, input: TaskWorkflowLlmStep): ReturnType<${engineType}['requestLlmStep']>;`] : []),
+    '}',
+    '',
+  ];
+}
+
+/**
  * The module engine receives the Task port from whoever constructs it (`createModuleWorkflowEngine(port)`).
  * Plans of every process go on `open`. Advance does not take a table.
  */
@@ -319,8 +344,9 @@ export function workflowEngineSource(project: number, moduleName: string, tables
     '  return next;',
     '}',
     '',
+    ...(stage2.on ? typedStepSource(tables, engineType, llm) : []),
     '/** The module engine over the Task port its creator supplies. Every open carries the plan of this release; advance takes no table. */',
-    `export function createModuleWorkflowEngine(port: ${portType}): ${engineType} {`,
+    `export function createModuleWorkflowEngine(port: ${portType}): ${stage2.on ? 'ModuleWorkflowEngine' : engineType} {`,
     '  const engine = createWorkflowEngine(port);',
     '  const planOf = (key: OccurrenceKey): WorkflowPlanInput => {',
     '    const plan = (workflowPlans as Record<string, WorkflowPlanInput>)[key.processId];',
@@ -328,11 +354,19 @@ export function workflowEngineSource(project: number, moduleName: string, tables
     '    return plan;',
     '  };',
     '  return {',
-    '    async open(ctx: RequestContext, input: TaskWorkflowOpen) {',
+    ...(stage2.on ? [
+      "    async open<K extends keyof WorkflowSteps & string>(ctx: RequestContext, input: Omit<TaskWorkflowOpen, 'key' | 'firstStep'> & { key: OccurrenceKey & { processId: K }; firstStep: StepOf<K> }) {",
+    ] : [
+      '    async open(ctx: RequestContext, input: TaskWorkflowOpen) {',
+    ]),
     '      const plan = planOf(input.key);',
     '      return engine.open(ctx, withOwnerAction(plan, input.firstStep, input.key, { ...input, plan }));',
     '    },',
-    '    async advance(ctx: RequestContext, key: OccurrenceKey, command: TaskWorkflowAdvance) {',
+    ...(stage2.on ? [
+      "    async advance<K extends keyof WorkflowSteps & string>(ctx: RequestContext, key: OccurrenceKey & { processId: K }, command: Omit<TaskWorkflowAdvance, 'from' | 'to'> & { from: StepOf<K>; to: StepOf<K> }) {",
+    ] : [
+      '    async advance(ctx: RequestContext, key: OccurrenceKey, command: TaskWorkflowAdvance) {',
+    ]),
     '      return engine.advance(ctx, key, withOwnerAction(planOf(key), command.to, key, command));',
     '    },',
     '    find(ctx: RequestContext, key: OccurrenceKey) {',

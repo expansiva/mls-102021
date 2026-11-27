@@ -13,6 +13,7 @@ import { AppError, type RequestContext } from '/_102034_/l1/server/layer_2_contr
 import type { OccurrenceKey, WorkflowTable } from '/_102034_/l1/workflow/contracts.js';
 import { createWorkflowEngine, type WorkflowEngineContext } from '/_102034_/l1/workflow/engine.js';
 import { createMemoryOccurrencePort } from '/_102034_/l1/workflow/memoryOccurrence.js';
+import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { parseRegistrationRows, registrationModule, renderRegistration } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { bindHumanPages, moduleTickSource, workflowEngineSource, workflowTablesFromL4 } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { workflowRecoverName, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -364,5 +365,26 @@ test('the engine types the plans it iterates, so a plan without a human step sti
     assert.deepEqual(own, [], own.join('\n'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('d1_347 s5: with the key of stage 2 on, the step of a process is typed by the plan inside the engine of the module; off, the engine is the one before', () => {
+  const tables = workflowTablesFromL4(l4('processoPedido', TASKS));
+  const off = workflowEngineSource(102047, 'pedido', tables, {});
+  assert.equal(/\bWorkflowSteps\b|\bStepOf\b|\bModuleWorkflowEngine\b/u.test(off), false, 'off: nothing of the typed step');
+  assert.match(off, /async open\(ctx: RequestContext, input: TaskWorkflowOpen\) \{/u);
+  const before = stage2.on;
+  stage2.on = true;
+  try {
+    const on = workflowEngineSource(102047, 'pedido', tables, {});
+    assert.match(on, /export interface WorkflowSteps \{\n  processoPedido: "[^\n]*" \| 'end';\n\}/u);
+    for (const step of tables[0].steps) assert.ok(on.includes(JSON.stringify(step.stepId)), step.stepId);
+    assert.match(on, /export type StepOf<K extends keyof WorkflowSteps> = WorkflowSteps\[K\];/u);
+    assert.match(on, /async open<K extends keyof WorkflowSteps & string>\(ctx: RequestContext, input: Omit<TaskWorkflowOpen, 'key' \| 'firstStep'> & \{ key: OccurrenceKey & \{ processId: K \}; firstStep: StepOf<K> \}\)/u);
+    assert.match(on, /async advance<K extends keyof WorkflowSteps & string>\(ctx: RequestContext, key: OccurrenceKey & \{ processId: K \}, command: Omit<TaskWorkflowAdvance, 'from' \| 'to'> & \{ from: StepOf<K>; to: StepOf<K> \}\)/u);
+    assert.match(on, /export function createModuleWorkflowEngine\(port: [A-Za-z]+\): ModuleWorkflowEngine \{/u);
+    assert.match(on, /requestLlmStep\(ctx: RequestContext, input: TaskWorkflowLlmStep\): ReturnType<TaskWorkflowLlmEngine\['requestLlmStep'\]>;/u, 'the llm step of the process stays');
+  } finally {
+    stage2.on = before;
   }
 });
