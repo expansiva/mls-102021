@@ -379,9 +379,9 @@ test('d1_347 s5: with the key of stage 2 on, the step of a process is typed by t
     const on = workflowEngineSource(102047, 'pedido', tables, {});
     assert.match(on, /export interface WorkflowSteps \{\n  processoPedido: "[^\n]*" \| 'end';\n\}/u);
     for (const step of tables[0].steps) assert.ok(on.includes(JSON.stringify(step.stepId)), step.stepId);
-    assert.match(on, /export type StepOf<K extends keyof WorkflowSteps> = WorkflowSteps\[K\];/u);
-    assert.match(on, /async open<K extends keyof WorkflowSteps & string>\(ctx: RequestContext, input: Omit<TaskWorkflowOpen, 'key' \| 'firstStep'> & \{ key: OccurrenceKey & \{ processId: K \}; firstStep: StepOf<K> \}\)/u);
-    assert.match(on, /async advance<K extends keyof WorkflowSteps & string>\(ctx: RequestContext, key: OccurrenceKey & \{ processId: K \}, command: Omit<TaskWorkflowAdvance, 'from' \| 'to'> & \{ from: StepOf<K>; to: StepOf<K> \}\)/u);
+    assert.match(on, /export type StepOf<P extends string> = P extends keyof WorkflowSteps \? WorkflowSteps\[P\] : WorkflowSteps\[keyof WorkflowSteps\];/u);
+    assert.match(on, /async open<P extends string>\(ctx: RequestContext, input: Omit<TaskWorkflowOpen, 'key' \| 'firstStep'> & \{ key: OccurrenceKey & \{ processId: P \}; firstStep: StepOf<P> \}\)/u);
+    assert.match(on, /async advance<P extends string>\(ctx: RequestContext, key: OccurrenceKey & \{ processId: P \}, command: Omit<TaskWorkflowAdvance, 'from' \| 'to'> & \{ from: StepOf<P>; to: StepOf<P> \}\)/u);
     assert.match(on, /export function createModuleWorkflowEngine\(port: [A-Za-z]+\): ModuleWorkflowEngine \{/u);
     assert.match(on, /requestLlmStep\(ctx: RequestContext, input: TaskWorkflowLlmStep\): ReturnType<TaskWorkflowLlmEngine\['requestLlmStep'\]>;/u, 'the llm step of the process stays');
   } finally {

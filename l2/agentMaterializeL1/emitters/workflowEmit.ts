@@ -261,12 +261,13 @@ function typedStepSource(tables: readonly WorkflowTableEmit[], engineType: strin
     ...tables.map(table => `  ${ident(table.processId)}: ${[...table.steps.map(step => JSON.stringify(step.stepId)), "'end'"].join(' | ')};`),
     '}',
     '',
-    'export type StepOf<K extends keyof WorkflowSteps> = WorkflowSteps[K];',
+    '/** The steps of the process named by `P`; when the key carries a process that is not a literal (a variable of type string), the steps of any process of the module. */',
+    'export type StepOf<P extends string> = P extends keyof WorkflowSteps ? WorkflowSteps[P] : WorkflowSteps[keyof WorkflowSteps];',
     '',
     '/** The engine of this module: the process is in the key and the step is typed by its plan. */',
     'export interface ModuleWorkflowEngine {',
-    `  open<K extends keyof WorkflowSteps & string>(ctx: RequestContext, input: Omit<TaskWorkflowOpen, 'key' | 'firstStep'> & { key: OccurrenceKey & { processId: K }; firstStep: StepOf<K> }): ReturnType<${engineType}['open']>;`,
-    `  advance<K extends keyof WorkflowSteps & string>(ctx: RequestContext, key: OccurrenceKey & { processId: K }, command: Omit<TaskWorkflowAdvance, 'from' | 'to'> & { from: StepOf<K>; to: StepOf<K> }): ReturnType<${engineType}['advance']>;`,
+    `  open<P extends string>(ctx: RequestContext, input: Omit<TaskWorkflowOpen, 'key' | 'firstStep'> & { key: OccurrenceKey & { processId: P }; firstStep: StepOf<P> }): ReturnType<${engineType}['open']>;`,
+    `  advance<P extends string>(ctx: RequestContext, key: OccurrenceKey & { processId: P }, command: Omit<TaskWorkflowAdvance, 'from' | 'to'> & { from: StepOf<P>; to: StepOf<P> }): ReturnType<${engineType}['advance']>;`,
     `  find(ctx: RequestContext, key: OccurrenceKey): ReturnType<${engineType}['find']>;`,
     ...(llm ? [`  requestLlmStep(ctx: RequestContext, input: TaskWorkflowLlmStep): ReturnType<${engineType}['requestLlmStep']>;`] : []),
     '}',
@@ -355,7 +356,7 @@ export function workflowEngineSource(project: number, moduleName: string, tables
     '  };',
     '  return {',
     ...(stage2.on ? [
-      "    async open<K extends keyof WorkflowSteps & string>(ctx: RequestContext, input: Omit<TaskWorkflowOpen, 'key' | 'firstStep'> & { key: OccurrenceKey & { processId: K }; firstStep: StepOf<K> }) {",
+      "    async open<P extends string>(ctx: RequestContext, input: Omit<TaskWorkflowOpen, 'key' | 'firstStep'> & { key: OccurrenceKey & { processId: P }; firstStep: StepOf<P> }) {",
     ] : [
       '    async open(ctx: RequestContext, input: TaskWorkflowOpen) {',
     ]),
@@ -363,7 +364,7 @@ export function workflowEngineSource(project: number, moduleName: string, tables
     '      return engine.open(ctx, withOwnerAction(plan, input.firstStep, input.key, { ...input, plan }));',
     '    },',
     ...(stage2.on ? [
-      "    async advance<K extends keyof WorkflowSteps & string>(ctx: RequestContext, key: OccurrenceKey & { processId: K }, command: Omit<TaskWorkflowAdvance, 'from' | 'to'> & { from: StepOf<K>; to: StepOf<K> }) {",
+      "    async advance<P extends string>(ctx: RequestContext, key: OccurrenceKey & { processId: P }, command: Omit<TaskWorkflowAdvance, 'from' | 'to'> & { from: StepOf<P>; to: StepOf<P> }) {",
     ] : [
       '    async advance(ctx: RequestContext, key: OccurrenceKey, command: TaskWorkflowAdvance) {',
     ]),
