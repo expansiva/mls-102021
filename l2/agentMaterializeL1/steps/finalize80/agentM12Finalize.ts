@@ -6,7 +6,7 @@ import { M12_FINALIZE_AGENT_NAME, M12_LAYERS, clip, errorText, parseM12StepInvoc
 import { addM12Step, m12Result, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
 import { readJsonOptional, readOptional, readUnitStatus, writeJson, type M12UnitState, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { orphanOfTarget, removeOrphan } from '/_102021_/l2/agentMaterializeL1/helpers/m12Orphans.js';
-import { registrationFile, reportFile, smokeFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { registrationFile, reportFile, seedDropsFile, smokeFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { registersModule, requestModules, storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { smokeInputsHash, smokeState, type M12SmokeState, type SmokeFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Smoke.js';
@@ -37,6 +37,8 @@ export interface M12Report {
   registration: { action: string; detail: string } | null;
   /** d1_333: what the smoke says of the module (absent: this report did not look). `complete` needs it ok. */
   smoke?: M12SmokeState;
+  /** d1_345: the scenario seed rows the last seed emission left out (`table/scenario: reason`). Listed, never hidden; not an open item. */
+  seedDrops?: string[];
   createdAt: string;
 }
 
@@ -81,6 +83,7 @@ export function summarizeM12Report(report: M12Report): string {
   if (report.notCompiled.length) lines.push('', `Generated, not proven by a compiler (COMPILE_UNAVAILABLE_L1): ${report.notCompiled.length} unit(s).`);
   if (report.missing.length) lines.push('', `No status for: ${report.missing.join(', ')}`);
   if (report.defProblems.length) lines.push('', 'Defs not planned:', ...report.defProblems.map(item => `- ${item.defRef}: ${item.code} ${clip(item.detail, 200)}`));
+  if (report.seedDrops?.length) lines.push('', `SEED_ROWS_DROPPED ${report.seedDrops.length}: ${report.seedDrops.map(item => clip(item, 200)).join(' || ')}`);
   if (report.registration) lines.push('', `l5 registration: ${clip(report.registration.detail, 600)}`);
   if (report.smoke) lines.push('', report.smoke.ok ? `Smoke: ${report.smoke.detail}.` : `Smoke ${report.smoke.code}: ${clip(report.smoke.detail, 600)}`);
   return lines.join('\n');
@@ -131,6 +134,8 @@ export async function writeModuleReport(run: M12RunArgs, selected: readonly M12U
     ? await readJsonOptional<{ action: string; detail: string }>(registrationFile(project, moduleName))
     : null;
   const report = buildM12Report(project, moduleName, units, missing, problems, registration ? { action: registration.action, detail: registration.detail } : null, await readSmokeState(project, moduleName));
+  const dropped = await readJsonOptional<{ drops?: string[] }>(seedDropsFile(project, moduleName));
+  if (dropped?.drops?.length) report.seedDrops = dropped.drops;
   await writeJson(reportFile(project, moduleName), { ...report, scope: run.scope, target: run.target, force: run.force });
   return { report };
 }

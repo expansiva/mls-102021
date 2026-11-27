@@ -1,6 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/steps/seedRows25/context.ts" enhancement="_blank"/>
 
 import { mdm } from '/_102034_/l4/ontology/mdm.defs.js';
+import type { MdmScalarKind } from '/_102034_/l1/mdm/defs/ontologyTypes.js';
 
 // Rows for a seed table whose l4 entity says the module seed loads it. The def stays without a rows key.
 
@@ -12,13 +13,16 @@ export interface SeedColumn {
   name: string;
   /** L4 field title. Empty when the def has none; the seed text then humanizes `name`. */
   title: string;
-  type: 'string' | 'integer' | 'boolean' | 'timestamp' | 'uuid' | 'enum' | 'object' | 'unknown';
+  type: 'string' | 'integer' | 'number' | 'boolean' | 'timestamp' | 'uuid' | 'enum' | 'object' | 'json' | 'unknown';
   required: boolean;
   /** True when the l4 marks the field indexed, so persistence promotes it to a column. */
   indexed: boolean;
   enumValues: string[];
   pattern: string;
   maxLength: number | null;
+  /** d1_345: the bounds of a number or money field (the platform `min`/`max`). */
+  min: number | null;
+  max: number | null;
   fields: SeedColumn[];
 }
 
@@ -94,17 +98,22 @@ export function readOntologyLiteral(source: string): Record<string, unknown> | n
   }
 }
 
+/**
+ * d1_345: the seed reads the type of a field from the platform, not from a list of its own. `MdmScalarKind` (P:l1/mdm/defs/ontologyTypes.ts) is the set of scalar forms an L4 field takes; the
+ * table below is typed by it, so a scalar the platform adds does not compile here until the seed says what its value is. `json` is not a platform type: the one L4 that uses it (agents.Tool)
+ * is read as a value the seed can fill with an empty object.
+ */
+const SCALAR_COLUMN: Record<MdmScalarKind, SeedColumn['type']> = {
+  string: 'string', text: 'string', integer: 'integer', number: 'number', money: 'number', boolean: 'boolean', date: 'string', timestamp: 'timestamp', uuid: 'uuid',
+};
+
 function columnType(meta: Record<string, unknown>): SeedColumn['type'] {
   const type = typeof meta.type === 'string' ? meta.type : '';
-  if (type === 'string' || type === 'text') return 'string';
-  if (type === 'integer') return 'integer';
-  if (type === 'boolean') return 'boolean';
-  if (type === 'timestamp') return 'timestamp';
-  if (type === 'uuid') return 'uuid';
-  if (type === 'date') return 'string';
+  if (Object.prototype.hasOwnProperty.call(SCALAR_COLUMN, type)) return SCALAR_COLUMN[type as MdmScalarKind];
   if (type === 'record') return 'uuid';
   if (type === 'enum') return 'enum';
   if (type === 'object') return 'object';
+  if (type === 'json') return 'json';
   return 'unknown';
 }
 
@@ -126,6 +135,8 @@ function columnsOf(fields: unknown): SeedColumn[] {
       enumValues,
       pattern: typeof meta.pattern === 'string' ? meta.pattern : '',
       maxLength: typeof meta.maxLength === 'number' ? meta.maxLength : null,
+      min: typeof meta.min === 'number' ? meta.min : null,
+      max: typeof meta.max === 'number' ? meta.max : null,
       fields: columnsOf(meta.fields),
     });
   }
@@ -170,7 +181,7 @@ function serverAssignedOf(fields: unknown): Array<{ path: string; type: SeedColu
       if (!isRecord(meta)) continue;
       const path = prefix ? `${prefix}.${name}` : name;
       const type = columnType(meta);
-      if (meta.derived === true && meta.required === true && path !== 'id' && path !== 'version' && (type === 'string' || type === 'integer' || type === 'boolean' || type === 'timestamp')) out.push({ path, type });
+      if (meta.derived === true && meta.required === true && path !== 'id' && path !== 'version' && (type === 'string' || type === 'integer' || type === 'number' || type === 'boolean' || type === 'timestamp')) out.push({ path, type });
       if (isRecord(meta.fields)) walk(meta.fields, path);
     }
   };
@@ -327,6 +338,13 @@ function valueProblems(column: SeedColumn, value: unknown, path: string): string
     return [];
   }
   if (column.type === 'integer') return Number.isInteger(value) ? [] : [`${path} is not an integer.`];
+  if (column.type === 'number') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return [`${path} is not a number.`];
+    if (column.min !== null && value < column.min) return [`${path} is under ${column.min}.`];
+    if (column.max !== null && value > column.max) return [`${path} is over ${column.max}.`];
+    return [];
+  }
+  if (column.type === 'json') return [];
   if (column.type === 'boolean') return typeof value === 'boolean' ? [] : [`${path} is not a boolean.`];
   if (column.type === 'enum') {
     if (typeof value !== 'string' || !column.enumValues.includes(value)) return [`${path} is not a listed value.`];
@@ -446,6 +464,14 @@ function stringPlaceholder(column: SeedColumn, token: string, scenarioIndex: num
 function placeholder(column: SeedColumn, token: string, uuidFor: (name: string) => Promise<string>, scenarioIndex: number): Promise<unknown> {
   if (column.type === 'string') return Promise.resolve(stringPlaceholder(column, token, scenarioIndex));
   if (column.type === 'integer') return Promise.resolve(1);
+  if (column.type === 'number') {
+    // The smallest positive value the platform bounds accept: 1, lifted to `min` or lowered to `max`.
+    let value = 1;
+    if (column.min !== null && value < column.min) value = column.min;
+    if (column.max !== null && value > column.max) value = column.max;
+    return Promise.resolve(value);
+  }
+  if (column.type === 'json') return Promise.resolve({});
   if (column.type === 'boolean') return Promise.resolve(true);
   if (column.type === 'timestamp') return Promise.resolve('2026-01-01T00:00:00.000Z');
   if (column.type === 'uuid') return uuidFor(token);
@@ -499,7 +525,7 @@ export function serverAssignedValue(type: SeedColumn['type'], row: Record<string
     const known = JSON.stringify(row).match(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/u);
     return known ? known[0] : '2026-01-01T00:00:00.000Z';
   }
-  if (type === 'integer') return 1;
+  if (type === 'integer' || type === 'number') return 1;
   if (type === 'boolean') return true;
   return 'sample';
 }

@@ -88,6 +88,11 @@ export function smokeAcceptedFile(project: number, moduleName: string): M12FileI
   return { project, level: 1, folder: runFolder(moduleName), shortName: 'smokeAccepted', extension: '.json' };
 }
 
+/** d1_345: the scenario seed rows the last seed emission left out, one line each; the report lists them. */
+export function seedDropsFile(project: number, moduleName: string): M12FileInfo {
+  return { project, level: 1, folder: runFolder(moduleName), shortName: 'seedDrops', extension: '.json' };
+}
+
 export function reportFile(project: number, moduleName: string): M12FileInfo {
   return { project, level: 1, folder: runFolder(moduleName), shortName: 'report', extension: '.json' };
 }

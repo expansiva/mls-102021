@@ -123,3 +123,37 @@ test('d1_342: a required self reference with no root is a named problem, and a m
   const invented = seedRowProblems(entryUnit(ENTRY_ONTOLOGY, ['11111111-1111-4111-8111-111111111111']), [{ parentEntryId: '22222222-2222-4222-8222-222222222222' }]);
   assert.match(invented.join(' '), /is not the id of a RepositoryEntry row of this seed/u);
 });
+
+// d1_345: the seed reads the scalar kinds of the platform (money and number are numbers with bounds), and a json field gets an empty object; an entity with no unique key gets a scenario id.
+const TYPED_ONTOLOGY = ENTRY_ONTOLOGY.replace('"fields": {\n          "name": {', `"fields": {
+          "price": { "type": "money", "required": true, "min": 5, "title": "Price" },
+          "qty": { "type": "number", "required": true, "max": 0.5, "title": "Qty" },
+          "item": { "type": "json", "required": true, "title": "Item" },
+          "name": {`);
+
+void test('d1_345: a required money, number and json field inside details are filled, inside the bounds, and the row passes the gate', async () => {
+  assert.notEqual(TYPED_ONTOLOGY, ENTRY_ONTOLOGY);
+  const drafted = await draftScenarioRow(entryUnit(TYPED_ONTOLOGY, []));
+  assert.ok('row' in drafted, 'problems' in drafted ? drafted.problems.join('; ') : '');
+  const details = drafted.row.details as Record<string, unknown>;
+  assert.equal(details.price, 5, 'money: 1 lifted to the min of the platform bound');
+  assert.equal(details.qty, 0.5, 'number: 1 lowered to the max of the platform bound');
+  assert.deepEqual(details.item, {});
+  const bad = seedRowProblems(entryUnit(TYPED_ONTOLOGY, []), [{ ...drafted.row, details: { ...details, price: 1, qty: 'x' } }]);
+  assert.match(bad.join(' '), /price is under 5/u);
+  assert.match(bad.join(' '), /qty is not a number/u);
+});
+
+void test('d1_345: a scenario row of an entity with no unique key gets a stable id from its scenario; an initial row of one still has no primary key', async () => {
+  const keyless = { ...entryUnit(ENTRY_ONTOLOGY, []), uniqueKeys: [] as string[][] };
+  const row = { path: 'x', entryType: 'folder', details: { name: 'n', version: 1 } };
+  const first = await completeInitialRows(keyless, [row], 'folderTree');
+  const again = await completeInitialRows(keyless, [row], 'folderTree');
+  const other = await completeInitialRows(keyless, [row], 'otherScenario');
+  assert.ok('rows' in first && 'rows' in again && 'rows' in other);
+  assert.equal(first.rows[0].id, again.rows[0].id, 'stable');
+  assert.notEqual(first.rows[0].id, other.rows[0].id, 'one id per scenario');
+  const initial = await completeInitialRows(keyless, [row]);
+  assert.ok('problems' in initial);
+  assert.match(initial.problems.join(' '), /no unique key and the row is not a scenario row/u);
+});

@@ -20,7 +20,7 @@ import {
   type SeedRepair,
   type SeedTableUnit,
 } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
-import { emitSeedsWhenReady, parseSeedWorkerArgs, referenceSeedTables, seedWorkerStep, writeSeedTableDraft } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRows.js';
+import { emitSeedsWhenReady, parseSeedWorkerArgs, seedDropText, referenceSeedTables, seedWorkerStep, writeSeedTableDraft } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRows.js';
 
 export interface SeedRowsResult {
   tableId: string;
@@ -29,12 +29,6 @@ export interface SeedRowsResult {
   calls: number;
   /** Set when the repair was also refused. The table then has no rows. */
   reason: string | null;
-}
-
-/** d1_342: the scenario rows left out are listed in the line of the step (the report), never dropped in silence. */
-function dropText(ctx: { seedDrops?: string[] }): string {
-  const drops = ctx.seedDrops ?? [];
-  return drops.length ? `; SEED_ROWS_DROPPED ${drops.length}: ${drops.join(' || ')}` : '';
 }
 
 export type SeedRowsModel = (human: string, repair?: SeedRepair) => string | Promise<string>;
@@ -96,6 +90,8 @@ function withControlVersion(unit: SeedTableUnit, row: Record<string, unknown>): 
 export async function completeInitialRows(
   unit: SeedTableUnit,
   rows: readonly Record<string, unknown>[],
+  /** d1_345: the scenario of a row of an entity with no unique key (a task, a draft): its id comes from the scenario, stable, instead of from a key the entity does not have. Never for an initial row. */
+  keylessScenario?: string,
 ): Promise<{ rows: Record<string, unknown>[] } | { problems: string[] }> {
   const idColumn = unit.columns.find(column => column.name === 'id' && column.type === 'uuid');
   const key = unit.uniqueKeys[0];
@@ -103,17 +99,18 @@ export async function completeInitialRows(
   const completed: Record<string, unknown>[] = [];
   for (let index = 0; index < rows.length; index++) {
     const row = rows[index];
-    if (!idColumn || !key) {
-      problems.push(`row ${index} has no primary key.`);
+    const keyless = !!idColumn && !key && keylessScenario !== undefined;
+    if (!idColumn || (!key && !keyless)) {
+      problems.push(`row ${index} has no primary key: ${!idColumn ? 'the entity has no id column' : 'the entity has no unique key and the row is not a scenario row'}.`);
       continue;
     }
-    const values = key.map(field => row[field]);
-    if (values.some(value => value === undefined || value === null || value === '')) {
-      problems.push(`row ${index} has no primary key.`);
+    const values = key ? key.map(field => row[field]) : [];
+    if (key && values.some(value => value === undefined || value === null || value === '')) {
+      problems.push(`row ${index} has no primary key: the unique key ${key.join('+')} has no value in the row.`);
       continue;
     }
     const next: Record<string, unknown> = { ...row };
-    const token = values.map(value => String(value)).join(':');
+    const token = keyless ? `scenario:${keylessScenario}` : values.map(value => String(value)).join(':');
     next.id = await uuidV5(`${unit.moduleName}.${unit.tableId}:${token}`);
     withControlVersion(unit, next);
     // d1_326: what the server writes on create (a stamp, a counter) is in the row too, where the table def stores it.
@@ -195,7 +192,7 @@ export function createAgent(): IAgentAsync {
       if ('rows' in decided) {
         await writeSeedTableDraft(args.project, args.module, unit.tableId, decided.rows, null);
         const emitted = await emitSeedsWhenReady(ctx);
-        return finish(`${unit.tableId}: rows accepted${emitted ? '; seeds.ts emitted' : ''}${dropText(ctx)}`);
+        return finish(`${unit.tableId}: rows accepted${emitted ? '; seeds.ts emitted' : ''}${seedDropText(ctx)}`);
       }
       const problems = decided.problems;
       if (args.attempt === 1) {
@@ -207,7 +204,7 @@ export function createAgent(): IAgentAsync {
       }
       await writeSeedTableDraft(args.project, args.module, unit.tableId, [], problems.join(' '));
       const emitted = await emitSeedsWhenReady(ctx);
-      return finish(`M12_FAILED: ${unit.tableId} left empty: ${problems.join(' | ')}${emitted ? '; seeds.ts emitted' : ''}${dropText(ctx)}`);
+      return finish(`M12_FAILED: ${unit.tableId} left empty: ${problems.join(' | ')}${emitted ? '; seeds.ts emitted' : ''}${seedDropText(ctx)}`);
     } catch (error) {
       return finish(`M12_FAILED: ${errorText(error)}`);
     }

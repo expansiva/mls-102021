@@ -4,7 +4,8 @@ import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_BUILD, M12_SEED_ROWS_AGENT_NAME, M12_SEED_ROW_UNIT_AGENT_NAME, clip, errorText, parseM12StepInvocation, tokenOk, unitIdOk } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { addM12Step, m12WorkerStep, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
 import { buildLocalTable, type ReferenceSeedDataset } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
-import { readDraft, writeDraft } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { readDraft, readJsonOptional, writeDraft, writeJson } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { seedDropsFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { materializeUnit, type M12Context } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -164,6 +165,12 @@ export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSe
   return (await scenarioSeedOutcome(ctx)).datasets;
 }
 
+/** d1_342/d1_345: the scenario rows left out, in the line of the step (the report), never dropped in silence: every path that writes the seed prints it. */
+export function seedDropText(ctx: { seedDrops?: string[] }): string {
+  const drops = ctx.seedDrops ?? [];
+  return drops.length ? `; SEED_ROWS_DROPPED ${drops.length}: ${drops.join(' || ')}` : '';
+}
+
 /** d1_342: a scenario that gives no row is never silent: the table, the scenario and the reason. */
 export interface SeedScenarioDrop { tableId: string; scenarioId: string; reason: string }
 
@@ -244,7 +251,7 @@ export async function scenarioSeedOutcome(ctx: M12Context): Promise<{ datasets: 
     const refValues = pickRefValues(seedPairs, unit.scenarioIndex, rowsOf);
     const drafted = await draftScenarioRow(unit, refValues);
     if ('problems' in drafted) { dropped.push({ tableId: scenario.tableId, scenarioId: scenario.scenarioId, reason: drafted.problems.join(' | ') }); continue; }
-    const completed = await completeInitialRows(unit, [drafted.row]);
+    const completed = await completeInitialRows(unit, [drafted.row], scenario.scenarioId);
     if ('problems' in completed || completed.rows.length === 0) {
       dropped.push({ tableId: scenario.tableId, scenarioId: scenario.scenarioId, reason: 'problems' in completed ? completed.problems.join(' | ') : 'no row after the primary key and the server values' });
       continue;
@@ -291,6 +298,9 @@ export async function emitSeedsWhenReady(ctx: M12Context): Promise<boolean> {
   const outcome = await scenarioSeedOutcome(ctx);
   const scenarioDatasets = outcome.datasets;
   ctx.seedDrops = outcome.dropped.map(item => `${item.tableId}/${item.scenarioId}: ${item.reason}`);
+  // d1_345: the report of the module (every path: scope, target, `report`) lists them, so the drop is in the file, not only in the trace of one step.
+  // Written when there is something to list, or to clear an earlier list; a module with no drop gets no new file.
+  if (ctx.seedDrops.length > 0 || await readJsonOptional(seedDropsFile(ctx.run.project, ctx.run.module)) !== null) await writeJson(seedDropsFile(ctx.run.project, ctx.run.module), { drops: ctx.seedDrops });
   let wrote = false;
   for (const unit of seeds) {
     const data = unit.definition.data;
@@ -343,7 +353,7 @@ export function createAgent(): IAgentAsync {
       }
       if (!tables.length) {
         const emitted = await emitSeedsWhenReady(ctx);
-        const trace = clip([`build ${M12_BUILD}`, '0 unit(s) dispatched to the model', emitted ? 'seeds.ts emitted' : 'no persistenceSeeds def'].join('\n'), 3000);
+        const trace = clip([`build ${M12_BUILD}`, '0 unit(s) dispatched to the model', `${emitted ? 'seeds.ts emitted' : 'no persistenceSeeds def'}${seedDropText(ctx)}`].join('\n'), 3000);
         return [updateM12Status(context, parentStep, step, hookSequential, 'completed', trace)];
       }
       const workers = tables.map(table => addM12Step(context, step.stepId, seedWorkerStep({
