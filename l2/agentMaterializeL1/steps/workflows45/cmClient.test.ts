@@ -20,7 +20,7 @@ import { installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/hel
 import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
-import { CM_CALL_RULES, CM_CONFLICT, CM_ONCE, CM_REFUSAL, CM_SERVE_RULES } from '/_102021_/l2/agentMaterializeL1/helpers/cmClientText.js';
+import { CM_CALL_RULES, CM_CONFLICT, CM_ONCE, CM_ORDER, CM_REFUSAL, CM_REQUEST_ORDER, CM_SERVE_RULES } from '/_102021_/l2/agentMaterializeL1/helpers/cmClientText.js';
 import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { createContext } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { loadModuleUnits, storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -75,6 +75,10 @@ void test('d1_347 s4: the phrases carry the three adjustments of the planner', (
   assert.match(CM_ONCE, /the reference the cm sends when the l4 names one; otherwise `ctx\.requestMeta\.connection\.idempotencyKey`\./u);
   assert.match(CM_REFUSAL, /Never throw an `AppError` for a refusal that the rule decides\./u);
   assert.equal(CM_SERVE_RULES.length, 6);
+  // d1_347 s7: the request service is told that the controller calls `serveCm`; the process keeps the order of the layers.
+  assert.ok(CM_SERVE_RULES.includes(CM_REQUEST_ORDER) && !CM_SERVE_RULES.includes(CM_ORDER));
+  assert.match(CM_REQUEST_ORDER, /^`serveCm` is called by the controller of the route, never by your function/u);
+  assert.match(CM_REQUEST_ORDER, /Never call `serveCm`, never open `runInTransaction`, never build a bound context\.$/u);
 });
 
 void test('d1_347 s4: off, the contexts say nothing of the platform client; on, each says its part', { skip: !HAS && 'needs mls-102034 with the cm client and mls-102047@25b9ae8d' }, async () => {
@@ -98,7 +102,8 @@ void test('d1_347 s4: off, the contexts say nothing of the platform client; on, 
     const requests = await get.requests();
     assert.match(requests, /Promise<CmServeAnswer<CmSendChannelMessageOutput>>/u);
     assert.match(requests, /import type \{ CmServeAnswer \} from '\/_102034_\/l1\/server\/layer_1_external\/connections\/cm\/index\.js'/u);
-    assert.match(requests, /the order is: `serveCm` \(the platform\), then `once`/u);
+    assert.match(requests, /`serveCm` is called by the controller of the route, never by your function/u);
+    assert.doesNotMatch(requests, /the order is: `serveCm`/u);
   });
   assert.equal(stage2.on, false, 'the key is put back');
 });

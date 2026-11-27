@@ -24,4 +24,10 @@ export const CM_ORDER = 'In a route served to the cm the order is: `serveCm` (th
 /** The request service of a route served to the cm (requests50). */
 export const CM_SERVE_ANSWER_TYPE = 'A function of a route served to the cm returns `Promise<CmServeAnswer<Output>>` (the answer rules below); it does not return the output alone, and it does not open a transaction.';
 
-export const CM_SERVE_RULES: readonly string[] = [CM_SERVE_ANSWER_TYPE, CM_REFUSAL, CM_CONFLICT, CM_ONCE_REFUSAL_RULE, CM_ONCE, CM_ORDER];
+/**
+ * d1_347 s7: the order in the request service of a route served to the cm. `CM_ORDER` (the process context) lists the layers; read in a request service it made the model call `serveCm` itself, open
+ * `runInTransaction` again and throw the refusal from inside `once` (measured on the rehearsal, three attempts). Text approved by the How planner (27/11).
+ */
+export const CM_REQUEST_ORDER = '`serveCm` is called by the controller of the route, never by your function: your function is the `decide` it receives, takes `(input, ctx)` and returns the `CmServeAnswer`. Inside it: first the refusal that depends on a state that can change (read it with the repository), then `once(ctx, { scope, key }, async () => …)` with the work, then your rule. Never call `serveCm`, never open `runInTransaction`, never build a bound context.';
+
+export const CM_SERVE_RULES: readonly string[] = [CM_SERVE_ANSWER_TYPE, CM_REFUSAL, CM_CONFLICT, CM_ONCE_REFUSAL_RULE, CM_ONCE, CM_REQUEST_ORDER];
