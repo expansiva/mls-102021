@@ -17,8 +17,8 @@ export interface SmokeCaseResult {
   kind: string;
   /** d1_330: which way an arrival with a union input was called ('' or absent when one). */
   variant?: string;
-  /** `ok`: the route answered; `refused`: a 4xx the route chose; `error`: an exception that is not an AppError; `failed`: a 5xx or a 501. */
-  verdict: 'ok' | 'refused' | 'error' | 'failed';
+  /** `ok`: the route answered; `refused`: a 4xx the route chose; `error`: an exception that is not an AppError; `failed`: a 5xx or a 501; `skipped`: the case could not be built (a gateway answer of an unresolved type). */
+  verdict: 'ok' | 'refused' | 'error' | 'failed' | 'skipped';
   status: number | null;
   code: string | null;
   message: string | null;
@@ -128,6 +128,7 @@ function stubFor(gateway, pass) {
   const stub = {};
   for (const method of gateway.methods) {
     stub[method.name] = async () => {
+      if (method.unresolved) { const skip = new Error('smoke: the output type of ' + method.name + ' is not declared in the catalog files'); skip.name = 'SmokeUnresolved'; throw skip; }
       if (pass === 'failure') {
         if (method.failure === null) throw new AppError('unavailable', 'smoke: the outside system is unavailable', 503);
         return JSON.parse(JSON.stringify(method.failure));
@@ -153,14 +154,15 @@ async function main() {
       const session = { actorId: item.actor || undefined, actorScope: scope, actorSession: { actorId: item.actor || undefined, scope }, person, organizationId: '00000000-0000-4000-8000-0000000000aa' };
       const ctx = createRequestContext(createMemoryDataRuntime({ sandbox: true }), { sandbox: true, sessionContext: session, moduleId: plan.module });
       // An arrival comes through the message path: the process reads the identity of the arrival from the meta of the request.
-      if (item.arrival) { counter += 1; ctx.requestMeta = { requestId: 'smoke-' + counter, source: 'message', connection: { idempotencyKey: 'smoke-' + counter } }; }
+      if (item.arrival) { counter += 1; ctx.requestMeta = { requestId: 'smoke-' + counter, source: 'message', connection: { idempotencyKey: 'smoke-' + counter, context: {} } }; }
       try {
         const response = await route.handler({ request: { routine: item.route, params: bind(item.input, datasets), meta: { source: 'test', session } }, ctx });
         line = { route: item.route, pass, kind: item.kind, variant: item.variant ?? null, verdict: response && response.ok === false ? 'refused' : 'ok', status: response?.status ?? 200, code: null, message: null, output: response && response.ok === false ? null : (response?.data ?? response) };
       } catch (error) {
         const status = typeof error?.status === 'number' ? error.status : null;
+        const skippedCase = error?.name === 'SmokeUnresolved' || String(error?.cause?.name ?? '') === 'SmokeUnresolved';
         const isApp = error instanceof AppError || typeof error?.code === 'string';
-        line = { route: item.route, pass, kind: item.kind, variant: item.variant ?? null, verdict: isApp ? (status !== null && status >= 500 ? 'failed' : 'refused') : 'error', status, code: error?.code ?? 'ERROR', message: String(error?.message ?? error).slice(0, 300), output: null };
+        line = { route: item.route, pass, kind: item.kind, variant: item.variant ?? null, verdict: skippedCase ? 'skipped' : isApp ? (status !== null && status >= 500 ? 'failed' : 'refused') : 'error', status, code: error?.code ?? 'ERROR', message: String(error?.message ?? error).slice(0, 300), output: null };
       }
       process.stdout.write('RESULT ' + JSON.stringify(line) + '\\n');
     }

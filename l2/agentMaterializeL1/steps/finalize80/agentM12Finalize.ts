@@ -4,11 +4,12 @@ import { SERVE_ROUTE_NO_PAGE_TEST } from '/_102021_/l2/agentMaterializeL1/steps/
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_FINALIZE_AGENT_NAME, M12_LAYERS, clip, errorText, parseM12StepInvocation, type M12Layer } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { addM12Step, m12Result, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
-import { readJsonOptional, readUnitStatus, writeJson, type M12UnitState, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { readJsonOptional, readOptional, readUnitStatus, writeJson, type M12UnitState, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { orphanOfTarget, removeOrphan } from '/_102021_/l2/agentMaterializeL1/helpers/m12Orphans.js';
-import { registrationFile, reportFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { registrationFile, reportFile, smokeFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
-import { registersModule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { registersModule, storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { smokeInputsHash, smokeState, type M12SmokeState, type SmokeFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Smoke.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: M12_FINALIZE_AGENT_NAME, agentProject: 102021, agentFolder: 'agentMaterializeL1/steps/finalize80', agentDescription: 'Report every unit of the run from its status file', visibility: 'private', beforePromptStep };
@@ -34,6 +35,8 @@ export interface M12Report {
   missing: string[];
   defProblems: Array<{ defRef: string; code: string; detail: string }>;
   registration: { action: string; detail: string } | null;
+  /** d1_333: what the smoke says of the module (absent: this report did not look). `complete` needs it ok. */
+  smoke?: M12SmokeState;
   createdAt: string;
 }
 
@@ -41,7 +44,7 @@ function isServeSkip(item: { status: string; code: string }): boolean {
   return item.status === 'skipped' && item.code === SERVE_ROUTE_NO_PAGE_TEST;
 }
 
-export function buildM12Report(project: number, moduleName: string, units: readonly M12UnitStatus[], missing: readonly string[], defProblems: M12Report['defProblems'], registration: M12Report['registration']): M12Report {
+export function buildM12Report(project: number, moduleName: string, units: readonly M12UnitStatus[], missing: readonly string[], defProblems: M12Report['defProblems'], registration: M12Report['registration'], smoke?: M12SmokeState): M12Report {
   const counts: Record<M12UnitState, number> = { done: 0, reused: 0, blocked: 0, gap: 0, failed: 0, skipped: 0 };
   const byLayer: M12Report['byLayer'] = {};
   for (const unit of units) {
@@ -54,10 +57,10 @@ export function buildM12Report(project: number, moduleName: string, units: reado
     .filter(unit => unit.status !== 'done' && unit.status !== 'reused')
     .map(unit => ({ layer: unit.layer, unitId: unit.unitId, status: unit.status, code: unit.code, diagnostic: clip(unit.diagnostic, 600) }));
   // A connection serve route has no page test: that declared skip is not an open item, same as a platform gap.
-  const clean = open.every(item => item.status === 'gap' || isServeSkip(item)) && missing.length === 0 && defProblems.length === 0;
+  const clean = open.every(item => item.status === 'gap' || isServeSkip(item)) && missing.length === 0 && defProblems.length === 0 && (smoke === undefined || smoke.ok);
   const notCompiled = units.filter(unit => (unit.status === 'done' || unit.status === 'reused') && unit.code === 'COMPILE_UNAVAILABLE_L1').map(unit => `${unit.layer}/${unit.unitId}`);
   const serveNotTested = open.filter(isServeSkip).map(item => `${item.layer}/${item.unitId}`);
-  return { schemaVersion: M12_REPORT_VERSION, project, moduleName, status: clean ? 'complete' : 'partial', counts, byLayer, open, notCompiled, serveNotTested, missing: [...missing], defProblems, registration, createdAt: new Date().toISOString() };
+  return { schemaVersion: M12_REPORT_VERSION, project, moduleName, status: clean ? 'complete' : 'partial', counts, byLayer, open, notCompiled, serveNotTested, missing: [...missing], defProblems, registration, ...(smoke ? { smoke } : {}), createdAt: new Date().toISOString() };
 }
 
 export function summarizeM12Report(report: M12Report): string {
@@ -79,7 +82,31 @@ export function summarizeM12Report(report: M12Report): string {
   if (report.missing.length) lines.push('', `No status for: ${report.missing.join(', ')}`);
   if (report.defProblems.length) lines.push('', 'Defs not planned:', ...report.defProblems.map(item => `- ${item.defRef}: ${item.code} ${clip(item.detail, 200)}`));
   if (report.registration) lines.push('', `l5 registration: ${clip(report.registration.detail, 600)}`);
+  if (report.smoke) lines.push('', report.smoke.ok ? `Smoke: ${report.smoke.detail}.` : `Smoke ${report.smoke.code}: ${clip(report.smoke.detail, 600)}`);
   return lines.join('\n');
+}
+
+/**
+ * d1_333: `smoke.json` of the module and the hash of what it ran on, now. The smoke cannot run here (child process, `tsx`, `git`): `smokeCli --write` runs it and writes the file; the
+ * `complete` asks that the file exists, that the receipts and contracts of the module are the ones it ran on, and that nothing blocks.
+ */
+export async function readSmokeState(project: number, moduleName: string): Promise<M12SmokeState> {
+  const entries = storEntries().filter(item => item.project === project && item.status !== 'deleted');
+  const receipts: Array<{ key: string; outputs: Record<string, string> }> = [];
+  for (const layer of M12_LAYERS) {
+    const folder = `${moduleName}/pipeline/agentMaterializeL1/${layer}`;
+    for (const entry of entries.filter(item => item.level === 1 && item.folder === folder && item.extension === '.json' && !!item.shortName)) {
+      const status = await readUnitStatus(project, moduleName, layer, entry.shortName);
+      if (status) receipts.push({ key: `${layer}/${entry.shortName}`, outputs: status.outputs ?? {} });
+    }
+  }
+  const contracts: Array<{ name: string; text: string }> = [];
+  for (const entry of entries.filter(item => item.level === 2 && item.folder === `${moduleName}/web/contracts` && item.extension === '.defs.ts' && !!item.shortName)) {
+    const text = await readOptional({ project, level: 2, folder: entry.folder, shortName: entry.shortName, extension: '.defs.ts' });
+    if (text !== null) contracts.push({ name: `${entry.shortName}.defs.ts`, text });
+  }
+  const file = await readJsonOptional<SmokeFile>(smokeFile(project, moduleName));
+  return smokeState(file, await smokeInputsHash(receipts, contracts));
 }
 
 async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
@@ -115,7 +142,7 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     const registration = registersModule(run, moduleName)
       ? await readJsonOptional<{ action: string; detail: string }>(registrationFile(project, moduleName))
       : null;
-    const report = buildM12Report(project, moduleName, units, missing, problems, registration ? { action: registration.action, detail: registration.detail } : null);
+    const report = buildM12Report(project, moduleName, units, missing, problems, registration ? { action: registration.action, detail: registration.detail } : null, await readSmokeState(project, moduleName));
     await writeJson(reportFile(project, moduleName), { ...report, scope: run.scope, target: run.target, force: run.force });
     const summary = clip(summarizeM12Report(report), 6000);
     return [

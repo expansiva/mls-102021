@@ -79,6 +79,15 @@ export function unitDraftFile(project: number, moduleName: string, layer: M12Lay
   return { project, level: 1, folder: `${runFolder(moduleName)}/drafts/${layer}`, shortName: `${unitId}_${part}`, extension: '.txt' };
 }
 
+/** d1_333: the result of the smoke of the module (written by `smokeCli`, read by finalize80) and the differences the operator accepted. */
+export function smokeFile(project: number, moduleName: string): M12FileInfo {
+  return { project, level: 1, folder: runFolder(moduleName), shortName: 'smoke', extension: '.json' };
+}
+
+export function smokeAcceptedFile(project: number, moduleName: string): M12FileInfo {
+  return { project, level: 1, folder: runFolder(moduleName), shortName: 'smokeAccepted', extension: '.json' };
+}
+
 export function reportFile(project: number, moduleName: string): M12FileInfo {
   return { project, level: 1, folder: runFolder(moduleName), shortName: 'report', extension: '.json' };
 }

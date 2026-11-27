@@ -49,6 +49,24 @@ function resolved(node: ts.TypeNode, table: TypeTable, seen: ReadonlySet<string>
 
 const isNullish = (node: ts.TypeNode): boolean => node.kind === ts.SyntaxKind.NullKeyword || node.kind === ts.SyntaxKind.UndefinedKeyword || (ts.isLiteralTypeNode(node) && node.literal.kind === ts.SyntaxKind.NullKeyword);
 
+const KNOWN_GENERICS = new Set(['Array', 'ReadonlyArray', 'Record', 'Partial', 'Readonly', 'Required', 'Pick', 'Omit', 'Promise', 'Date']);
+
+/** d1_333: a named type the table does not declare (and the language does not): a sample made from it would be `{}`, not a value of that type. */
+export function hasUnresolved(node: ts.TypeNode, table: TypeTable, seen: ReadonlySet<string> = new Set(), depth = 0): boolean {
+  if (depth > 8) return false;
+  const { node: type, seen: next } = resolved(node, table, seen);
+  if (ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
+    const name = type.typeName.text;
+    if (KNOWN_GENERICS.has(name)) return (type.typeArguments ?? []).some(item => hasUnresolved(item, table, next, depth + 1));
+    return !table.has(name);
+  }
+  if (ts.isUnionTypeNode(type) || ts.isIntersectionTypeNode(type)) return type.types.some(item => hasUnresolved(item, table, next, depth + 1));
+  if (ts.isArrayTypeNode(type)) return hasUnresolved(type.elementType, table, next, depth + 1);
+  if (ts.isTypeLiteralNode(type)) return members(type).some(member => !member.optional && hasUnresolved(member.type, table, next, depth + 1));
+  if (ts.isTupleTypeNode(type)) return type.elements.some(item => hasUnresolved(item, table, next, depth + 1));
+  return false;
+}
+
 /** The smallest valid value. `prefer`: for a union, the member that has a literal `true` (success) or `false` (failure) field, when asked. `variant`: otherwise the nth member of every union (d1_330: each way to call an arrival). */
 export function sampleOf(node: ts.TypeNode, table: TypeTable, options: { prefer?: 'success' | 'failure'; variant?: number } = {}, seen: ReadonlySet<string> = new Set(), depth = 0): unknown {
   if (depth > 8) return undefined;

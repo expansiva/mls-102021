@@ -15,7 +15,10 @@ const BASE = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../.
 export function extractModule(repo: string, commit: string, module: string, target: string): void {
   rmSync(target, { recursive: true, force: true });
   mkdirSync(target, { recursive: true });
-  const archived = spawnSync('git', ['-C', repo, 'archive', commit, `l1/${module}`, `l2/${module}`, `l4/${module}`, 'l4/organization', 'l5'], { maxBuffer: 512 * 1024 * 1024 });
+  // A module may have no `l4/<module>` (a module born from a def): only the paths the commit has.
+  const has = (rel: string): boolean => spawnSync('git', ['-C', repo, 'cat-file', '-e', `${commit}:${rel}`]).status === 0;
+  const paths = [`l1/${module}`, `l2/${module}`, `l4/${module}`, 'l4/organization', 'l5'].filter(has);
+  const archived = spawnSync('git', ['-C', repo, 'archive', commit, ...paths], { maxBuffer: 512 * 1024 * 1024 });
   if (archived.status !== 0) throw new Error(archived.stderr?.toString() || `git archive ${commit} ${module}`);
   const extracted = spawnSync('tar', ['-x', '-C', target], { input: archived.stdout });
   if (extracted.status !== 0) throw new Error(extracted.stderr?.toString() || 'tar');
@@ -71,17 +74,30 @@ export function smokeAgainst(module: string, after: string, before: string, outD
   return { differences, text };
 }
 
-if (process.argv[1] && process.argv[1].endsWith('smokeCli.ts')) {
+if (process.argv[1] && process.argv[1].endsWith('smokeCli.ts')) void (async () => {
   const args = process.argv.slice(2);
-  const at = args.indexOf('--against');
-  const against = at >= 0 ? args.splice(at, 2)[1] : '';
+  const take = (flag: string): string => { const at = args.indexOf(flag); return at >= 0 ? args.splice(at, 2)[1] : ''; };
+  const takeAll = (flag: string): string[] => { const out: string[] = []; for (let at = args.indexOf(flag); at >= 0; at = args.indexOf(flag)) out.push(args.splice(at, 2)[1]); return out; };
+  const flag = (name: string): boolean => { const at = args.indexOf(name); if (at >= 0) args.splice(at, 1); return at >= 0; };
+  const against = take('--against');
+  const reason = take('--reason');
+  const by = take('--by');
+  const accept = takeAll('--accept');
+  const acceptAll = flag('--accept-all');
+  const write = flag('--write');
+  const dry = flag('--dry');
   const [module, commit, outDir] = args;
-  if (!module || !commit) throw new Error('usage: smokeCli.ts <module> <commit|dir> [outDir] [--against <commit|dir>]');
-  if (against) {
+  if (!module || !commit) throw new Error('usage: smokeCli.ts <module> <commit|dir> [outDir] [--against <commit|dir>] | smokeCli.ts <module> <repository> --write [--dry] [--accept <case>]... [--accept-all] --reason <text> --by <name>');
+  if (write) {
+    const { smokeWrite } = await import('/_102021_/l2/agentMaterializeL1/testing/smoke/smokeWrite.js');
+    const result = await smokeWrite(module, commit, { outDir, dry, reason, by, ...(acceptAll ? { accept: 'all' as const } : accept.length ? { accept } : {}) });
+    console.log(result.text);
+    process.exit(result.problems.length || result.file.blocks.length ? 1 : 0);
+  } else if (against) {
     const { differences, text } = smokeAgainst(module, commit, against, outDir);
     console.log(`${module}: ${against} -> ${commit}: ${differences.length} difference(s)\n${text}`);
   } else {
     const report = smokeModule(module, commit, outDir);
     console.log(`${module}@${commit}: ${report.routes} routes, ${report.executed} runs, ${report.seconds}s`);
   }
-}
+})();

@@ -10,6 +10,8 @@ export interface SmokeDifference {
   key: string;
   before: string;
   after: string;
+  /** An arrival (`serve`): reported, never blocks. */
+  arrival: boolean;
 }
 
 const keyOf = (item: SmokeCaseResult): string => `${item.pass} ${item.route}${item.variant ? ` [${item.variant}]` : ''}`;
@@ -21,12 +23,12 @@ export function compareReports(before: SmokeReport, after: SmokeReport): SmokeDi
   const out: SmokeDifference[] = [];
   for (const [key, was] of left) {
     const now = right.get(key);
-    if (!now) { out.push({ kind: 'disappeared', key, before: outcome(was), after: '' }); continue; }
-    if (was.verdict !== now.verdict) out.push({ kind: 'verdict', key, before: outcome(was), after: outcome(now) });
-    else if (was.verdict !== 'ok' && (was.status !== now.status || (was.code ?? '') !== (now.code ?? ''))) out.push({ kind: 'code', key, before: outcome(was), after: outcome(now) });
-    else if (now.conforms.length > 0 && was.conforms.length === 0) out.push({ kind: 'typed', key, before: 'fits the type', after: now.conforms.slice(0, 2).join('; ') });
+    if (!now) { out.push({ kind: 'disappeared', key, before: outcome(was), after: '', arrival: was.kind === 'arrival' }); continue; }
+    if (was.verdict !== now.verdict) out.push({ kind: 'verdict', key, before: outcome(was), after: outcome(now), arrival: now.kind === 'arrival' });
+    else if (was.verdict !== 'ok' && (was.status !== now.status || (was.code ?? '') !== (now.code ?? ''))) out.push({ kind: 'code', key, before: outcome(was), after: outcome(now), arrival: now.kind === 'arrival' });
+    else if (now.conforms.length > 0 && was.conforms.length === 0) out.push({ kind: 'typed', key, before: 'fits the type', after: now.conforms.slice(0, 2).join('; '), arrival: now.kind === 'arrival' });
   }
-  for (const [key, now] of right) if (!left.has(key)) out.push({ kind: 'appeared', key, before: '', after: outcome(now) });
+  for (const [key, now] of right) if (!left.has(key)) out.push({ kind: 'appeared', key, before: '', after: outcome(now), arrival: now.kind === 'arrival' });
   return out;
 }
 

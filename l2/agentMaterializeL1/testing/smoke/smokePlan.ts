@@ -8,7 +8,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 
-import { sampleOf, typeNodeOf, typeTableOf, type TypeTable } from '/_102021_/l2/agentMaterializeL1/testing/smoke/typeModel.js';
+import { hasUnresolved, sampleOf, typeNodeOf, typeTableOf, type TypeTable } from '/_102021_/l2/agentMaterializeL1/testing/smoke/typeModel.js';
 
 export interface SmokeRoute {
   page: string;
@@ -31,6 +31,8 @@ export interface SmokeGatewayMethod {
   success: unknown;
   /** The failure member sampled, or null when the output has none (the stub then throws `unavailable`). */
   failure: unknown;
+  /** d1_333: the output type names a type the catalog files do not declare: the stub cannot make a value of it, the case is skipped, never run on `{}`. */
+  unresolved?: boolean;
   outputType: string;
 }
 
@@ -157,7 +159,7 @@ function gatewaysOf(tree: string, project: number, module: string, base: string)
       const marked = (flag: 'success' | 'failure') => sampleOf(output, table, { prefer: flag });
       const success = marked('success');
       const failure = marked('failure');
-      methods.push({ name: member.name.text, success, failure: JSON.stringify(failure) === JSON.stringify(success) ? null : failure, outputType: output.getText(parsed) });
+      methods.push({ name: member.name.text, ...(hasUnresolved(output, table) ? { unresolved: true } : {}), success, failure: JSON.stringify(failure) === JSON.stringify(success) ? null : failure, outputType: output.getText(parsed) });
     }
     gateways.push({ name: statement.name.text, methods });
   }
