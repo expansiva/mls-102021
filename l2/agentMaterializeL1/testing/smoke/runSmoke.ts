@@ -117,6 +117,7 @@ ${parts.outbound ? `import * as outbound from '/_${project}_/l1/${module}/layer_
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
 import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
 import { registerRepository, resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+import { runAsCallerModule } from '/_102034_/l1/server/layer_1_external/connections/callerModule.js';
 ${parts.register ? `import '/_${project}_/l1/${module}/layer_1_external/adapters/persistence/registerRepositories.js';` : ''}
 ${imports}
 ${parts.seeds ? `import * as seeds from '/_${project}_/l1/${module}/layer_1_external/adapters/persistence/seeds.js';` : 'const seeds = {};'}
@@ -169,10 +170,17 @@ function stubFor(gateway, pass) {
 
 // A gateway of a system the module declares runs for real (its gateway, the connection shim and its adapter, on an HTTP 401 with a body) in the failure pass; every other is a stub.
 function useGateways(plan, pass) {
-  for (const gateway of plan.gateways) {
-    const factory = gateway.real && pass === 'failure' ? outbound['create' + gateway.name] : undefined;
-    registerRepository(gateway.name, factory ? ctx => factory(ctx) : () => stubFor(gateway, pass));
-  }
+  const own = () => {
+    for (const gateway of plan.gateways) {
+      const factory = gateway.real && pass === 'failure' ? outbound['create' + gateway.name] : undefined;
+      registerRepository(gateway.name, factory ? ctx => factory(ctx) : () => stubFor(gateway, pass), { module: plan.module });
+    }
+  };
+  // d1_341: the registry of the platform is global by name, the last registration wins. The other modules of the app register their bridges too (stubs with the methods of THEIR catalog), before or after this one.
+  const others = () => {
+    for (const neighbour of plan.neighbours ?? []) for (const gateway of neighbour.gateways) registerRepository(gateway.name, () => stubFor(gateway, pass), { module: neighbour.module });
+  };
+  if (plan.neighboursFirst) { others(); own(); } else { own(); others(); }
 }
 
 // The memory store does not check what the database checks. A column of the table that is not nullable and has no default refuses a row that has no value for it (an absent key or a null):
@@ -238,7 +246,8 @@ function describe(error) {
 
 async function call(route, item, ctx, datasets, session, at) {
   try {
-    const response = await route.handler({ request: { routine: item.route, params: bind(item.input, datasets, at), meta: { source: 'test', session } }, ctx });
+    // d1_341: as the platform runs a route (execBff): the code of the module that owns it, so a port registered by the module resolves to the module's own.
+    const response = await runAsCallerModule(globalThis.__smokeModule, () => route.handler({ request: { routine: item.route, params: bind(item.input, datasets, at), meta: { source: 'test', session } }, ctx }));
     return { verdict: response && response.ok === false ? 'refused' : 'ok', status: response?.status ?? 200, code: null, message: null, stack: null, output: response && response.ok === false ? null : response?.data ?? null };
   } catch (error) {
     return { ...describe(error), output: null };
@@ -257,6 +266,7 @@ async function rowCounts(plan, ctx) {
 
 async function main() {
   const plan = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+  globalThis.__smokeModule = plan.module;
   const datasets = seedRows();
   // An arrival is run once per stored row of the entity it points at (an open conversation and a blocked one answer differently); the other cases on the first row.
   const rowsOf = item => {
@@ -378,7 +388,7 @@ function scenariosOf(module: string): unknown[] {
 }
 
 /** Runs the smoke of `module` on `tree`. `base` is the mls-base root (the platform and the libraries). */
-export function runSmoke(input: { tree: string; project: number; module: string; base: string; workDir: string; timeoutMs?: number }): SmokeReport {
+export function runSmoke(input: { tree: string; project: number; module: string; base: string; workDir: string; timeoutMs?: number; /** d1_341: other modules of the app (in the tree) whose bridges are registered too; `neighboursFirst`: before this module's. */ neighbours?: string[]; neighboursFirst?: boolean }): SmokeReport {
   const started = Date.now();
   const plan: SmokePlan = planSmoke(input.tree, input.project, input.module, input.base);
   mkdirSync(input.workDir, { recursive: true });
@@ -391,7 +401,7 @@ export function runSmoke(input: { tree: string; project: number; module: string;
   writeFileSync(path.join(input.workDir, 'hooks.mjs'), HOOKS);
   const persistence = path.join(input.tree, 'l1', input.module, 'layer_1_external', 'adapters', 'persistence');
   writeFileSync(path.join(input.workDir, 'run.ts'), runnerSource(input.project, input.module, controllers, { outbound: existsSync(path.join(input.tree, 'l1', input.module, 'layer_1_external', 'adapters', 'integration', 'outbound.ts')), register: existsSync(path.join(persistence, 'registerRepositories.ts')), seeds: existsSync(path.join(persistence, 'seeds.ts')) }));
-  writeFileSync(path.join(input.workDir, 'plan.json'), JSON.stringify({ module: plan.module, routes: plan.routes, gateways: plan.gateways, repositories: plan.repositories, scenarios: scenariosOf(input.module) }));
+  writeFileSync(path.join(input.workDir, 'plan.json'), JSON.stringify({ module: plan.module, routes: plan.routes, gateways: plan.gateways, repositories: plan.repositories, scenarios: scenariosOf(input.module), neighbours: (input.neighbours ?? []).map(module => ({ module, gateways: planSmoke(input.tree, input.project, module, input.base).gateways })), neighboursFirst: input.neighboursFirst === true }));
   if (controllers.length === 0 || plan.routes.length === 0) return { module: input.module, routes: plan.routes.length, executed: 0, results: [], raw: controllers.length === 0 ? 'no controllers in the module' : 'no routes in the contracts', seconds: Math.round((Date.now() - started) / 100) / 10 };
   const run = spawnSync(path.join(input.base, 'node_modules/.bin/tsx'), ['--import', path.join(input.workDir, 'register.mjs'), '--import', path.join(input.base, 'test/setup-l2.ts'), path.join(input.workDir, 'run.ts'), path.join(input.workDir, 'plan.json')], {
     cwd: projectsDir(input.workDir, input.tree, input.base, input.project, input.module),

@@ -1042,7 +1042,7 @@ export interface WakeRegistration {
 /** Adapter rows of a registration this agent already wrote. Null when the file is not that shape. */
 export function parseRegistrationRows(source: string): Array<{ portId: string; factory: string; specifier: string }> | null {
   const imports = [...source.matchAll(/import \{ (create[A-Za-z0-9_]+) \} from '([^']+)';/g)];
-  const calls = [...source.matchAll(/registerRepository\("([^"]+)", ctx => (create[A-Za-z0-9_]+)\(ctx\)\);/g)];
+  const calls = [...source.matchAll(/registerRepository\("([^"]+)", ctx => (create[A-Za-z0-9_]+)\(ctx\)(?:, \{ module: "[^"]+" \})?\);/g)];
   if (!imports.length || imports.length !== calls.length) return null;
   const rows: Array<{ portId: string; factory: string; specifier: string }> = [];
   for (const call of calls) {
@@ -1053,9 +1053,17 @@ export function parseRegistrationRows(source: string): Array<{ portId: string; f
   return rows;
 }
 
+/** d1_341: the registry of the platform is global by name; the module of the registration (the folder under l1 of the file) makes the name the module's own. */
+export function registrationModule(output: string): string {
+  const found = /(?:^|\/)l1\/([^/]+)\//u.exec(output);
+  if (!found) throw new Error(`registration file without a module under l1: ${output}`);
+  return found[1];
+}
+
 export function renderRegistration(output: string, rows: readonly { portId: string; factory: string; specifier: string }[], wakes: readonly WakeRegistration[] = []): string {
   const imports = rows.map(row => `import { ${row.factory} } from '${row.specifier}';`);
-  const calls = rows.map(row => `  registerRepository(${JSON.stringify(row.portId)}, ctx => ${row.factory}(ctx));`);
+  const module = JSON.stringify(registrationModule(output));
+  const calls = rows.map(row => `  registerRepository(${JSON.stringify(row.portId)}, ctx => ${row.factory}(ctx), { module: ${module} });`);
   const bySpec = new Map<string, string[]>();
   for (const wake of wakes) {
     const names = bySpec.get(wake.specifier) ?? [];

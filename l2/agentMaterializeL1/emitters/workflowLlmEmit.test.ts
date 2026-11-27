@@ -13,7 +13,7 @@ import { AppError, type RequestContext } from '/_102034_/l1/server/layer_2_contr
 import type { OccurrenceKey, WorkflowTable } from '/_102034_/l1/workflow/contracts.js';
 import { createWorkflowEngine, type WorkflowEngineContext } from '/_102034_/l1/workflow/engine.js';
 import { createMemoryOccurrencePort } from '/_102034_/l1/workflow/memoryOccurrence.js';
-import { parseRegistrationRows, renderRegistration } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
+import { parseRegistrationRows, registrationModule, renderRegistration } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { bindHumanPages, moduleTickSource, workflowEngineSource, workflowTablesFromL4 } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { workflowRecoverName, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { MDM_LIST_USERS_PAGE_SIZE_MAX } from '/_102021_/l2/agentMaterializeL1/helpers/mdmPlatformLimits.js';
@@ -89,6 +89,23 @@ test('a process without an llm step keeps today\'s engine and tick', () => {
     { portId: 'PedidoRepository', factory: 'createPedidoRepository', specifier: '/_102047_/l1/pedido/layer_1_external/adapters/persistence/pedidoRepositoryAdapter.js' },
   ]);
   assert.equal(plain.includes('registerWorkflowWakeHandler'), false);
+});
+
+test('d1_341: every registration of a module carries its module, and a file in the old form still parses', () => {
+  const out = '_102047_/l1/telegram/layer_1_external/adapters/persistence/registerRepositories.ts';
+  const rows = [
+    { portId: 'CmGateway', factory: 'createCmGateway', specifier: '/_102047_/l1/telegram/layer_1_external/adapters/integration/outbound.js' },
+    { portId: 'TelegramBotRepository', factory: 'createTelegramBotRepository', specifier: '/_102047_/l1/telegram/layer_1_external/adapters/persistence/telegramBotRepositoryAdapter.js' },
+  ];
+  const source = renderRegistration(out, rows);
+  assert.match(source, /registerRepository\("CmGateway", ctx => createCmGateway\(ctx\), \{ module: "telegram" \}\);/u);
+  assert.match(source, /registerRepository\("TelegramBotRepository", ctx => createTelegramBotRepository\(ctx\), \{ module: "telegram" \}\);/u);
+  assert.equal((source.match(/registerRepository\(/gu) ?? []).length, 2, 'no registration without the module');
+  assert.deepEqual(parseRegistrationRows(source)?.map(row => row.portId), ['CmGateway', 'TelegramBotRepository']);
+  const old = source.replaceAll(', { module: "telegram" }', '');
+  assert.deepEqual(parseRegistrationRows(old)?.map(row => row.portId), ['CmGateway', 'TelegramBotRepository']);
+  assert.equal(registrationModule(out), 'telegram');
+  assert.throws(() => registrationModule('registerRepositories.ts'));
 });
 
 const COMPRAS = [

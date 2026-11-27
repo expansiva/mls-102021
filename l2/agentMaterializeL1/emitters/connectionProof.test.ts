@@ -121,7 +121,7 @@ test('emitted outbound, registration, scope and the cm controller compile agains
   }), '_102099_/l1/agents/layer_1_external/registerRepositories.ts', async ref => ref.endsWith('/outbound.ts') ? outbound.source : null);
   assert.equal('code' in registration, false);
   if ('code' in registration) return;
-  assert.match(registration.source, /registerRepository\("CmGateway", ctx => createCmGateway\(ctx\)\)/);
+  assert.match(registration.source, /registerRepository\("CmGateway", ctx => createCmGateway\(ctx\), \{ module: "agents" \}\);/);
 
   const controller = await emitController(envelope({
     artifactType: 'httpController',

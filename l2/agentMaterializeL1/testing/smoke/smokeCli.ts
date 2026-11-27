@@ -10,14 +10,15 @@ import path from 'node:path';
 import { compareReports, differencesText, type SmokeDifference } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokeCompare.js';
 import { runSmoke, type SmokeReport } from '/_102021_/l2/agentMaterializeL1/testing/smoke/runSmoke.js';
 
-const BASE = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
+// `SMOKE_PLATFORM_BASE`: another mls-base root (a platform at another commit: the same tree with `mls-102034` of that commit); default: this one.
+const BASE = process.env.SMOKE_PLATFORM_BASE ?? path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
 
-export function extractModule(repo: string, commit: string, module: string, target: string): void {
+export function extractModule(repo: string, commit: string, module: string, target: string, extra: readonly string[] = []): void {
   rmSync(target, { recursive: true, force: true });
   mkdirSync(target, { recursive: true });
   // A module may have no `l4/<module>` (a module born from a def): only the paths the commit has.
   const has = (rel: string): boolean => spawnSync('git', ['-C', repo, 'cat-file', '-e', `${commit}:${rel}`]).status === 0;
-  const paths = [`l1/${module}`, `l2/${module}`, `l4/${module}`, 'l4/organization', 'l5'].filter(has);
+  const paths = [module, ...extra].flatMap(name => [`l1/${name}`, `l2/${name}`, `l4/${name}`]).concat(['l4/organization', 'l5']).filter(has);
   const archived = spawnSync('git', ['-C', repo, 'archive', commit, ...paths], { maxBuffer: 512 * 1024 * 1024 });
   if (archived.status !== 0) throw new Error(archived.stderr?.toString() || `git archive ${commit} ${module}`);
   const extracted = spawnSync('tar', ['-x', '-C', target], { input: archived.stdout });
@@ -67,19 +68,19 @@ export function reportText(report: SmokeReport, label: string): string {
 }
 
 /** A tree to run: a commit of `mls-102047` (a `git archive`), or a directory that has `l1`, `l2`, `l4`, `l5` (a clone, a bench): only the module and what it reads are copied. */
-export function smokeSubject(module: string, subject: string, outDir: string, label: string, repo = path.join(BASE, 'mls-102047')): { tree: string; label: string } {
+export function smokeSubject(module: string, subject: string, outDir: string, label: string, repo = path.join(BASE, 'mls-102047'), extra: readonly string[] = []): { tree: string; label: string } {
   const tree = path.join(outDir, `tree_${module}_${label}`);
   if (existsSync(path.join(subject, 'l1'))) {
     rmSync(tree, { recursive: true, force: true });
     mkdirSync(tree, { recursive: true });
-    for (const rel of [`l1/${module}`, `l2/${module}`, `l4/${module}`, 'l4/organization', 'l5']) if (existsSync(path.join(subject, rel))) cpSync(path.join(subject, rel), path.join(tree, rel), { recursive: true });
-  } else extractModule(repo, subject, module, tree);
+    for (const rel of [module, ...extra].flatMap(name => [`l1/${name}`, `l2/${name}`, `l4/${name}`]).concat(['l4/organization', 'l5'])) if (existsSync(path.join(subject, rel))) cpSync(path.join(subject, rel), path.join(tree, rel), { recursive: true });
+  } else extractModule(repo, subject, module, tree, extra);
   return { tree, label };
 }
 
-export function smokeModule(module: string, commit: string, outDir = '/tmp/l1sup/fumaca', repo?: string): SmokeReport {
-  const { tree } = smokeSubject(module, commit, outDir, safeLabel(commit), repo);
-  const report = runSmoke({ tree, project: 102047, module, base: BASE, workDir: path.join(outDir, `work_${module}`) });
+export function smokeModule(module: string, commit: string, outDir = '/tmp/l1sup/fumaca', repo?: string, app?: { neighbours: string[]; neighboursFirst?: boolean }): SmokeReport {
+  const { tree } = smokeSubject(module, commit, outDir, safeLabel(commit), repo, app?.neighbours ?? []);
+  const report = runSmoke({ tree, project: 102047, module, base: BASE, workDir: path.join(outDir, `work_${module}`), ...(app ? { neighbours: app.neighbours, neighboursFirst: app.neighboursFirst === true } : {}) });
   mkdirSync(outDir, { recursive: true });
   writeFileSync(path.join(outDir, `${module}@${safeLabel(commit)}.json`), JSON.stringify({ ...report, raw: report.raw.slice(0, 4000) }, null, 2));
   writeFileSync(path.join(outDir, `${module}@${safeLabel(commit)}.md`), reportText(report, commit));
@@ -109,6 +110,9 @@ export interface SmokeCliArgs {
   dry: boolean;
   by: string;
   accept: Array<{ case: string; reason: string }>;
+  /** d1_341: the other modules of the app registered with the target (`--with a,b`), before it (`--neighbours-first`) or after (default). */
+  neighbours: string[];
+  neighboursFirst: boolean;
 }
 
 export const SMOKE_USAGE = 'usage: smokeCli.ts <module> <commit|dir> [outDir] [--against <commit|dir>]\n       smokeCli.ts <module> <repository> --write [--dry] [--accept "<case>" --reason "<why, 20 characters or more>"]... [--by <name>]';
@@ -123,6 +127,8 @@ export function parseSmokeArgs(argv: readonly string[]): SmokeCliArgs {
   const by = take('--by');
   const cases = takeAll('--accept');
   const reasons = takeAll('--reason');
+  const neighbours = take('--with').split(',').filter(Boolean);
+  const neighboursFirst = flag('--neighbours-first');
   const write = flag('--write');
   const dry = flag('--dry');
   const unknown = args.find(item => item.startsWith('--'));
@@ -130,7 +136,7 @@ export function parseSmokeArgs(argv: readonly string[]): SmokeCliArgs {
   if (cases.length !== reasons.length) throw new Error(`Each --accept needs its own --reason (${cases.length} --accept, ${reasons.length} --reason).\n${SMOKE_USAGE}`);
   const [module, subject, outDir] = args;
   if (!module || !subject) throw new Error(SMOKE_USAGE);
-  return { module, subject, outDir, against, write, dry, by, accept: cases.map((item, index) => ({ case: item, reason: reasons[index] })) };
+  return { module, subject, outDir, against, write, dry, by, neighbours, neighboursFirst, accept: cases.map((item, index) => ({ case: item, reason: reasons[index] })) };
 }
 
 if (process.argv[1] && process.argv[1].endsWith('smokeCli.ts')) void (async () => {
@@ -144,7 +150,7 @@ if (process.argv[1] && process.argv[1].endsWith('smokeCli.ts')) void (async () =
     const { differences, text } = smokeAgainst(args.module, args.subject, args.against, args.outDir);
     console.log(`${args.module}: ${args.against} -> ${args.subject}: ${differences.length} difference(s)\n${text}`);
   } else {
-    const report = smokeModule(args.module, args.subject, args.outDir);
+    const report = smokeModule(args.module, args.subject, args.outDir, undefined, args.neighbours.length ? { neighbours: args.neighbours, neighboursFirst: args.neighboursFirst } : undefined);
     console.log(`${args.module}@${args.subject}: ${report.routes} routes, ${report.executed} runs, ${report.seconds}s`);
   }
 })();
