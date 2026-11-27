@@ -31,6 +31,12 @@ export interface SeedRowsResult {
   reason: string | null;
 }
 
+/** d1_342: the scenario rows left out are listed in the line of the step (the report), never dropped in silence. */
+function dropText(ctx: { seedDrops?: string[] }): string {
+  const drops = ctx.seedDrops ?? [];
+  return drops.length ? `; SEED_ROWS_DROPPED ${drops.length}: ${drops.join(' || ')}` : '';
+}
+
 export type SeedRowsModel = (human: string, repair?: SeedRepair) => string | Promise<string>;
 
 /** RFC 4122 DNS namespace. Same name always yields the same id. */
@@ -189,7 +195,7 @@ export function createAgent(): IAgentAsync {
       if ('rows' in decided) {
         await writeSeedTableDraft(args.project, args.module, unit.tableId, decided.rows, null);
         const emitted = await emitSeedsWhenReady(ctx);
-        return finish(`${unit.tableId}: rows accepted${emitted ? '; seeds.ts emitted' : ''}`);
+        return finish(`${unit.tableId}: rows accepted${emitted ? '; seeds.ts emitted' : ''}${dropText(ctx)}`);
       }
       const problems = decided.problems;
       if (args.attempt === 1) {
@@ -201,7 +207,7 @@ export function createAgent(): IAgentAsync {
       }
       await writeSeedTableDraft(args.project, args.module, unit.tableId, [], problems.join(' '));
       const emitted = await emitSeedsWhenReady(ctx);
-      return finish(`M12_FAILED: ${unit.tableId} left empty: ${problems.join(' | ')}${emitted ? '; seeds.ts emitted' : ''}`);
+      return finish(`M12_FAILED: ${unit.tableId} left empty: ${problems.join(' | ')}${emitted ? '; seeds.ts emitted' : ''}${dropText(ctx)}`);
     } catch (error) {
       return finish(`M12_FAILED: ${errorText(error)}`);
     }

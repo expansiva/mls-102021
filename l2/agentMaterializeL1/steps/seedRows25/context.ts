@@ -397,9 +397,18 @@ export function seedRowProblems(unit: SeedTableUnit, rows: readonly Record<strin
     const ref = /^ref:([^:]+):([^:]+)/u.exec(constraint);
     if (!ref) continue;
     const parents = unit.parentIds?.[ref[2]];
+    // d1_342: a table that points at itself (a folder inside a folder) starts at a root. With no row of the entity yet, the first row has no value in the field
+    // when the l4 lets it be empty; a required field with no root possible is named, never invented and never left out in silence.
+    const selfRoot = ref[2] === unit.entityId && (parents?.length ?? 0) === 0;
+    const required = unit.columns.find(item => item.name === ref[1])?.required === true;
     rows.forEach((row, index) => {
       const value = row[ref[1]];
-      if (value === undefined || value === null || value === '') problems.push(`row ${index} misses constraint ${constraint}.`);
+      if (value === undefined || value === null || value === '') {
+        if (selfRoot && !required) return;
+        problems.push(selfRoot
+          ? `row ${index} misses constraint ${constraint}: the field is required and the entity points at itself, so the first row has no root to point at.`
+          : `row ${index} misses constraint ${constraint}.`);
+      }
       else if (parents && !parents.includes(String(value))) problems.push(`row ${index} ${ref[1]} is not the id of a ${ref[2]} row of this seed.`);
     });
   }

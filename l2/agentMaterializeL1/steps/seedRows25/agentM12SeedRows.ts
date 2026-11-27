@@ -161,6 +161,14 @@ export function pickRefValues(
  * (topological order by their `ref:` constraints); a cycle is drafted in plan order and its refs stay without value.
  */
 export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSeedDataset[]> {
+  return (await scenarioSeedOutcome(ctx)).datasets;
+}
+
+/** d1_342: a scenario that gives no row is never silent: the table, the scenario and the reason. */
+export interface SeedScenarioDrop { tableId: string; scenarioId: string; reason: string }
+
+export async function scenarioSeedOutcome(ctx: M12Context): Promise<{ datasets: ReferenceSeedDataset[]; dropped: SeedScenarioDrop[] }> {
+  const dropped: SeedScenarioDrop[] = [];
   const grouped = new Map<string, Record<string, unknown>[]>();
   const { completeInitialRows } = await import('/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js');
   const seeds = ctx.units.filter(seed => seed.definition.artifactType === 'persistenceSeeds');
@@ -173,7 +181,7 @@ export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSe
     const scenarios = seedScenariosOf(seed.definition.data);
     for (const scenario of scenarios) {
       const source = await ctx.read(seedOntologyRef(ctx.run.project, ctx.run.module, scenario.entityId));
-      if (!source) continue;
+      if (!source) { dropped.push({ tableId: scenario.tableId, scenarioId: scenario.scenarioId, reason: `the ontology of ${scenario.entityId} is not readable` }); continue; }
       const draft = referenceSeedUnit({
         scenarioId: scenario.scenarioId,
         tableId: scenario.tableId,
@@ -183,7 +191,7 @@ export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSe
         requireInitial: false,
         constraints: scenario.constraints,
       });
-      if (!draft) continue;
+      if (!draft) { dropped.push({ tableId: scenario.tableId, scenarioId: scenario.scenarioId, reason: `${scenario.entityId} is not a seedable table` }); continue; }
       const stateField = scenario.stateField || stateFieldFor(draft.columns, scenario.states);
       const scenarioIndex = scenarios.filter(item => item.tableId === scenario.tableId).indexOf(scenario) + 1;
       planned.push({
@@ -235,9 +243,12 @@ export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSe
     const seedPairs = pairs.filter(pair => moduleEntity.get(pair.entity));
     const refValues = pickRefValues(seedPairs, unit.scenarioIndex, rowsOf);
     const drafted = await draftScenarioRow(unit, refValues);
-    if ('problems' in drafted) continue;
+    if ('problems' in drafted) { dropped.push({ tableId: scenario.tableId, scenarioId: scenario.scenarioId, reason: drafted.problems.join(' | ') }); continue; }
     const completed = await completeInitialRows(unit, [drafted.row]);
-    if ('problems' in completed || completed.rows.length === 0) continue;
+    if ('problems' in completed || completed.rows.length === 0) {
+      dropped.push({ tableId: scenario.tableId, scenarioId: scenario.scenarioId, reason: 'problems' in completed ? completed.problems.join(' | ') : 'no row after the primary key and the server values' });
+      continue;
+    }
     const row = completed.rows[0];
     const rows = grouped.get(scenario.tableId) ?? [];
     rows.push(row);
@@ -246,7 +257,7 @@ export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSe
     for (const pair of seedPairs) if (typeof row[pair.field] === 'string' && !(pair.entity in links)) links[pair.entity] = String(row[pair.field]);
     if (typeof row.id === 'string') generated.set(scenario.tableId, [...(generated.get(scenario.tableId) ?? []), { id: row.id, links }]);
   }
-  return [...grouped.entries()].map(([seedFor, rows]) => ({ seedFor, rows }));
+  return { datasets: [...grouped.entries()].map(([seedFor, rows]) => ({ seedFor, rows })), dropped };
 }
 
 /** One draft per table: accepted rows, or an empty table and the reason after the repair. */
@@ -277,7 +288,9 @@ export async function emitSeedsWhenReady(ctx: M12Context): Promise<boolean> {
     reference.push({ seedFor: table.tableId, rows: record.rows as Record<string, unknown>[] });
   }
   ctx.referenceSeeds = reference;
-  const scenarioDatasets = await scenarioSeedDatasets(ctx);
+  const outcome = await scenarioSeedOutcome(ctx);
+  const scenarioDatasets = outcome.datasets;
+  ctx.seedDrops = outcome.dropped.map(item => `${item.tableId}/${item.scenarioId}: ${item.reason}`);
   let wrote = false;
   for (const unit of seeds) {
     const data = unit.definition.data;
@@ -287,10 +300,10 @@ export async function emitSeedsWhenReady(ctx: M12Context): Promise<boolean> {
       ...prior,
       ...scenarioDatasets.filter(item => !taken.has(item.seedFor)).map(item => ({ seedFor: item.seedFor, rows: item.rows })),
     ];
-    const outcome = await materializeUnit(ctx, unit);
-    if (outcome.code === 'PROFILE_REFUSED') return false;
-    if (outcome.status === 'done' || outcome.status === 'reused') wrote = true;
-    else throw new Error(`${outcome.code}: ${outcome.line}`);
+    const result = await materializeUnit(ctx, unit);
+    if (result.code === 'PROFILE_REFUSED') return false;
+    if (result.status === 'done' || result.status === 'reused') wrote = true;
+    else throw new Error(`${result.code}: ${result.line}`);
   }
   return wrote;
 }

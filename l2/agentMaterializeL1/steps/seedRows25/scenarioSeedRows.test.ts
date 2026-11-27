@@ -95,3 +95,31 @@ test('an external entity has no seed rows: no unit, with or without initialData'
   assert.equal(referenceSeedUnit({ ...base, ontologySource: source('external'), requireInitial: false }), null);
   assert.equal(referenceSeedUnit({ ...base, ontologySource: source('entity') })?.entityId, 'Catalogo');
 });
+
+// d1_342: repoHost, `repositoryEntry.parentEntryId` points at the entity itself (a folder inside a folder).
+const ENTRY_ONTOLOGY = readFileSync(path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../agentDefsL1/fixtures/repoHost-74f17ca3/l4/repoHost/ontology/RepositoryEntry.defs.txt'), 'utf8');
+
+function entryUnit(source: string, parentIds: string[]) {
+  const unit = referenceSeedUnit({ scenarioId: 'folder', tableId: 'repositoryEntry', ontologySource: source, states: [], stateField: '', requireInitial: false, constraints: ['ref:parentEntryId:RepositoryEntry'] });
+  assert.ok(unit);
+  return { ...unit, parentIds: { RepositoryEntry: parentIds } };
+}
+
+test('d1_342: the first row of a self-referencing table is the root; the next ones point at it', async () => {
+  const first = await draftScenarioRow(entryUnit(ENTRY_ONTOLOGY, []));
+  assert.ok('row' in first, 'problems' in first ? first.problems.join('; ') : '');
+  assert.equal(first.row.parentEntryId, undefined, 'the root has no parent: the l4 says empty for the root');
+  const second = await draftScenarioRow(entryUnit(ENTRY_ONTOLOGY, ['11111111-1111-4111-8111-111111111111']), { parentEntryId: '11111111-1111-4111-8111-111111111111' });
+  assert.ok('row' in second, 'problems' in second ? second.problems.join('; ') : '');
+  assert.equal(second.row.parentEntryId, '11111111-1111-4111-8111-111111111111');
+});
+
+test('d1_342: a required self reference with no root is a named problem, and a made-up id is still refused', async () => {
+  const required = ENTRY_ONTOLOGY.replace(/("parentEntryId": \{\s*"type": "record",)/u, '$1\n        "required": true,');
+  assert.notEqual(required, ENTRY_ONTOLOGY);
+  const drafted = await draftScenarioRow(entryUnit(required, []));
+  assert.ok('problems' in drafted);
+  assert.match(drafted.problems.join(' '), /points at itself, so the first row has no root/u);
+  const invented = seedRowProblems(entryUnit(ENTRY_ONTOLOGY, ['11111111-1111-4111-8111-111111111111']), [{ parentEntryId: '22222222-2222-4222-8222-222222222222' }]);
+  assert.match(invented.join(' '), /is not the id of a RepositoryEntry row of this seed/u);
+});

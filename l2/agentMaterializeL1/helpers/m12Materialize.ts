@@ -64,6 +64,8 @@ export interface M12Context {
    * Absent for every other recipe.
    */
   referenceSeeds?: readonly ReferenceSeedDataset[];
+  /** d1_342: the scenario seed rows the last `emitSeedsWhenReady` left out, one line each (`table/scenario: reason`). */
+  seedDrops?: string[];
 }
 
 export function createContext(run: M12RunArgs, units: readonly M12Unit[], appEnv: string, compiler?: M12Compiler): M12Context {
