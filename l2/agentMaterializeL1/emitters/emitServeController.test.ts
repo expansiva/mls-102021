@@ -8,6 +8,7 @@ import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 
 import { emitController, membersOfType, type StructureRead } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
+import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
@@ -255,3 +256,23 @@ async function loadEmitted(source: string, recordExecution: (input: unknown) => 
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+test('d1_347 s4: with the key of stage 2 on, a route served to the cm is `serveCm(operation, decision)`: no adapter, no authorize, no validateInput; off, nothing changes', async () => {
+  const off = await emitController(definition(SERVE_HANDLERS), 'cm.ts', readOf(service(SERVE_REQUESTS)));
+  assert.ok('source' in off);
+  assert.match(off.source, /const held = authorize\(input\.request, \[/u);
+  assert.equal(off.source.includes('serveCm'), false, 'off: the emission is the one before stage 2');
+  const before = stage2.on;
+  stage2.on = true;
+  try {
+    const on = await emitController(definition(SERVE_HANDLERS), 'cm.ts', readOf(service(SERVE_REQUESTS)));
+    assert.ok('source' in on, JSON.stringify(on));
+    assert.match(on.source, /\{ key: 'agents\.cm\.record', handler: serveCm\("record", requests\["recordExecution"\]\) \},/u);
+    assert.match(on.source, /\{ key: 'agents\.cm\.describe', handler: serveCm\("describe", requests\["describeAgent"\]\) \},/u);
+    assert.match(on.source, /import \{ serveCm \} from '\/_102034_\/l1\/server\/layer_1_external\/connections\/cm\/index\.js';/u);
+    for (const gone of ['authorize(', 'validateInput(', 'scopeParams(', 'resolveGrant', 'IRequestEnvelope', 'AppError']) assert.equal(on.source.includes(gone), false, `${gone} is the platform's now`);
+    assert.ok(on.imports.includes('/_102034_/l1/server/layer_1_external/connections/cm/index.js'));
+  } finally {
+    stage2.on = before;
+  }
+});

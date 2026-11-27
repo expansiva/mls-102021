@@ -3,10 +3,10 @@
 /**
  * Renders one structure file from a v2 def. Imports are only platform files,
  * an existing l2 contract, or the output of a dependency. A missing source
- * is a named failure, not an import
-import of a file that does not exist.
+ * is a named failure, not an import of a file that does not exist.
  */
 
+import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { typeShape } from '/_102021_/l2/agentMaterializeL1/helpers/typeParse.js';
 import { catalogOperations, consumeMessageTypeName, isNonObjectAlias, typeObjectOpen } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
@@ -396,6 +396,8 @@ interface AdapterRoute {
   allowedInputPaths: string[];
   nullableInputPaths: string[];
   unions: ClosedUnion[];
+  /** d1_347 s4 (stage 2 only): the route is served to the cm through the platform `serveCm(operationId, decide)`: origin, input check, transaction and the form of the refusal are the platform's. */
+  platformServe?: { operationId: string };
   /** d1_225: paths under which a key the type does not list is accepted (the `payload` of an event: the type is the part this module uses). */
   openPaths?: string[];
 }
@@ -447,37 +449,42 @@ async function emitAdapter(
       contracts.set(resolved.specifier, { specifier: resolved.specifier, iface: resolved.route.contractInterface });
     }
   }
-  const authorityImport = authorityDep
+  // d1_347 s4: a route served to the cm in stage 2 has no adapter of its own: `serveCm` is the handler, and the function of the request service is its decision.
+  const adapted = routes.filter(route => !route.platformServe);
+  const platform = routes.filter(route => route.platformServe);
+  const authorityImport = authorityDep && adapted.length > 0
     ? [`import { actorRefFor } from '${importSpecifier(authorityDep, 'output')}';`]
     : [];
   const contractImports = [...contracts.values()].map(item => `import type { ${item.iface} } from '${item.specifier}';`);
   const catalogImports = [...catalogTypes].map(([specifier, names]) => `import type { ${[...names].sort().join(', ')} } from '${specifier}';`);
   const imports = [
     PLATFORM_CONTRACTS,
-    importSpecifier(scopeDep, 'output'),
-    ...(authorityDep ? [importSpecifier(authorityDep, 'output')] : []),
+    ...(adapted.length > 0 ? [importSpecifier(scopeDep, 'output')] : []),
+    ...(authorityDep && adapted.length > 0 ? [importSpecifier(authorityDep, 'output')] : []),
     importSpecifier(serviceDep, 'output'),
+    ...(platform.length > 0 ? [CM_PLATFORM_CLIENT] : []),
     ...[...contracts.keys()],
     ...[...catalogTypes.keys()],
   ];
+  const handlerOf = (route: AdapterRoute): string => route.platformServe
+    ? `  { key: '${route.route}', handler: serveCm(${JSON.stringify(route.platformServe.operationId)}, requests[${JSON.stringify(route.serviceFunction)}]) },`
+    : `  { key: '${route.route}', handler: ${route.fn} },`;
   const source = [
       header(output),
-      `import { AppError, type BffRequest, type BffResponse, type ControllerRoute, type IRequestEnvelope } from '${PLATFORM_CONTRACTS}';`,
-      `import { resolveGrant } from '${importSpecifier(scopeDep, 'output')}';`,
+      `import { ${adapted.length > 0 ? 'AppError, type BffRequest, type BffResponse, type ControllerRoute, type IRequestEnvelope' : 'type ControllerRoute'} } from '${PLATFORM_CONTRACTS}';`,
+      ...(adapted.length > 0 ? [`import { resolveGrant } from '${importSpecifier(scopeDep, 'output')}';`] : []),
       ...authorityImport,
+      ...(platform.length > 0 ? [`import { serveCm } from '${CM_PLATFORM_CLIENT}';`] : []),
       `import { requests } from '${importSpecifier(serviceDep, 'output')}';`,
       ...contractImports,
       ...catalogImports,
       '',
       `export const ${emittedValueExports(definition)[0]}: ControllerRoute[] = [`,
-      ...routes.map(route => `  { key: '${route.route}', handler: ${route.fn} },`),
+      ...routes.map(handlerOf),
       '];',
       '',
-      ...routes.map(renderAdapter),
-      scopeSource(),
-      authorizeSource(!!authorityDep),
-      validateSource(),
-      '',
+      ...adapted.map(renderAdapter),
+      ...(adapted.length > 0 ? [scopeSource(), authorizeSource(!!authorityDep), validateSource(), ''] : []),
   ].join('\n');
   const undeclared = auditImports(source, imports);
   if (undeclared) return { code: 'IMPORT_UNDECLARED', detail: undeclared };
@@ -607,6 +614,9 @@ function renderAdapter(route: AdapterRoute): string {
   ].join('\n');
 }
 
+/** d1_347 s4: the platform client of the cm (`cm(ctx)`, `serveCm`, `once`). */
+const CM_PLATFORM_CLIENT = '/_102034_/l1/server/layer_1_external/connections/cm/index.js';
+
 const SERVE_MARK = /^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/;
 
 /** d1_225: what the runtime passes to a route that receives an event (`ModuleEventEnvelope`): the message type names these, `payload` holds the record. */
@@ -727,6 +737,7 @@ async function resolveServeRoute(
       allowedInputPaths: members.allowedPaths,
       nullableInputPaths: members.nullablePaths,
       unions: members.unions,
+      ...(stage2.on && connectionId === 'cm' ? { platformServe: { operationId } } : {}),
     },
   };
 }
