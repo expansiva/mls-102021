@@ -6,6 +6,8 @@ import { addM12Step, m12Result, updateM12Status } from '/_102021_/l2/agentMateri
 import { EMITTER_TARGET_FORMS, emitterTargetLayer, loadModuleUnits, registersModule, requestModules, selectUnits, selectedLayers, storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { orphanOfTarget, type M12Orphan } from '/_102021_/l2/agentMaterializeL1/helpers/m12Orphans.js';
 import { stampScope } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stamp.js';
+import { pendingModelWork, pendingScope, pendingText } from '/_102021_/l2/agentMaterializeL1/helpers/m12Pending.js';
+import { reportScope } from '/_102021_/l2/agentMaterializeL1/steps/finalize80/agentM12Finalize.js';
 import { unitNeedsLlm } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import '/_102021_/l2/agentMaterializeL1/steps/domain10/agentM12Domain.js';
 import '/_102021_/l2/agentMaterializeL1/steps/external15/agentM12External.js';
@@ -108,11 +110,15 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
   if (invocation.kind === 'help') return statusOnly(M12_HELP);
   if (invocation.kind === 'refusal') return statusOnly(invocation.diagnostic);
   if (invocation.kind === 'stamp') return statusOnly(await stampScope(invocation.project, invocation.scope, invocation.dry));
+  if (invocation.kind === 'report') return statusOnly(await reportScope(invocation.project, invocation.scope));
+  if (invocation.kind === 'pending') return statusOnly(await pendingScope(invocation.project, invocation));
   const request: M12Request = { scope: invocation.scope, target: invocation.target, force: invocation.force, ...(invocation.scratch === undefined ? {} : { scratch: invocation.scratch }), ...(invocation.asserted ? { asserted: true } : {}) };
   const plan = await planModules(invocation.project, request);
   if (plan.refusal) return statusOnly(plan.refusal);
 
-  const report = planReport(request, plan.modules);
+  // d1_343: the plan says, before anything runs, how many model units this pass will generate.
+  const works = await Promise.all(plan.modules.filter(item => item.units.length > 0).map(item => pendingModelWork(invocation.project, item.module, request)));
+  const report = [planReport(request, plan.modules), '', '## Model work of this run', ...pendingText(works)].join('\n');
   const steps = buildM12PlannedSteps(invocation.project, request, plan.modules.map(item => ({ module: item.module, layers: item.layers, register: item.register })));
   return [
     task(report, `materialize L1 ${plan.modules.map(item => item.module).join(', ')}`, { project: String(invocation.project), scope: request.scope, target: request.target }),

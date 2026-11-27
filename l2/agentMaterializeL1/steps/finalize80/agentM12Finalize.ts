@@ -2,13 +2,13 @@
 
 import { SERVE_ROUTE_NO_PAGE_TEST } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { M12_FINALIZE_AGENT_NAME, M12_LAYERS, clip, errorText, parseM12StepInvocation, type M12Layer } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
+import { M12_FINALIZE_AGENT_NAME, M12_LAYERS, clip, errorText, parseM12StepInvocation, type M12Layer, type M12RunArgs } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { addM12Step, m12Result, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
 import { readJsonOptional, readOptional, readUnitStatus, writeJson, type M12UnitState, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { orphanOfTarget, removeOrphan } from '/_102021_/l2/agentMaterializeL1/helpers/m12Orphans.js';
 import { registrationFile, reportFile, smokeFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
-import { registersModule, storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { registersModule, requestModules, storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { smokeInputsHash, smokeState, type M12SmokeState, type SmokeFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Smoke.js';
 
 export function createAgent(): IAgentAsync {
@@ -109,6 +109,46 @@ export async function readSmokeState(project: number, moduleName: string): Promi
   return smokeState(file, await smokeInputsHash(receipts, contracts));
 }
 
+/** The report of one module from the receipts that exist (`finalize80` and `{"report":true}`): reads, never generates. */
+export async function writeModuleReport(run: M12RunArgs, selected: readonly M12Unit[], problems: ReadonlyArray<{ defRef: string; code: string; detail: string }>): Promise<{ report: M12Report }> {
+  const { project, module: moduleName } = run;
+  const units: M12UnitStatus[] = [];
+  const missing: string[] = [];
+  const read = async (layer: M12Layer, unitId: string): Promise<void> => {
+    const status = await readUnitStatus(project, moduleName, layer, unitId);
+    if (status) units.push(status);
+    else missing.push(`${layer}/${unitId}`);
+  };
+  // Only the units this run selected: a dependency from an earlier run is not reported again.
+  for (const unit of selected) await read(unit.layer, unit.unitId);
+  for (const unit of selected.filter(item => item.layer === 'controllers')) await read('tests', String(unit.definition.data.pageId ?? unit.unitId));
+  // The module workflow engine is proved by the workflows phase (prepareWorkflows, d1_196): its outcome is a unit of the report.
+  if (selected.some(item => item.layer === 'workflows')) {
+    const engine = await readUnitStatus(project, moduleName, 'workflows', 'engine');
+    if (engine) units.push(engine);
+  }
+  const registration = registersModule(run, moduleName)
+    ? await readJsonOptional<{ action: string; detail: string }>(registrationFile(project, moduleName))
+    : null;
+  const report = buildM12Report(project, moduleName, units, missing, problems, registration ? { action: registration.action, detail: registration.detail } : null, await readSmokeState(project, moduleName));
+  await writeJson(reportFile(project, moduleName), { ...report, scope: run.scope, target: run.target, force: run.force });
+  return { report };
+}
+
+/** d1_343: `{"report":true,"scope":"<module>"}`: step 3 of the smoke procedure. No unit is generated, with or without a model. */
+export async function reportScope(project: number, scope: string): Promise<string> {
+  const found = requestModules(project, { scope, target: '', force: false }, storEntries());
+  if (found.refusal) return found.refusal;
+  const lines = [`report — ${scope || 'whole project'} (nothing generated)`];
+  for (const moduleName of found.modules) {
+    const run: M12RunArgs = { project, module: moduleName, scope, target: '', force: false };
+    const { selected, problems } = await loadRun(run);
+    const { report } = await writeModuleReport(run, selected, problems);
+    lines.push('', `## ${moduleName}: ${report.status}`, summarizeM12Report(report));
+  }
+  return lines.join('\n');
+}
+
 async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   const run = parseM12StepInvocation(args || step.prompt || '', Number(mls.actualProject || 0));
   if (run.kind === 'refusal') return [updateM12Status(context, parentStep, step, hookSequential, 'failed', run.diagnostic)];
@@ -124,26 +164,7 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
         updateM12Status(context, parentStep, step, hookSequential, 'completed', `Orphan ${orphan.layer}/${orphan.unitId}: ${lines.length} line(s)`),
       ];
     }
-    const units: M12UnitStatus[] = [];
-    const missing: string[] = [];
-    const read = async (layer: M12Layer, unitId: string): Promise<void> => {
-      const status = await readUnitStatus(project, moduleName, layer, unitId);
-      if (status) units.push(status);
-      else missing.push(`${layer}/${unitId}`);
-    };
-    // Only the units this run selected: a dependency from an earlier run is not reported again.
-    for (const unit of selected) await read(unit.layer, unit.unitId);
-    for (const unit of selected.filter(item => item.layer === 'controllers')) await read('tests', String(unit.definition.data.pageId ?? unit.unitId));
-    // The module workflow engine is proved by the workflows phase (prepareWorkflows, d1_196): its outcome is a unit of the report.
-    if (selected.some(item => item.layer === 'workflows')) {
-      const engine = await readUnitStatus(project, moduleName, 'workflows', 'engine');
-      if (engine) units.push(engine);
-    }
-    const registration = registersModule(run, moduleName)
-      ? await readJsonOptional<{ action: string; detail: string }>(registrationFile(project, moduleName))
-      : null;
-    const report = buildM12Report(project, moduleName, units, missing, problems, registration ? { action: registration.action, detail: registration.detail } : null, await readSmokeState(project, moduleName));
-    await writeJson(reportFile(project, moduleName), { ...report, scope: run.scope, target: run.target, force: run.force });
+    const { report } = await writeModuleReport(run, selected, problems);
     const summary = clip(summarizeM12Report(report), 6000);
     return [
       addM12Step(context, parentStep.stepId, m12Result('Materialization report', summary, 'finalize80-report')),

@@ -133,6 +133,8 @@ export interface M12RunArgs extends M12Request {
 export type M12MessageInvocation =
   | { kind: 'help' }
   | { kind: 'stamp'; project: number; scope: string; dry: boolean }
+  | { kind: 'report'; project: number; scope: string }
+  | ({ kind: 'pending'; project: number } & M12Request)
   | ({ kind: 'run'; project: number } & M12Request)
   | { kind: 'refusal'; diagnostic: string };
 
@@ -148,6 +150,8 @@ export const M12_HELP = [
   'target: one unit by its .defs.ts or the .ts generated from it, e.g. "_102047_/l1/comandaRestaurante/layer_2_application/usecases/createMesa.defs.ts" (regenerated regardless of reuse; a model unit whose only change is a dependency is kept when its file compiles against it and goes to the repair when it does not, unless "force": true).',
   'target also names a unit an emitter writes (it has no def): the module engine by its file, "_102047_/l1/<module>/layer_1_external/adapters/workflow/engine.ts", or "<module>/engine".',
   'target of a def that no longer exists (its .defs.ts or .ts) removes the output this agent wrote for it and its status file; a file edited by hand stays, with ORPHAN_EDITED.',
+  '{"report":true,"scope":"<module>"}: only rewrites the report of the module from the receipts that exist: it generates nothing (step 3 of the smoke procedure).',
+  '{"scope":"<module>","dry":true} / {"target":"…","dry":true}: lists the model units the run would generate, would keep or repair, and the serve pages it skips; it generates nothing. Every scope or target run states the same count in its plan.',
   '{"stamp":true,"scope":"<module>","dry":true}: writes the `inputParts` of the model units whose receipt still matches their inputs, and only that (no model, no output touched); "dry" only counts and lists the receipts that do not match. A unit without them generates from scratch on a target.',
   'target on a model unit that has an output and a stamped receipt: unchanged = reused; only a dependency moved = kept (it compiles against it) or repaired (the file on disk goes to the repair); def or L4 moved, or no stamp = generated. One line per unit says which. A recipe whose fix is in the text of the generator needs "force": true, written in the recipe.',
   '{"target":"…","asserted":true}: for a model unit whose receipt has no `inputParts`, the operator asserts that its def and L4 did not move (the recipe proves it with git diff): it goes through keep/repair and answers `kept (asserted)` or `repaired (asserted)`. Not with "force".',
@@ -182,7 +186,7 @@ export function parseM12MessageInvocation(value: string, project: number): M12Me
   try { parsed = JSON.parse(raw); } catch { return { kind: 'refusal', diagnostic: `Invalid JSON. Nothing was executed.\n${M12_HELP}` }; }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { kind: 'refusal', diagnostic: `The JSON must be an object. Nothing was executed.\n${M12_HELP}` };
   const record = parsed as Record<string, unknown>;
-  const unknown = Object.keys(record).find(key => !['scope', 'target', 'force', 'stamp', 'dry', 'asserted'].includes(key));
+  const unknown = Object.keys(record).find(key => !['scope', 'target', 'force', 'stamp', 'dry', 'asserted', 'report'].includes(key));
   if (unknown) return { kind: 'refusal', diagnostic: `Unknown key "${unknown}". Nothing was executed.\n${M12_HELP}` };
   if (record.stamp === true) {
     if (record.target || record.force || (record.scope !== undefined && typeof record.scope !== 'string')) return { kind: 'refusal', diagnostic: '"stamp" takes only "scope" and "dry". Nothing was executed.' };
@@ -190,12 +194,20 @@ export function parseM12MessageInvocation(value: string, project: number): M12Me
     if (!scopeOk(stampScope)) return { kind: 'refusal', diagnostic: `Invalid scope: ${stampScope}. Nothing was executed.` };
     return { kind: 'stamp', project, scope: stampScope, dry: record.dry === true };
   }
+  // d1_343: the report alone. It reads the receipts that exist and writes the report; it generates nothing, with or without a model.
+  if (record.report === true) {
+    if (record.target || record.force || record.dry !== undefined || record.asserted !== undefined || (record.scope !== undefined && typeof record.scope !== 'string')) return { kind: 'refusal', diagnostic: '"report" takes only "scope". Nothing was executed.' };
+    const reportScope = typeof record.scope === 'string' ? record.scope.trim().replace(/^\/+|\/+$/gu, '') : '';
+    if (!scopeOk(reportScope)) return { kind: 'refusal', diagnostic: `Invalid scope: ${reportScope}. Nothing was executed.` };
+    return { kind: 'report', project, scope: reportScope };
+  }
   if (record.asserted !== undefined && (record.asserted !== true || !record.target || record.force === true)) return { kind: 'refusal', diagnostic: '"asserted": true goes with a "target" and without "force". Nothing was executed.' };
-  if (record.dry !== undefined) return { kind: 'refusal', diagnostic: '"dry" belongs to "stamp". Nothing was executed.' };
+  if (record.dry !== undefined && (record.dry !== true || (!record.scope && !record.target))) return { kind: 'refusal', diagnostic: '"dry" belongs to "stamp", or to a "scope"/"target" run that only lists what it would generate. Nothing was executed.' };
   const scope = typeof record.scope === 'string' ? record.scope.trim().replace(/^\/+|\/+$/gu, '') : '';
   const target = typeof record.target === 'string' ? record.target.trim() : '';
   if (scope && target) return { kind: 'refusal', diagnostic: '"scope" and "target" cannot come together. Nothing was executed.' };
   if (!scopeOk(scope)) return { kind: 'refusal', diagnostic: `Invalid scope: ${scope}. Nothing was executed.` };
+  if (record.dry === true) return { kind: 'pending', project, scope, target, force: record.force === true || Boolean(target), scratch: record.force === true };
   return { kind: 'run', project, scope, target, force: record.force === true || Boolean(target), scratch: record.force === true, ...(record.asserted === true ? { asserted: true } : {}) };
 }
 
