@@ -124,3 +124,21 @@ void test('d1_330 s2: the comparison lists a verdict that changed, a code that c
   ]);
   assert.deepEqual(compareReports(before, before), []);
 });
+
+import { hasUnresolved } from '/_102021_/l2/agentMaterializeL1/testing/smoke/typeModel.js';
+
+void test('d1_333 s1a: a type the catalog files do not declare is unresolved, a declared one, a builtin and a union of declared ones are not; a gateway of such a type is marked, never sampled as {}', () => {
+  const table = typeTableOf(['export type A = { x: string };\nexport type U = A | { y: number };']);
+  assert.equal(hasUnresolved(typeNodeOf('A'), table), false);
+  assert.equal(hasUnresolved(typeNodeOf('U'), table), false);
+  assert.equal(hasUnresolved(typeNodeOf('Array<A>'), table), false);
+  assert.equal(hasUnresolved(typeNodeOf('{ list: Nothing[] }'), table), true);
+  assert.equal(hasUnresolved(typeNodeOf('Nothing'), table), true);
+  assert.equal(hasUnresolved(typeNodeOf('A | Nothing'), table), true);
+  const tree = mkdtempSync(path.join(os.tmpdir(), 'smoke-unres-'));
+  const write = (rel: string, text: string) => { mkdirSync(path.dirname(path.join(tree, rel)), { recursive: true }); writeFileSync(path.join(tree, rel), text); };
+  write('l1/demo/layer_1_external/adapters/integration/outbound.ts', "import type { Known } from '/_102099_/l1/demo/layer_1_external/connections/ping.js';\nexport interface PingGateway { ok(input: unknown, ctx: unknown): Promise<Known>; lost(input: unknown, ctx: unknown): Promise<Missing>; }\n");
+  write('l1/demo/layer_1_external/connections/ping.ts', 'export type Known = { a: string };\n');
+  const plan = planSmoke(tree, 102099, 'demo', '/nowhere');
+  assert.deepEqual(plan.gateways[0].methods.map(method => [method.name, method.unresolved === true]), [['ok', false], ['lost', true]]);
+});

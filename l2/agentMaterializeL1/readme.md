@@ -67,3 +67,16 @@ intents, worker, phase), `steps/<step>/` (agents, prompts, context), `emitters/`
 
 Tests: `node scripts/run-tests.mjs mls-102021 l2`. The bench test runs the deterministic flow over
 `mls-102047/l1/comandaRestaurante` with an in-memory stor and a byte-checking compiler.
+
+## The smoke and the `complete` (d1_333)
+
+A module is `complete` only when its smoke says so. The smoke cannot run inside the agent (child process, `tsx`, `git`): `testing/smoke/smokeCli.ts` runs it and writes
+`l1/<module>/pipeline/agentMaterializeL1/smoke.json`; finalize80 reads it. Without the file the report is `partial` with `SMOKE_PENDING`; with receipts or contracts that are not the
+ones the smoke ran on, `SMOKE_STALE`; with a block, `SMOKE_BLOCKED` and the cases. What blocks: a 5xx or 501, an exception, an output outside the contract type, and a difference against
+the commit that last delivered a `smoke.json` without a block. What does not: a refusal alone, the arrivals (`serve`, report only), a case that could not be built (`skipped`, listed).
+
+Procedure (the owner of the module):
+1. materialize: `@@agentMaterializeL1 {"scope":"<module>"}`; the report says `SMOKE_PENDING` or `SMOKE_STALE`.
+2. smoke: `cd mls-102021/l2 && TSX_TSCONFIG_PATH=<base>/test/tsconfig.runtime.json <base>/node_modules/.bin/tsx --import <base>/test/register-hooks.mjs --import <base>/test/setup-l2.ts agentMaterializeL1/testing/smoke/smokeCli.ts <module> <repository mls-102047> --write`
+   (a difference made on purpose: the same line plus `--accept <case>` or `--accept-all --reason "<20 characters or more>" --by <name>`: one entry per exact difference in `smokeAccepted.json`).
+3. run the scope again (every unit is reused): the report is `complete`; commit the module with `smoke.json` and `smokeAccepted.json` (the commit is what the next smoke compares against).

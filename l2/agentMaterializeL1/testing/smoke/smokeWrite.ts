@@ -64,7 +64,7 @@ export async function smokeWrite(module: string, repo: string, options: SmokeWri
   const problems: string[] = [];
   const now = smokeModule(module, repo, outDir);
   const against = lastCleanSmokeCommit(repo, module);
-  const differences: SmokeDifference[] = against ? compareReports(smokeModule(module, against, outDir), now) : [];
+  const differences: SmokeDifference[] = against ? compareReports(smokeModule(module, against, outDir, repo), now) : [];
   const acceptedPath = path.join(runFolder(repo, module), 'smokeAccepted.json');
   const known = readJson<SmokeAcceptedFile>(acceptedPath)?.entries ?? [];
   const entries: SmokeAcceptedEntry[] = [...known];

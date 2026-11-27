@@ -41,18 +41,18 @@ export function reportText(report: SmokeReport, label: string): string {
 }
 
 /** A tree to run: a commit of `mls-102047` (a `git archive`), or a directory that has `l1`, `l2`, `l4`, `l5` (a clone, a bench): only the module and what it reads are copied. */
-export function smokeSubject(module: string, subject: string, outDir: string, label: string): { tree: string; label: string } {
+export function smokeSubject(module: string, subject: string, outDir: string, label: string, repo = path.join(BASE, 'mls-102047')): { tree: string; label: string } {
   const tree = path.join(outDir, `tree_${module}_${label}`);
   if (existsSync(path.join(subject, 'l1'))) {
     rmSync(tree, { recursive: true, force: true });
     mkdirSync(tree, { recursive: true });
     for (const rel of [`l1/${module}`, `l2/${module}`, `l4/${module}`, 'l4/organization', 'l5']) if (existsSync(path.join(subject, rel))) cpSync(path.join(subject, rel), path.join(tree, rel), { recursive: true });
-  } else extractModule(path.join(BASE, 'mls-102047'), subject, module, tree);
+  } else extractModule(repo, subject, module, tree);
   return { tree, label };
 }
 
-export function smokeModule(module: string, commit: string, outDir = '/tmp/l1sup/fumaca'): SmokeReport {
-  const { tree } = smokeSubject(module, commit, outDir, safeLabel(commit));
+export function smokeModule(module: string, commit: string, outDir = '/tmp/l1sup/fumaca', repo?: string): SmokeReport {
+  const { tree } = smokeSubject(module, commit, outDir, safeLabel(commit), repo);
   const report = runSmoke({ tree, project: 102047, module, base: BASE, workDir: path.join(outDir, `work_${module}`) });
   mkdirSync(outDir, { recursive: true });
   writeFileSync(path.join(outDir, `${module}@${safeLabel(commit)}.json`), JSON.stringify({ ...report, raw: report.raw.slice(0, 4000) }, null, 2));
