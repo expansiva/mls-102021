@@ -99,6 +99,9 @@ void test('d1_349 s2: the dry run of a scope over every process says which ones 
   // A target is the old behavior: the engine does not move, and the file is only kept or repaired when a dependency moves.
   const target = await pendingScope(PROJECT, { scope: '', target: DEF_REF.replace('usecases/gone', 'workflows/proc'), force: true });
   assert.doesNotMatch(target, /rewritten engine/u);
+  // d1_347 s7: a target on a unit with its file says which it keeps and which it repairs (the check of the run, no model, the file is not touched).
+  assert.match(target, /kept \(compiles and passes the gate as it is\) 1 \(workflows\/proc\)|keep-or-repair 1 \(workflows\/proc \(repair, a call; \d+ problem\(s\)/u, target);
+  assert.equal(proc.content, CODE, 'the process file is untouched');
 });
 
 void test('d1_343: the invocations `report` and `dry` are parsed, and refused where they do not belong', async () => {

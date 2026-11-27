@@ -16,7 +16,14 @@ import { checkKept } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits
 import { workflowEngineFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { freshEngineSource } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { WORKFLOW_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/agentM12WorkflowUnit.js';
+import { USECASE_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
+import { REQUEST_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/requests50/agentM12RequestService.js';
+import { ADAPTER_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/adapter17/agentM12AdapterUnit.js';
+import { EXTERNAL_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/external15/agentM12ExternalUnit.js';
+import type { M12ModelLayerSpec } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import { storExists, writeText } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+
+const SPEC_OF_LAYER: Record<string, M12ModelLayerSpec> = { external: EXTERNAL_SPEC, adapter: ADAPTER_SPEC, usecases: USECASE_SPEC, workflows: WORKFLOW_SPEC, requests: REQUEST_SPEC };
 
 /** The layers whose units the model writes (the others are recipes). */
 const MODEL_LAYERS = ['external', 'adapter', 'usecases', 'workflows', 'requests'] as const;
@@ -27,7 +34,7 @@ export interface M12PendingWork {
   generate: string[];
   /** `target` on a unit that has its file: kept when it compiles against what moved, repaired (a call) when it does not. */
   keepOrRepair: string[];
-  /** d1_349 s2: processes that compile against the rewritten engine as they are (no call). */
+  /** d1_349 s2, d1_347 s7: units kept as they are (compile and pass the gate against what the run moves): no call. */
   kept: string[];
   /** Pages that serve a connection and have no page test: skipped, nothing generated. */
   skipped: string[];
@@ -77,7 +84,13 @@ export async function pendingModelWork(project: number, moduleName: string, requ
     if ((MODEL_LAYERS as readonly string[]).includes(unit.layer)) {
       const onDisk = (await reuseDecision([unit.output], false)).kind === 'reuse';
       if (scratch || !onDisk) work.generate.push(name);
-      else if (request.target) work.keepOrRepair.push(name);
+      else if (request.target) {
+        // d1_347 s7: the file on disk against the dependencies of now (the gate and the compiler of the run, no model, nothing kept written): which of them the run would keep and which it would repair.
+        const prior = await readUnitStatus(project, moduleName, unit.layer as never, unit.unitId);
+        const checked = await checkKept(ctx, unit, SPEC_OF_LAYER[unit.layer], prior);
+        if (checked.problems.length) work.keepOrRepair.push(`${name} (repair, a call; ${checked.problems.length} problem(s): ${checked.problems.slice(0, 2).map(problem => problem.replace(/\s+/gu, ' ').slice(0, 200)).join(' | ')})`);
+        else work.kept.push(name);
+      }
     }
     if (unit.layer === 'controllers') {
       const pageId = String(unit.definition.data.pageId ?? unit.unitId);
@@ -106,7 +119,7 @@ export async function pendingModelWork(project: number, moduleName: string, requ
 export function pendingText(works: readonly M12PendingWork[]): string[] {
   const lines: string[] = [];
   for (const work of works) {
-    lines.push(`- ${work.module}: model units this run will generate ${work.generate.length}${work.generate.length ? ` (${work.generate.join(', ')})` : ''}; keep-or-repair ${work.keepOrRepair.length}${work.keepOrRepair.length ? ` (${work.keepOrRepair.join(', ')})` : ''}${work.kept.length ? `; kept against the rewritten engine ${work.kept.length} (${work.kept.join(', ')})` : ''}; serve pages without a test, skipped ${work.skipped.length}`);
+    lines.push(`- ${work.module}: model units this run will generate ${work.generate.length}${work.generate.length ? ` (${work.generate.join(', ')})` : ''}; keep-or-repair ${work.keepOrRepair.length}${work.keepOrRepair.length ? ` (${work.keepOrRepair.join(', ')})` : ''}${work.kept.length ? `; kept (compiles and passes the gate as it is) ${work.kept.length} (${work.kept.join(', ')})` : ''}; serve pages without a test, skipped ${work.skipped.length}`);
   }
   const total = works.reduce((sum, work) => sum + work.generate.length, 0);
   const repair = works.reduce((sum, work) => sum + work.keepOrRepair.length, 0);
