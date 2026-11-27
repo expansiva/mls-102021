@@ -4,6 +4,8 @@
 // the text of every rule of the module) and the def as the intent (entity, operation, transition, rulesApplied, effects:
 // materializadorL1.md §10), plus the recipe attempt and platform signatures.
 
+import { CM_CALL_RULES } from '/_102021_/l2/agentMaterializeL1/helpers/cmClientText.js';
+import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { connectionCatalogSource, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { emitUsecase, emittedValueExports, ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { catalogOperations, expectVersionType } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
@@ -403,6 +405,11 @@ export function answerTypeNames(source: string | null, typeName: string, depth =
   return found;
 }
 
+/** d1_347 s4: the ids of the connections the unit consumes (the def's `connections`). */
+export function consumedConnectionIds(ctx: M12Context, functionName: string, artifactId: string): string[] {
+  return [...new Set(consumerRowsOf(ctx, functionName, artifactId).map(row => row.connectionId))].sort();
+}
+
 /**
  * Gateways this usecase consumes: the interface, the import, and only its operations, with the catalog types.
  */
@@ -416,7 +423,10 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
     byConnection.set(row.connectionId, list);
   }
   const importPath = `/_${ctx.run.project}_/l1/${ctx.run.module}/layer_1_external/adapters/integration/outbound.js`;
-  const blocks: string[] = [
+  // d1_347 s4: in stage 2 the cm is called through the platform client, not through a gateway: its rules are its own block, and the gateway rules below are for the other connections.
+  const viaClient = (connectionId: string): boolean => stage2.on && connectionId === 'cm';
+  const gatewayConnections = [...byConnection.keys()].filter(connectionId => !viaClient(connectionId));
+  const blocks: string[] = gatewayConnections.length === 0 ? [] : [
     `Import the gateway type with \`import type { … } from '${importPath}'\`.`,
     'Resolve it with `resolveRepository<<Connection>Gateway>(ctx, \'<Connection>Gateway\')`, then call `gateway.<operation>(input, ctx)`, `gateway.<operation>(input, ctx, opts)` or `gateway.<operation>(input, ctx, opts, context)`.',
     'The agent and the other fields of `ConnectionContext` the caller may set go in the fourth parameter (`{ agentId }`). The session sets `actorMdmId`; the caller does not.',
@@ -425,6 +435,7 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
     'Do not write HTTP. Do not import `callConnection`. Do not redeclare the catalog types: they are imported by the gateway file.',
     'The def names this usecase the consumer of every operation listed below: the file must call each one as `gateway.<operation>(…)`. A listed operation that is not called refuses the file.',
   ];
+  if ([...byConnection.keys()].some(viaClient)) blocks.push(CM_CALL_RULES.join('\n'));
   const external = externalEntityIds(ctx.units);
   // d1_265: the entity the usecase works on decides, not the entities the call names: the cm call `activateAgent` names the external `Agent`, but the
   // usecase `activate` moves the AgentDraft, which the module stores, so its transition is written on the module copy and the gateway is called too.
@@ -463,9 +474,10 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
       const sources = chosen.length
         ? ` The def says where ${chosen.map(item => `\`${item.field}\``).join(', ')} comes from, and the usecase input does not declare it: ${chosen.map(item => `\`${item.field}\` is ${callInputSourceText(item.from)}`).join('; ')}. Build it from that source.`
         : '';
+      if (viaClient(connectionId)) return `- \`cm(ctx).${operation.operationId}(input: ${operation.inputType}, options?: CmCallOptions, context?: CmCallContext): Promise<ConnectionResult<${operation.outputType}>>\`.${effect}${typed}${sources}${version}${later}`;
       return `- \`${operation.operationId}(input: ${operation.inputType}, ctx: RequestContext, opts?: CallConnectionOptions, context?: GatewayCallContext): Promise<${operation.outputType}>\`.${effect}${typed}${sources}${version}${later}`;
     });
-    blocks.push([
+    blocks.push(viaClient(connectionId) ? ['### cm (platform client)', 'The def names this usecase the consumer of every operation listed below: the file must call each one as `cm(ctx).<operation>(…)`. A listed operation that is not called refuses the file.', ...lines].join('\n') : [
       `### ${gateway}`,
       `\`import type { ${gateway} } from '${importPath}'\`.`,
       `\`const gateway = resolveRepository<${gateway}>(ctx, '${gateway}');\``,

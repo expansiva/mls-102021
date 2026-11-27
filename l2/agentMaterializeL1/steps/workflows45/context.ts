@@ -5,6 +5,8 @@
 // the occurrence entity and its port, the module engine, the runtime engine signatures and the record-id rule.
 // And the gate of its answer.
 
+import { CM_CALL_RULES, CM_CONFLICT, CM_ONCE, CM_ONCE_REFUSAL_RULE, CM_ORDER, CM_REFUSAL, CM_SERVE_TRANSACTION } from '/_102021_/l2/agentMaterializeL1/helpers/cmClientText.js';
+import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { CONNECTION_STATUS } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { keptRefusalText } from '/_102021_/l2/agentMaterializeL1/helpers/keptRefusal.js';
 import { connectionCatalogSource, isCatalogImport, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
@@ -30,7 +32,7 @@ import { l4RecordOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/aff
 import { arrivalInputOf } from '/_102021_/l2/agentMaterializeL1/helpers/arrivalInput.js';
 import { withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
 import { typeLeakProblems } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
-import { answerTypeNames, catalogTypeBody, connectionGatewaySection, repositoryUniqueKeySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { answerTypeNames, catalogTypeBody, connectionGatewaySection, consumedConnectionIds, repositoryUniqueKeySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { arrivalUpsertProblems, connectionRowsOf, emptyCastProblems, emptyRequiredProblems, recordCastProblems, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, typedResultDiscardedProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -562,7 +564,9 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
 
   // The calls this process runs (its tasks cite them in `usedBy`): the same gateway section a usecase gets.
   const gateways = await connectionGatewaySection(ctx, facts.processId, unit.definition.artifactId);
-  if (gateways) parts.push(`${gateways}\n${GATEWAY_CALL_ERROR}`);
+  // d1_347 s4: in stage 2 the cm is not a gateway: the error rule of the gateway is for the other connections only.
+  const gatewayCalls = !stage2.on || consumedConnectionIds(ctx, facts.processId, unit.definition.artifactId).some(connectionId => connectionId !== 'cm');
+  if (gateways) parts.push(gatewayCalls ? `${gateways}\n${GATEWAY_CALL_ERROR}` : gateways);
   const received = await receivedInputSection(ctx, unit.definition.data, focus);
   if (received) parts.push(received);
   const transaction = await transactionSection(ctx, unit, facts, focus, Boolean(gateways));
@@ -578,7 +582,9 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
       const where = `\`${call.stepId}\`${step ? ` (${step.kind}${step.title ? `, ${step.title}` : ''})` : ''}`;
       const run = call.usecase
         ? `call the usecase \`${call.usecase}(input, ctx)\`, which consumes ${call.connectionId}.${call.operationId}${usecaseUnit ? ` (import from \`/${usecaseUnit.outputRef.replace(/\.ts$/u, '.js')}\`)` : ''}; the gateway is not needed`
-        : `\`gateway.${call.operationId}(input, ctx, opts?, context?)\` (${call.connectionId}.${call.operationId}); fields of the connection context such as \`agentId\` go in \`context\`, and a repeat key goes in \`opts.idempotencyKey\``;
+        : stage2.on && call.connectionId === 'cm'
+          ? `\`cm(ctx).${call.operationId}(input, options?, context?)\` (cm.${call.operationId}); the answer is a \`ConnectionResult\` (the rules of the cm client above); fields of the connection context such as \`agentId\` go in \`context\`, and a repeat key goes in \`options.idempotencyKey\` only when an l4 rule names a business key`
+          : `\`gateway.${call.operationId}(input, ctx, opts?, context?)\` (${call.connectionId}.${call.operationId}); fields of the connection context such as \`agentId\` go in \`context\`, and a repeat key goes in \`opts.idempotencyKey\``;
       return [
         `- step ${where} → ${run}`,
         input ? `  input ${input.type} =\n${fence('ts', input.text)}` : '',
@@ -992,15 +998,32 @@ export async function transactionSection(ctx: M12Context, unit: M12Unit, facts: 
     if (code) routes.push(withoutComments(code));
   }
   const inRoute = (fn: string): boolean => routes.some(code => code.includes('runInTransaction') && new RegExp(`(?<![\\w$.])${fn}\\s*\\(`, 'u').test(code));
-  const names = facts.functions.filter(fn => (!focus || focus === fn) && (receiving.has(fn) || inRoute(fn)));
-  if (!names.length) return '';
+  // d1_347 s4: the functions a route SERVED TO THE CM calls (stage 2): the transaction is the one `serveCm` opens, the routes hold no `runInTransaction`, and the repeat is `once`.
+  const viaServeCm = new Set(stage2.on ? [...processReceives(unit.definition.data)].filter(([arrival]) => arrival.startsWith('cm.')).map(([, fn]) => fn) : []);
+  const all = facts.functions.filter(fn => (!focus || focus === fn) && (receiving.has(fn) || inRoute(fn) || viaServeCm.has(fn)));
+  const names = all.filter(fn => !viaServeCm.has(fn));
+  const cmNames = all.filter(fn => viaServeCm.has(fn));
+  if (!all.length) return '';
+  const tail = outsideCall ? ['A call to a system outside the module is not undone by the transaction. The function makes that call once and stores the result. What stops a repeat send is what the L4 says (for example, look the request up by its reference before calling). Without that in the L4, a failure between the call and the commit can repeat the call, and that does not ask for a protocol of its own.'] : [];
   return section('The transaction of the route', [
-    `The route that calls ${names.map(fn => `\`${fn}\``).join(', ')} already runs ${names.length > 1 ? 'them' : 'it'} inside \`ctx.data.moduleData.runInTransaction\` and passes ${names.length > 1 ? 'them' : 'it'} the context bound to that transaction, as \`ctx\`.`,
-    'Every write through the ports and the usecases with that `ctx` is all or nothing. Write the function as one pass over that `ctx`; open no transaction of your own, and take the L4 requirement of all or nothing as met by this.',
-    CONFLICT_ENDS_THE_FUNCTION,
-    COPY_ONLY_WHEN_DIFFERENT,
-    ...(names.length ? [keptRefusalText()] : []),
-    ...(outsideCall ? ['A call to a system outside the module is not undone by the transaction. The function makes that call once and stores the result. What stops a repeat send is what the L4 says (for example, look the request up by its reference before calling). Without that in the L4, a failure between the call and the commit can repeat the call, and that does not ask for a protocol of its own.'] : []),
+    ...(names.length ? [
+      `The route that calls ${names.map(fn => `\`${fn}\``).join(', ')} already runs ${names.length > 1 ? 'them' : 'it'} inside \`ctx.data.moduleData.runInTransaction\` and passes ${names.length > 1 ? 'them' : 'it'} the context bound to that transaction, as \`ctx\`.`,
+      'Every write through the ports and the usecases with that `ctx` is all or nothing. Write the function as one pass over that `ctx`; open no transaction of your own, and take the L4 requirement of all or nothing as met by this.',
+      CONFLICT_ENDS_THE_FUNCTION,
+      COPY_ONLY_WHEN_DIFFERENT,
+      keptRefusalText(),
+    ] : []),
+    ...(cmNames.length ? [
+      `${cmNames.map(fn => `\`${fn}\``).join(', ')} ${cmNames.length > 1 ? 'are' : 'is'} ${CM_SERVE_TRANSACTION}`,
+      'Every write through the ports and the usecases with that `ctx` is all or nothing. Write the function as one pass over that `ctx`, and take the L4 requirement of all or nothing as met by this.',
+      CM_CONFLICT,
+      COPY_ONLY_WHEN_DIFFERENT,
+      CM_REFUSAL,
+      CM_ONCE_REFUSAL_RULE,
+      CM_ONCE,
+      CM_ORDER,
+    ] : []),
+    ...tail,
   ].join('\n'));
 }
 

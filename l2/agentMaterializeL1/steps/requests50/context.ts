@@ -4,6 +4,7 @@
 // rules, access), the request-service def, the recipe attempt, the generated usecases it may call, the rule
 // texts and the platform signatures.
 
+import { CM_CLIENT_IMPORT, CM_REFUSAL, CM_SERVE_RULES } from '/_102021_/l2/agentMaterializeL1/helpers/cmClientText.js';
 import { keptRefusalText } from '/_102021_/l2/agentMaterializeL1/helpers/keptRefusal.js';
 import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { usecaseInputsOf, type M12InputField } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
@@ -575,8 +576,9 @@ function portReadsById(port: M12Unit): boolean {
   });
 }
 
-function requestsTypeOfServe(routes: readonly { route: string; inputType: string; outputType: string }[]): string {
-  const fields = routes.map(route => `'${route.route}': (input: ${route.inputType}, ctx: RequestContext) => Promise<${route.outputType}>`);
+function requestsTypeOfServe(routes: readonly { route: string; inputType: string; outputType: string; answer?: boolean }[]): string {
+  // d1_347 s4: in stage 2 a route served to the cm answers with `CmServeAnswer<Output>` (the platform commits the answer, refusal included).
+  const fields = routes.map(route => `'${route.route}': (input: ${route.inputType}, ctx: RequestContext) => Promise<${route.answer ? `CmServeAnswer<${route.outputType}>` : route.outputType}>`);
   return `{ ${fields.join('; ')} }`;
 }
 
@@ -595,7 +597,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     byConnection.set(mark.connectionId, found.source);
     catalogRefs.set(mark.connectionId, { ref: found.ref, importPath: found.importPath, origin: found.origin });
   }
-  const typed: { route: string; inputType: string; outputType: string; specifier: string }[] = [];
+  const typed: { route: string; inputType: string; outputType: string; specifier: string; answer?: boolean }[] = [];
   const catalogSections: string[] = [];
   const routes: M12ContractRoute[] = [];
   for (const mark of marks) {
@@ -607,7 +609,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     }
     const route = String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`);
     const specifier = catalogRefs.get(mark.connectionId)?.importPath ?? catalogImportPath(mark.connectionId);
-    typed.push({ route, inputType: operation.inputType, outputType: operation.outputType, specifier });
+    typed.push({ route, inputType: operation.inputType, outputType: operation.outputType, specifier, ...(stage2.on && mark.connectionId === 'cm' ? { answer: true } : {}) });
     routes.push({ route, kind: operation.kind === 'command' ? 'cmd' : 'qry', inputFields: [], actors: [], rules: [] });
     const flags = [
       `kind: ${operation.kind || 'unknown'}`,
@@ -629,8 +631,10 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
   const parts: string[] = [];
   parts.push(section('Task', [
     `Write the request service of the connection routes of module ${moduleName}, file \`${unit.outputRef}\`. There is no page contract.`,
-    `It exports \`requests\`, typed exactly \`${contractsInterface}\` with \`import type { ${[...new Set(typed.flatMap(item => [item.inputType, item.outputType]))].sort().join(', ')} } from '${catalogSpecifiers[0] ?? ''}'\`: one async function per route, keyed by the route string.`,
-    'Each function takes the whole catalog input and returns the catalog output. Do not drop a field of the input. Do not call fetch, callConnection or any HTTP client.',
+    `It exports \`requests\`, typed exactly \`${contractsInterface}\` with \`import type { ${[...new Set(typed.flatMap(item => [item.inputType, item.outputType]))].sort().join(', ')} } from '${catalogSpecifiers[0] ?? ''}'\`${typed.some(item => item.answer) ? ` and \`import type { CmServeAnswer } from '${CM_CLIENT_IMPORT}'\`` : ''}: one async function per route, keyed by the route string.`,
+    ...(typed.some(item => item.answer)
+      ? ['Each function takes the whole catalog input. The function of a route served to the cm returns a `CmServeAnswer` of the catalog output; the function of any other route returns the catalog output. Do not drop a field of the input. Do not call fetch, callConnection or any HTTP client.', ...CM_SERVE_RULES]
+      : ['Each function takes the whole catalog input and returns the catalog output. Do not drop a field of the input. Do not call fetch, callConnection or any HTTP client.']),
     '`ctx.requestMeta?.connection` describes the call that reached this route: `connectionId`, `operationId`, `context` (the person is `context.actorMdmId`) and an optional `idempotencyKey`. The type is `requestMeta.connection` on `RequestContext` (`/_102034_/l1/server/layer_2_controllers/contracts.js`). The engine already sets `context.actorMdmId`.',
     ...(marks.some(mark => (catalogRefs.get(mark.connectionId)?.origin ?? 'platform') !== 'platform') ? [
       // d1_218: the input of the serve of an outside system is the body that system sends; the module's vocabulary starts after this route.
@@ -696,7 +700,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
       ...(receiving.length ? [`The l4 says which function receives the message of ${receiving.map(item => item.route).join(', ')}: ${[...new Set(receiving.map(item => `\`${item.fn}\``))].join(', ')} (\`receives\`). Import it from \`${specifier}\` and build its input from the message. The command route opens \`ctx.data.moduleData.runInTransaction\`, builds the \`ctx\` bound to that transaction, and calls the function of the process inside it, passing that \`ctx\`. The function owns the occurrence and the writes this message carries (the draft, its tools), so the route calls no usecase for it and does not write them again; it returns the catalog output.`] : []),
       ...(outsideArrival ? ['The route passes the whole message to the function of the process, and the value of the address stays in `ctx`.'] : []),
       // d1_307: the kept refusal is for every function of a process a served route calls (the cm or a system outside), not only an arrival from outside.
-      ...([keptRefusalText()]),
+      ...([stage2.on && items.every(item => marks.find(mark => String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`) === item.route)?.connectionId === 'cm') ? CM_REFUSAL : keptRefusalText()]),
       ...(receiving.length === items.length ? [`Import from \`${specifier}\`.`] : [`Import from \`${specifier}\`. The route does not call a usecase for this message: it checks the catalog input as above and builds the input of the entry function of the process (the one that opens the occurrence, chosen by its signature and by the l4 prose) from the message. The command route opens \`ctx.data.moduleData.runInTransaction\`, builds the \`ctx\` bound to that transaction, and calls the function of the process inside it, passing that \`ctx\`. It returns the catalog output. The function owns the occurrence and the writes; the route does not repeat them.`]),
       generated ? fence('ts', exportSignatures(generated)) : '(the workflow service was not generated: the phase before this one failed for it)',
       ...(generated ? [await resolvedInputSection(ctx, generated)].filter(Boolean) : []),
@@ -715,6 +719,8 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     if (target.effect !== 'create' || !target.entityId) continue;
     // The process the message starts owns the write and its repeat: no repeat path of the route.
     if (flows.some(flow => flow.route === String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`))) continue;
+    // d1_347 s4: a route served to the cm repeats by `once` (the rules above), not by a read by id.
+    if (stage2.on && mark.connectionId === 'cm') continue;
     const port = ctx.units.find(item => item.definition.artifactType === 'repositoryPort' && String(item.definition.data.entityId ?? '') === target.entityId);
     if (!port || !portReadsById(port)) {
       throw new Error(`SERVE_READ_BY_ID_MISSING: the port of ${target.entityId} has no get by id, so a creating serve route has no repeat path.`);
