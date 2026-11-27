@@ -8,6 +8,7 @@ import of a file that does not exist.
  */
 
 import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
+import { typeShape } from '/_102021_/l2/agentMaterializeL1/helpers/typeParse.js';
 import { catalogOperations, consumeMessageTypeName, isNonObjectAlias, typeObjectOpen } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { parseDefinitionExport, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import {
@@ -731,19 +732,9 @@ async function resolveServeRoute(
 }
 
 export function membersOfType(source: string, typeText: string): { requiredFields: string[]; allowedPaths: string[]; nullablePaths: string[]; unions: ClosedUnion[] } | null {
-  const text = typeText.trim();
-  if (text.startsWith('{')) {
-    // agentMaterializeL1: the rest of the contract follows, so a member typed with a named interface of the same
-    // contract (`details: DetalhesItemCardapio`) is opened (the copied recipe allowed only `details`: 400 on details.details).
-    const wrapped = `export interface Wrapped ${text.replaceAll('{', '{\n').replaceAll(';', ';\n').replaceAll('}', '\n}')}\n${source}`;
-    const members = readMembers(wrapped, 'Wrapped');
-    if (!members) return null;
-    return { requiredFields: members.requiredFields, allowedPaths: members.allowedPaths, nullablePaths: members.nullablePaths, unions: members.unions };
-  }
-  if (!IDENT.test(text)) return null;
-  const members = readMembers(source, text);
-  if (!members) return null;
-  return { requiredFields: members.requiredFields, allowedPaths: members.allowedPaths, nullablePaths: members.nullablePaths, unions: members.unions };
+  // d1_332: read through the type parser (every alternative of a union counts; only what all of them require is required), not by lines.
+  const shape = typeShape(source, typeText);
+  return shape ? { requiredFields: shape.requiredFields, allowedPaths: shape.allowedPaths, nullablePaths: shape.nullablePaths, unions: shape.unions } : null;
 }
 
 export function routeClause(source: string, route: string): string | null {
