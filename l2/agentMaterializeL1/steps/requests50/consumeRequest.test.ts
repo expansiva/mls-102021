@@ -98,6 +98,8 @@ void test('d1_347 s1: a served route needs no runInTransaction when the platform
   assert.ok(requestGate(noTransaction, gate).some(item => item.includes('runInTransaction')), 'the model opens it: as before');
   assert.ok(!requestGate(noTransaction, { ...gate, platformTransaction: true }).some(item => item.includes('runInTransaction')), 'the platform opens it');
   assert.ok(requestGate(noTransaction, { ...gate, platformTransaction: true, serveUses: [] }).some(item => item.includes('runInTransaction')), 'only a served route is exempt');
+  // d1_347 s7: a route served to the cm (no `uses`, a process behind it) runs in the transaction serveCm opens too.
+  assert.ok(!requestGate(noTransaction, { ...gate, platformTransaction: true, serveUses: [], cmServeRoutes: [gate.routes[0].route] }).some(item => item.includes('runInTransaction')), 'the platform opens it for a cm route');
 });
 
 void test('d1_217 s2: the typing of the answer is set by code and imports nothing for a type the file declares', async () => {

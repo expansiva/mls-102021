@@ -1246,7 +1246,8 @@ export function requestGate(code: string, input: {
     if (!code.includes(`"${route.route}"`) && !code.includes(`'${route.route}'`)) problems.push(`Route ${route.route} of the contract has no function in requests.`);
     // d1_225: a route that receives an event and calls no usecase writes nothing: the delivery already runs in the transaction of the runtime, and there is nothing to make atomic.
     const onlyConfirms = (input.consumeMessages ?? []).length > 0 && !(input.serveUses ?? []).some(item => item.route === route.route);
-    const serveOpens = input.platformTransaction === true && (input.serveUses ?? []).some(item => item.route === route.route);
+    // d1_347 s7: every route served to the cm runs in the transaction `serveCm` opens, whether the def names usecases (`uses`) or a process (the gate asked the process routes for their own `runInTransaction`: it contradicted the phrase).
+    const serveOpens = input.platformTransaction === true && ((input.serveUses ?? []).some(item => item.route === route.route) || (input.cmServeRoutes ?? []).includes(route.route));
     if (route.kind === 'cmd' && !onlyConfirms && !serveOpens && !code.includes('runInTransaction')) problems.push(`Command ${route.route} must run inside ctx.data.moduleData.runInTransaction (the contract command is atomic).`);
     for (const ruleId of route.rules) {
       if (!input.waived.has(ruleId) && !code.includes(ruleId)) problems.push(`Rule ${ruleId} of ${route.route} is not applied: name it where it is applied (a ruleId of an AppError, or a comment on the calculation).`);
