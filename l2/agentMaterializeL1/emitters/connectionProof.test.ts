@@ -8,13 +8,11 @@ import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 
 import { emitAccess, emitAuthority, emitController, type StructureRead } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
-import { emitPersistence, PLATFORM_CLIENT_CONNECTIONS } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
+import { emitPersistence } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { AppError, type RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
 import { createFakeCallConnection } from '/_102034_/testing/connections/connectionFixtures.js';
 
-// d1_347 s3: these tests prove the bridge machinery of the emitter on the catalog of the cm. The emitter no longer writes the bridge of the cm by default (the platform client `cm(ctx)`: cmClient.test.ts), so the list of platform clients is emptied here.
-PLATFORM_CLIENT_CONNECTIONS.splice(0);
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../..');
 const TSC = path.join(ROOT, 'node_modules', '.bin', 'tsc');

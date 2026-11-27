@@ -8,6 +8,7 @@
  */
 
 import { connectionCatalogSource, l1OwnerOfRef } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
+import { platformClientConnections } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { catalogOperations, type CatalogOperation } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import {
@@ -405,19 +406,17 @@ interface ConnectionRow {
  * the receipt carries the same gap beside the file (one return cannot be both a failure and a source).
  */
 /**
- * d1_347 s3: the connections whose client the platform gives (`cm(ctx)`, P:l1/server/layer_1_external/connections/cm): the module writes no bridge for them and registers no port for them.
- * A bridge a module already has stays as it is until that module is regenerated (a unit that calls it still resolves `<X>Gateway`): this only stops the emitter from writing it again.
+ * d1_347 s3: the connections whose client the platform gives (`cm(ctx)`, P:l1/server/layer_1_external/connections/cm): the module writes no bridge for them and registers no port for them. Only in stage 2
+ * (`stage2.on`, helpers/m12Stage2.ts, off in the committed generator): before it, nothing changes. A bridge a module already has stays as it is until that module is regenerated.
  */
-export const PLATFORM_CLIENT_CONNECTIONS: string[] = ['cm'];
-
-const platformGatewayPorts = (): Set<string> => new Set(PLATFORM_CLIENT_CONNECTIONS.map(id => `${id.charAt(0).toUpperCase()}${id.slice(1)}Gateway`));
+const platformGatewayPorts = (): Set<string> => new Set(platformClientConnections().map(id => `${id.charAt(0).toUpperCase()}${id.slice(1)}Gateway`));
 
 async function emitOutbound(definition: M1Definition, output: string, read: StructureRead): Promise<PersistenceEmit | EmitFailure> {
   const events = Array.isArray(definition.data.events) ? definition.data.events.filter(isRecord) : [];
   const pending = events.map(event => text(event.pending)).find(Boolean) || pendingOf(definition.data);
   if (pending) return { code: pending, detail: `${definition.artifactId} is pending ${pending}. No publisher was written.` };
   const declared = connectionRows(definition.data.connections);
-  const connections = declared.filter(row => !PLATFORM_CLIENT_CONNECTIONS.includes(row.connectionId));
+  const connections = declared.filter(row => !platformClientConnections().includes(row.connectionId));
   const publishing = events.filter(isModuleEventBinding);
   const others = events.filter(event => !publishing.includes(event));
   const unbound = others.filter(event => !text(event.mechanism)).map(event => text(event.eventId) || '(unnamed)');

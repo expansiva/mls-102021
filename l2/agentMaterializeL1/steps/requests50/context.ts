@@ -5,6 +5,7 @@
 // texts and the platform signatures.
 
 import { keptRefusalText } from '/_102021_/l2/agentMaterializeL1/helpers/keptRefusal.js';
+import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { usecaseInputsOf, type M12InputField } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
 import { connectionCatalogSource, isCatalogImport, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord, parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
@@ -1315,7 +1316,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
   };
   return [
     ...waived.problems,
-    ...requestGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, arrivalUpserts: data.arrivalUpserts, usecaseInputs: await usecaseInputsOf(ctx), consumeMessages: consumeMarks(unit.definition.data).map(item => consumeMessageTypeName(item.mark)), ports: repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), usecases: ctx.units.filter(item => item.definition.artifactType === 'usecase').map(item => item.unitId).sort() }),
+    ...requestGate(code, { platformTransaction: stage2.on, siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, arrivalUpserts: data.arrivalUpserts, usecaseInputs: await usecaseInputsOf(ctx), consumeMessages: consumeMarks(unit.definition.data).map(item => consumeMessageTypeName(item.mark)), ports: repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), usecases: ctx.units.filter(item => item.definition.artifactType === 'usecase').map(item => item.unitId).sort() }),
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
     // d1_276: a route that passes the version to a usecase whose call takes it as a string never converts it.
