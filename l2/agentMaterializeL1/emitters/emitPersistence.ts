@@ -10,6 +10,7 @@
 import { scalarForm } from '/_102021_/l2/helpers/l1Defs/scalarTypes.js';
 import { connectionCatalogSource, l1OwnerOfRef } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { platformClientConnections } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
+import { bridgeKeptNote, projectOfRef, unitsStillOnCmBridge } from '/_102021_/l2/agentMaterializeL1/helpers/cmBridgeKept.js';
 import { catalogOperations, type CatalogOperation } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import {
@@ -271,12 +272,13 @@ async function emitRegistration(definition: M1Definition, output: string, read: 
   const adapters = Array.isArray(definition.data.adapters) ? definition.data.adapters.filter(isRecord) : [];
   if (adapters.length === 0) return { code: 'REGISTRATION_EMPTY', detail: `${definition.artifactId} lists no adapter.` };
   const rows: Array<{ portId: string; factory: string; specifier: string; stub: boolean }> = [];
+  const platform = await bridgeOutOf(output, definition.moduleName);
   for (const adapter of adapters) {
     const portId = text(adapter.portId);
     const artifactId = text(adapter.adapterArtifactId);
     if (!ident(portId) || !artifactId) return { code: 'REGISTRATION_UNBOUND', detail: 'An adapter row has no port.' };
     // d1_347 s3: the port of a platform client (CmGateway) is not registered: the module reaches the cm through `cm(ctx)`.
-    if (platformGatewayPorts().has(portId)) continue;
+    if (platformGatewayPorts(platform.connections).has(portId)) continue;
     const defPath = definition.dependencies.find(path => path.endsWith(`/${artifactId}.defs.ts`) || path.endsWith(`/${artifactId.charAt(0).toLowerCase()}${artifactId.slice(1)}.defs.ts`));
     const matched = definition.dependencies.find(path => {
       const base = path.split('/').pop() ?? '';
@@ -296,7 +298,7 @@ async function emitRegistration(definition: M1Definition, output: string, read: 
   const imports = [REPOSITORY_REGISTRY, ...rows.map(row => row.specifier)];
   const bad = auditImports(source, imports);
   if (bad) return { code: 'IMPORT_UNDECLARED', detail: bad };
-  return { source, imports, runsStub: rows.some(row => row.stub), seeds: false, evidences: [] };
+  return { source, imports, runsStub: rows.some(row => row.stub), seeds: false, evidences: platform.kept ? [{ id: 'cmBridgeKept', kind: 'schema', passed: true, detail: platform.kept }] : [] };
 }
 
 /**
@@ -410,14 +412,23 @@ interface ConnectionRow {
  * d1_347 s3: the connections whose client the platform gives (`cm(ctx)`, P:l1/server/layer_1_external/connections/cm): the module writes no bridge for them and registers no port for them. Only in stage 2
  * (`stage2.on`, helpers/m12Stage2.ts, off in the committed generator): before it, nothing changes. A bridge a module already has stays as it is until that module is regenerated.
  */
-const platformGatewayPorts = (): Set<string> => new Set(platformClientConnections().map(id => `${id.charAt(0).toUpperCase()}${id.slice(1)}Gateway`));
+const platformGatewayPorts = (connections: readonly string[]): Set<string> => new Set(connections.map(id => `${id.charAt(0).toUpperCase()}${id.slice(1)}Gateway`));
+
+/** d1_347 s8: the connections whose bridge is taken out of THIS module: the platform's, unless a unit of the module still names `CmGateway` (then none, and the note says why). */
+async function bridgeOutOf(output: string, moduleName: string): Promise<{ connections: readonly string[]; kept: string }> {
+  const connections = platformClientConnections();
+  if (connections.length === 0) return { connections, kept: '' };
+  const files = await unitsStillOnCmBridge(projectOfRef(output), moduleName);
+  return files.length > 0 ? { connections: [], kept: bridgeKeptNote(files) } : { connections, kept: '' };
+}
 
 async function emitOutbound(definition: M1Definition, output: string, read: StructureRead): Promise<PersistenceEmit | EmitFailure> {
   const events = Array.isArray(definition.data.events) ? definition.data.events.filter(isRecord) : [];
   const pending = events.map(event => text(event.pending)).find(Boolean) || pendingOf(definition.data);
   if (pending) return { code: pending, detail: `${definition.artifactId} is pending ${pending}. No publisher was written.` };
   const declared = connectionRows(definition.data.connections);
-  const connections = declared.filter(row => !platformClientConnections().includes(row.connectionId));
+  const platform = await bridgeOutOf(output, definition.moduleName);
+  const connections = declared.filter(row => !platform.connections.includes(row.connectionId));
   const publishing = events.filter(isModuleEventBinding);
   const others = events.filter(event => !publishing.includes(event));
   const unbound = others.filter(event => !text(event.mechanism)).map(event => text(event.eventId) || '(unnamed)');
@@ -447,6 +458,7 @@ async function emitOutbound(definition: M1Definition, output: string, read: Stru
       detail: `MECHANISM_INCOMPATIBLE: ${named.join(', ')} is not a binding. ${what} written.`,
     });
   }
+  if (platform.kept) evidences.push({ id: 'cmBridgeKept', kind: 'schema', passed: true, detail: platform.kept });
   return { ...rendered, evidences };
 }
 

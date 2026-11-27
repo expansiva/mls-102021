@@ -113,6 +113,8 @@ interface Emitted {
   /** Event gap kept beside a written gateway file. The emitter returns one result, so the receipt carries it. */
   gapCode?: string;
   gapDetail?: string;
+  /** d1_347 s8: the receipt says that the bridge of the cm stays (a unit of the module still names `CmGateway`). */
+  note?: string;
 }
 
 export async function emitUnit(ctx: M12Context, unit: M12Unit): Promise<Emitted | EmitFailure> {
@@ -138,6 +140,7 @@ export async function emitUnit(ctx: M12Context, unit: M12Unit): Promise<Emitted 
     seeds: 'seeds' in produced ? produced.seeds : false,
     runsStub: produced.runsStub,
     ...(gapCode && gap ? { gapCode, gapDetail: gap.detail } : {}),
+    ...(('evidences' in produced ? produced.evidences.find(item => item.id === 'cmBridgeKept') : undefined) ? { note: ('evidences' in produced ? produced.evidences.find(item => item.id === 'cmBridgeKept')?.detail : '') ?? '' } : {}),
   };
 }
 
@@ -411,6 +414,11 @@ export async function materializeUnit(ctx: M12Context, unit: M12Unit): Promise<M
       const written = await readUnitStatus(project, moduleName, unit.layer, unit.unitId);
       await writeUnitStatus(project, moduleName, { ...base(unit), status: 'gap', code: emitted.gapCode, diagnostic: emitted.gapDetail ?? emitted.gapCode, inputHash, outputs: written?.outputs ?? {} });
       return { status: 'gap', code: emitted.gapCode, line: `${unit.unitId}: gap, ${emitted.gapCode} ${clip(emitted.gapDetail ?? '', 300)}` };
+    }
+    if (proved.status === 'done' && proved.code === '' && emitted.note) {
+      const written = await readUnitStatus(project, moduleName, unit.layer, unit.unitId);
+      await writeUnitStatus(project, moduleName, { ...base(unit), status: 'done', code: '', diagnostic: emitted.note, inputHash, outputs: written?.outputs ?? {}, ...(written?.inputParts ? { inputParts: written.inputParts } : {}) });
+      return { status: 'done', code: '', line: `${proved.line}; ${clip(emitted.note, 300)}` };
     }
     return { status: proved.status, code: proved.code, line: proved.line };
   } catch (error) {
