@@ -5,6 +5,7 @@
 // texts and the platform signatures.
 
 import { CM_CLIENT_IMPORT, CM_REFUSAL, CM_SERVE_RULES } from '/_102021_/l2/agentMaterializeL1/helpers/cmClientText.js';
+import { serveWithoutOnceProblems } from '/_102021_/l2/agentMaterializeL1/helpers/cmServeOnce.js';
 import { keptRefusalText } from '/_102021_/l2/agentMaterializeL1/helpers/keptRefusal.js';
 import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { usecaseInputsOf, type M12InputField } from '/_102021_/l2/agentMaterializeL1/helpers/m12Required.js';
@@ -169,6 +170,8 @@ export interface M12RequestContext {
   externalEnums: ExternalEnumPair[];
   /** Serve routes that name usecases (`uses`): the body must call every one of them (d1_201, d1_230). */
   serveUses: Array<{ route: string; uses: string[] }>;
+  /** d1_347 s7 (stage 2): the routes served to the cm, whose function repeats by `once` (the gate asks for the call). */
+  cmServeRoutes?: string[];
   /** Routes of an arrival that creates and updates an entity by its key (d1_232): the body must look the record up first. */
   arrivalUpserts: RouteUpsert[];
   human: string;
@@ -737,6 +740,26 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
       generated ? fence('ts', exportSignatures(generated)) : '',
     ].filter(Boolean).join('\n')));
   }
+  // d1_347 s7 (stage 2): a refusal that depends on a state that can change is returned BEFORE the `once`. The request service reads no repository (REQUEST_USES_REPOSITORY): it reads through the read functions of the
+  // module, the `list`/`get` usecases of the entity the process of the route works on. They are shown here with import and signature.
+  if (stage2.on) {
+    const cmRoutes = new Set(typed.filter(item => item.answer).map(item => item.route));
+    const entities = new Set(flows.filter(flow => cmRoutes.has(flow.route)).flatMap(flow => {
+      const data = ctx.units.find(unit => unit.definition.artifactType === 'workflowProcess' && String(unit.definition.data.processId ?? unit.unitId) === flow.processId)?.definition.data;
+      const occurrence = data && isRecord(data.occurrence) ? String(data.occurrence.entityId ?? '') : '';
+      return occurrence ? [occurrence] : [];
+    }));
+    const reads = ctx.units.filter(unit => unit.definition.artifactType === 'usecase' && entities.has(String(unit.definition.data.entityId ?? '')) && ['list', 'get'].includes(String(unit.definition.data.operation ?? '')));
+    if (reads.length) {
+      parts.push(section('Read functions of the module (the state a refusal before `once` depends on)', [
+        'To read a state that can change before the `once`, call one of these (the request service uses no repository). Import each from its path.',
+      ].join('\n')));
+      for (const item of reads) {
+        const shown = await usecaseSection(ctx, item, false);
+        if (shown) parts.push(shown);
+      }
+    }
+  }
   const requestContext = await ctx.read(PLATFORM_FILES.requestContext);
   if (requestContext) {
     parts.push(section(`Platform ${PLATFORM_FILES.requestContext}`, [`Import from \`/${PLATFORM_FILES.requestContext.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(requestContext))].join('\n\n')));
@@ -760,6 +783,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     externalEnums: [],
     serveUses,
     arrivalUpserts,
+    ...(stage2.on ? { cmServeRoutes: typed.filter(item => item.answer).map(item => item.route) } : {}),
     human: parts.join('\n'),
   };
 }
@@ -1175,6 +1199,8 @@ export function requestGate(code: string, input: {
   serveUses?: ReadonlyArray<{ route: string; uses: readonly string[] }>;
   /** d1_347: a route served to the cm runs in the transaction `serveCm` opens (the platform commits an answer, refusal included, and undoes an exception): its function does not open one. Off: the model opens it, as before. */
   platformTransaction?: boolean;
+  /** d1_347 s7: the routes served to the cm (stage 2): the function of each calls `once`. */
+  cmServeRoutes?: readonly string[];
   /** Routes that create and update an entity by its key (d1_232): each body looks the record up. */
   arrivalUpserts?: readonly RouteUpsert[];
   /** The input fields of the usecases of the module (d1_224): a call may not fill a required one with an empty literal. */
@@ -1212,6 +1238,7 @@ export function requestGate(code: string, input: {
   problems.push(...emptyRequiredProblems(code, input.usecaseInputs ?? new Map()));
   problems.push(...consumeMessageProblems(code, input.consumeMessages ?? [], (input.serveUses ?? []).length > 0));
   problems.push(...untypedInputProblems(code));
+  problems.push(...serveWithoutOnceProblems(code, input.cmServeRoutes ?? []));
   if (/\bas\s+Parameters\s*</u.test(code)) {
     problems.push('No `as Parameters<typeof <usecase>>[0]`: it forces the contract input onto the usecase input and hides a field the usecase reads that the contract does not send (createProfissional read `input.details.person` and threw). Build the usecase input field by field from the contract input.');
   }
@@ -1322,7 +1349,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
   };
   return [
     ...waived.problems,
-    ...requestGate(code, { platformTransaction: stage2.on, siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, arrivalUpserts: data.arrivalUpserts, usecaseInputs: await usecaseInputsOf(ctx), consumeMessages: consumeMarks(unit.definition.data).map(item => consumeMessageTypeName(item.mark)), ports: repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), usecases: ctx.units.filter(item => item.definition.artifactType === 'usecase').map(item => item.unitId).sort() }),
+    ...requestGate(code, { platformTransaction: stage2.on, cmServeRoutes: stage2.on ? data.cmServeRoutes ?? [] : [], siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses, arrivalUpserts: data.arrivalUpserts, usecaseInputs: await usecaseInputsOf(ctx), consumeMessages: consumeMarks(unit.definition.data).map(item => consumeMessageTypeName(item.mark)), ports: repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), usecases: ctx.units.filter(item => item.definition.artifactType === 'usecase').map(item => item.unitId).sort() }),
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
     // d1_276: a route that passes the version to a usecase whose call takes it as a string never converts it.

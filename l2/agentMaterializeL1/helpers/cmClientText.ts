@@ -28,6 +28,9 @@ export const CM_SERVE_ANSWER_TYPE = 'A function of a route served to the cm retu
  * d1_347 s7: the order in the request service of a route served to the cm. `CM_ORDER` (the process context) lists the layers; read in a request service it made the model call `serveCm` itself, open
  * `runInTransaction` again and throw the refusal from inside `once` (measured on the rehearsal, three attempts). Text approved by the How planner (27/11).
  */
-export const CM_REQUEST_ORDER = '`serveCm` is called by the controller of the route, never by your function: your function is the `decide` it receives, takes `(input, ctx)` and returns the `CmServeAnswer`. Inside it: first the refusal that depends on a state that can change (read it with the repository), then `once(ctx, { scope, key }, async () => …)` with the work, then your rule. Never call `serveCm`, never open `runInTransaction`, never build a bound context.';
+export const CM_REQUEST_ORDER = '`serveCm` is called by the controller of the route, never by your function: your function is the `decide` it receives, takes `(input, ctx)` and returns the `CmServeAnswer`. Inside it: first the refusal that depends on a state that can change (read it with the read functions of the module), then `once(ctx, { scope, key }, async () => …)` with the work, then your rule. Never call `serveCm`, never open `runInTransaction`, never build a bound context.';
 
-export const CM_SERVE_RULES: readonly string[] = [CM_SERVE_ANSWER_TYPE, CM_REFUSAL, CM_CONFLICT, CM_ONCE_REFUSAL_RULE, CM_ONCE, CM_REQUEST_ORDER];
+/** d1_347 s7: `once` is a value, and the context of the request service gave only the type import of the answer (the model refused: "the declarations do not give the import or signature of once"). Signature of mls-102034@b83d6e7. */
+export const CM_ONCE_IMPORT = `\`once\` is a value of the cm client: \`import { once } from '${CM_CLIENT_IMPORT}'\`. Its signature is \`once<T>(ctx: RequestContext, where: { scope: string; key: string }, work: () => Promise<T>): Promise<T>\`; \`T\` is the answer of your function (\`CmServeAnswer<Output>\`), with no cast.`;
+
+export const CM_SERVE_RULES: readonly string[] = [CM_SERVE_ANSWER_TYPE, CM_REFUSAL, CM_CONFLICT, CM_ONCE_REFUSAL_RULE, CM_ONCE, CM_ONCE_IMPORT, CM_REQUEST_ORDER];
