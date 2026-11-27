@@ -821,6 +821,8 @@ function renderAdapter(
     `const UNIQUE_KEYS: readonly (readonly string[])[] = ${JSON.stringify(uniqueKeys)};`,
     `const BINDINGS = ${JSON.stringify(built.bindings.map(binding => ({ field: binding.field, column: binding.column, placement: binding.placement })))} as const;`,
     `const JSON_COLUMN = ${JSON.stringify(JSON_COLUMN)};`,
+    // d1_340: a value the code leaves empty ('') in a column that is not text (a time, a number, a boolean) is written as NULL: the database refuses '' there (invalid input syntax). A text column keeps its ''; a column that does not accept NULL keeps the error.
+    `const NON_TEXT_COLUMNS: readonly string[] = ${JSON.stringify(built.definition.columns.filter(column => column.postgresType !== 'TEXT' && column.postgresType !== 'JSONB').map(column => column.name))};`,
     `const OBJECTS: readonly string[] = ${JSON.stringify(shape.objects)};`,
     `const COLLECTIONS: readonly string[] = ${JSON.stringify(shape.collections)};`,
     `const VERSION_FIELD = ${JSON.stringify(versionField)};`,
@@ -966,7 +968,7 @@ function helperSource(): string {
     '    if (binding.placement === \'json\') {',
     '      json = true;',
     '      if (value !== undefined) writePath(details, jsonKey(binding.field), value);',
-    '    } else if (value !== undefined) row[binding.column] = value;',
+    "    } else if (value !== undefined) row[binding.column] = value === '' && NON_TEXT_COLUMNS.includes(binding.column) ? null : value;",
     '  }',
     '  if (json) row[JSON_COLUMN] = details;',
     '  return row;',

@@ -186,10 +186,24 @@ function withNotNull(runtime) {
     tables = tables ?? await moduleData.listTables();
     const definition = tables.find(item => item.repositoryName === name || item.tableName === name);
     if (!definition) return repository;
+    // The type of the column too (d1_340): a time that is not a date, a number that is not one, a boolean that is not one, a uuid that is not one: the database refuses them ("invalid input syntax").
+    const badType = (column, value) => {
+      const type = String(column.postgresType ?? '').toLowerCase();
+      if (/timestamp|date/.test(type)) return value instanceof Date || (typeof value === 'string' && value !== '' && !Number.isNaN(Date.parse(value))) ? '' : 'timestamp with time zone';
+      if (/int|numeric|decimal|real|double|float/.test(type)) return typeof value === 'number' || (typeof value === 'string' && /^-?\\d+(\\.\\d+)?$/.test(value)) ? '' : type;
+      if (type === 'boolean') return typeof value === 'boolean' ? '' : 'boolean';
+      if (type === 'uuid') return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(value) ? '' : 'uuid';
+      return '';
+    };
     const refuse = (record, mode) => {
       for (const column of definition.columns) {
-        if (column.nullable || column.defaultSql !== undefined) continue;
         if (mode === 'patch' && !(column.name in record)) continue;
+        const value = record[column.name];
+        if (value !== undefined && value !== null) {
+          const wrong = badType(column, value);
+          if (wrong) throw Object.assign(new Error('invalid input syntax for type ' + wrong + ': ' + JSON.stringify(String(value))), { code: wrong === 'timestamp with time zone' ? '22007' : '22P02' });
+        }
+        if (column.nullable || column.defaultSql !== undefined) continue;
         if (record[column.name] === undefined || record[column.name] === null) throw Object.assign(new Error('null value in column "' + column.name + '" of relation "' + definition.tableName + '" violates not-null constraint'), { code: '23502' });
       }
     };
@@ -217,7 +231,7 @@ function describe(error) {
   const status = typeof error?.status === 'number' ? error.status : null;
   const skippedCase = error?.name === 'SmokeUnresolved' || String(error?.cause?.name ?? '') === 'SmokeUnresolved';
   // A database error (SQLSTATE, five digits) is not a decision of the route: it is an exception, with its stack.
-  const isApp = error instanceof AppError || (typeof error?.code === 'string' && !/^\\d{5}$/.test(error.code));
+  const isApp = error instanceof AppError || (typeof error?.code === 'string' && !/^[0-9][0-9A-Z]{4}$/.test(error.code));
   const verdict = skippedCase ? 'skipped' : isApp ? (status !== null && status >= 500 ? 'failed' : 'refused') : 'error';
   return { verdict, status, code: error?.code ?? 'ERROR', message: String(error?.message ?? error).slice(0, 300), stack: verdict === 'refused' || verdict === 'skipped' ? null : String(error?.stack ?? error).slice(0, 4000) };
 }

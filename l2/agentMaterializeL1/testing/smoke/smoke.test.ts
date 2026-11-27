@@ -182,5 +182,12 @@ void test('d1_339 s0: a column that is not nullable and has no default refuses a
   assert.match(source, /function withNotNull\(runtime\)/u);
   assert.match(source, /violates not-null constraint/u);
   assert.match(source, /code: '23502'/u);
-  assert.match(source, /\\d\{5\}/u, 'a SQLSTATE is an exception with a stack, not a decision of the route');
+  assert.match(source, /\[0-9\]\[0-9A-Z\]\{4\}/u, 'a SQLSTATE is an exception with a stack, not a decision of the route');
+});
+
+void test('d1_340 s0: the smoke checks the value written against the type of the column (a time, a number, a boolean, a uuid), as the database does', () => {
+  const source = readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), 'runSmoke.ts'), 'utf8');
+  assert.match(source, /const badType = \(column, value\)/u);
+  assert.match(source, /invalid input syntax for type /u);
+  assert.match(source, /code: wrong === 'timestamp with time zone' \? '22007' : '22P02'/u);
 });
