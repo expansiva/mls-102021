@@ -20,7 +20,7 @@ import { installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/hel
 import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
-import { CM_CALL_RULES, CM_CONFLICT, CM_ONCE, CM_ONCE_IMPORT, CM_ORDER, CM_REFUSAL, CM_REQUEST_ORDER, CM_SERVE_RULES } from '/_102021_/l2/agentMaterializeL1/helpers/cmClientText.js';
+import { CM_BEFORE_ONCE, CM_CALL_RULES, CM_CONFLICT, CM_ONCE, CM_ONCE_IMPORT, CM_ORDER, CM_REFUSAL, CM_REQUEST_ORDER, CM_SERVE_RULES } from '/_102021_/l2/agentMaterializeL1/helpers/cmClientText.js';
 import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { createContext } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { loadModuleUnits, storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -74,7 +74,9 @@ void test('d1_347 s4: the phrases carry the three adjustments of the planner', (
   assert.match(CM_CONFLICT, /A version conflict is answered as `\{ ok: false, code: 'conflict', message \}`; a repeat is not a conflict: `once` handles it\./u);
   assert.match(CM_ONCE, /the reference the cm sends when the l4 names one; otherwise `ctx\.requestMeta\.connection\.idempotencyKey`\./u);
   assert.match(CM_REFUSAL, /Never throw an `AppError` for a refusal that the rule decides\./u);
-  assert.equal(CM_SERVE_RULES.length, 7);
+  assert.equal(CM_SERVE_RULES.length, 8);
+  assert.ok(CM_SERVE_RULES.includes(CM_BEFORE_ONCE));
+  assert.match(CM_BEFORE_ONCE, /^Before `once`, read only what that refusal needs \(for example, that the record it names exists\)\. A repeat of a request already answered is handled by `once` and by the process, not by you: do not read records to find it\.$/u);
   assert.match(CM_ONCE_IMPORT, /import \{ once \} from '\/_102034_\/l1\/server\/layer_1_external\/connections\/cm\/index\.js'/u);
   assert.match(CM_ONCE_IMPORT, /once<T>\(ctx: RequestContext, where: \{ scope: string; key: string \}, work: \(\) => Promise<T>\): Promise<T>/u);
   assert.match(CM_REQUEST_ORDER, /read it with the read functions of the module/u);

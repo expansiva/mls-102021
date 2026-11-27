@@ -33,4 +33,10 @@ export const CM_REQUEST_ORDER = '`serveCm` is called by the controller of the ro
 /** d1_347 s7: `once` is a value, and the context of the request service gave only the type import of the answer (the model refused: "the declarations do not give the import or signature of once"). Signature of mls-102034@b83d6e7. */
 export const CM_ONCE_IMPORT = `\`once\` is a value of the cm client: \`import { once } from '${CM_CLIENT_IMPORT}'\`. Its signature is \`once<T>(ctx: RequestContext, where: { scope: string; key: string }, work: () => Promise<T>): Promise<T>\`; \`T\` is the answer of your function (\`CmServeAnswer<Output>\`), with no cast.`;
 
-export const CM_SERVE_RULES: readonly string[] = [CM_SERVE_ANSWER_TYPE, CM_REFUSAL, CM_CONFLICT, CM_ONCE_REFUSAL_RULE, CM_ONCE, CM_ONCE_IMPORT, CM_REQUEST_ORDER];
+/**
+ * d1_347 s7: the model read the audit (`listMessageAudit`, for the company administrator) before `once` to find a request already answered, and the whole route became `forbidden` for the technical actor of the cm.
+ * Text approved by the How planner (27/11); the def does not say who may call a usecase, so the read functions are shown whole and this phrase limits what they are for.
+ */
+export const CM_BEFORE_ONCE = 'Before `once`, read only what that refusal needs (for example, that the record it names exists). A repeat of a request already answered is handled by `once` and by the process, not by you: do not read records to find it.';
+
+export const CM_SERVE_RULES: readonly string[] = [CM_SERVE_ANSWER_TYPE, CM_REFUSAL, CM_CONFLICT, CM_ONCE_REFUSAL_RULE, CM_BEFORE_ONCE, CM_ONCE, CM_ONCE_IMPORT, CM_REQUEST_ORDER];
