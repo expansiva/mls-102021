@@ -277,7 +277,7 @@ async function serveFromCm(item, ctx, datasets, at) {
   if (globalThis.__smokeUnresolved) return { verdict: 'skipped', status: null, code: 'ERROR', message: 'smoke: the output type of ' + globalThis.__smokeUnresolved + ' is not declared in the catalog files', stack: null, output: null };
   const log = lines.join('\\n');
   const threw = /exec threw requestId=\\S+: ([\\s\\S]*)/u.exec(log);
-  const status = /status=(\\d{3})\\s+error=(\\S+)\\s+requestId=\\S+\\s+message=("(?:[^"\\\\]|\\\\.)*")/u.exec(log);
+  const status = /status=(\\d{3})\\s+error=(\\S+)\\s+(?:requestId=\\S+\\s+)?message=("(?:[^"\\\\]|\\\\.)*")/u.exec(log);
   if (threw) return { verdict: 'error', status: null, code: 'ERROR', message: String(threw[1]).split('\\n')[0].slice(0, 300), stack: String(threw[1]).slice(0, 4000), output: null };
   if (status) {
     const code = status[2];
