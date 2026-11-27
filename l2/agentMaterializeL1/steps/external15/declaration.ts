@@ -19,6 +19,7 @@ export interface ExternalFacts {
 export const DECLARATION_SCHEMA = 'external-system-v1' as const;
 export { DECLARATION_TYPES_IMPORT, DECLARATION_TYPES_REF } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { DECLARATION_TYPES_IMPORT } from '/_102021_/l2/helpers/connections/catalogResolve.js';
+import { inputSecretProblems, type InputSecretField } from '/_102021_/l2/agentMaterializeL1/steps/external15/inputSecrets.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -75,7 +76,7 @@ export function settingsOf(facts: ExternalFacts): Array<Record<string, unknown>>
 }
 
 /** The lines of `connections[]` of the L4 that name the system: what each operation is used for. Empty when the file is not readable. */
-export function connectionLinesOf(integrationSource: string | null, systemId: string): Array<{ operationId: string; direction: string; usedBy: string[]; description: string }> {
+export function connectionLinesOf(integrationSource: string | null, systemId: string): Array<{ operationId: string; direction: string; usedBy: string[]; description: string; entityRefs: string[] }> {
   const match = integrationSource ? /=\s*(\{[\s\S]*\})\s*(?:as const)?\s*(?:satisfies[^;]*)?;/u.exec(integrationSource) : null;
   if (!match) return [];
   let root: unknown;
@@ -86,6 +87,7 @@ export function connectionLinesOf(integrationSource: string | null, systemId: st
     direction: text(row.direction),
     usedBy: (Array.isArray(row.usedBy) ? row.usedBy : []).filter((item): item is string => typeof item === 'string'),
     description: text(row.description),
+    entityRefs: (Array.isArray(row.entityRefs) ? row.entityRefs : []).filter((item): item is string => typeof item === 'string'),
   }));
 }
 
@@ -184,7 +186,7 @@ function sameSet(left: readonly string[], right: readonly string[]): boolean {
  * Problems of an answer, before anything is written. No frame names a service: the checks are the validator of the runtime, the
  * coverage of the L4 (every operation and no more, the same settings, the same texts) and the types the operations name.
  */
-export function declarationProblems(code: string, facts: ExternalFacts, header: string): string[] {
+export function declarationProblems(code: string, facts: ExternalFacts, header: string, inputSecrets: ReadonlyMap<string, readonly InputSecretField[]> = new Map()): string[] {
   const problems: string[] = [];
   if (code.split('\n')[0].trim() !== header) problems.push(`The file must start with the line ${header}`);
   for (const match of code.matchAll(/^\s*import\b[^;]*?from\s+['"]([^'"]+)['"]/gmu)) {
@@ -219,6 +221,8 @@ export function declarationProblems(code: string, facts: ExternalFacts, header: 
   for (const operation of operations) {
     if (operation.direction === 'serve' && operation.verify === undefined) problems.push(`Operation ${text(operation.operationId)} of system ${facts.systemId} is a serve and has no verify: every notice is checked (hmac or token) with a secret setting of the L4.`);
   }
+  // d1_350: the secret fields of the L4 of an outbound operation, and the names of `inputSecrets` against the input.
+  problems.push(...inputSecretProblems(code, operations, inputSecrets));
   const exported = exportedNames(code);
   for (const operation of operations) {
     for (const key of ['inputType', 'outputType'] as const) {

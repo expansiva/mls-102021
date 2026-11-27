@@ -17,6 +17,7 @@ import {
   externalFacts,
   fixedPart,
 } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
+import { inputSecretFieldsOf, inputSecretsSection } from '/_102021_/l2/agentMaterializeL1/steps/external15/inputSecrets.js';
 import { fixedTypeProblems, fixedTypesOf, fixedTypesSection } from '/_102021_/l2/agentMaterializeL1/steps/external15/fixedTypes.js';
 
 export const M12_EXTERNAL_TOOL = 'writeExternalDeclaration' as const;
@@ -51,6 +52,9 @@ export async function loadExternalContext(ctx: M12Context, unit: M12Unit, repair
       line.description ? `  ${line.description}` : '',
     ].filter(Boolean).join('\n')).join('\n')));
   }
+  // d1_350: the secret fields of the L4 that an outbound operation reads: the declaration marks them in `uses.inputSecrets`. Nothing is added when no operation reads one.
+  const secretsText = inputSecretsSection(await inputSecretFieldsOf(ctx, lines));
+  if (secretsText) parts.push(section('Secret fields of the L4 read by the operations (code)', secretsText));
   parts.push(section('Written by code (copy as is, keep every value)', [
     'These fields are derived from the L4. The declaration must carry exactly them. You add `hosts`, and for each operation what is below.',
     fence('json', JSON.stringify(fixedPart(facts), null, 2)),
@@ -72,5 +76,6 @@ export async function loadExternalContext(ctx: M12Context, unit: M12Unit, repair
 export async function externalAnswerProblems(ctx: M12Context, unit: M12Unit, code: string): Promise<string[]> {
   const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
   const facts = externalFacts(unit.definition.data);
-  return [...declarationProblems(code, facts, header), ...fixedTypeProblems(code, fixedTypesOf(await ctx.read(unit.outputRef), facts))];
+  const lines = connectionLinesOf(await ctx.read(`_${ctx.run.project}_/${integrationLogicalPath(ctx.run.module)}`), facts.systemId);
+  return [...declarationProblems(code, facts, header, await inputSecretFieldsOf(ctx, lines)), ...fixedTypeProblems(code, fixedTypesOf(await ctx.read(unit.outputRef), facts))];
 }
