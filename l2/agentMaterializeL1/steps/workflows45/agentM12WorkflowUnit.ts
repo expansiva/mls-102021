@@ -11,7 +11,7 @@ export const WORKFLOW_SPEC: M12ModelLayerSpec = {
   folder: 'steps/workflows45',
   toolName: M12_WORKFLOW_TOOL,
   toolDescription: M12_WORKFLOW_TOOL_DESCRIPTION,
-  prepare: ctx => prepareWorkflows(ctx),
+  prepare: (ctx, units) => prepareWorkflows(ctx, units),
   context: async (ctx, unit, repair) => (await loadWorkflowContext(ctx, unit, repair)).human,
   gate: workflowAnswerProblems,
   sequence: workflowSequence,
