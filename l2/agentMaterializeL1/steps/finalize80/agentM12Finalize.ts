@@ -8,7 +8,7 @@ import { readJsonOptional, readOptional, readUnitStatus, writeJson, type M12Unit
 import { orphanOfTarget, removeOrphan } from '/_102021_/l2/agentMaterializeL1/helpers/m12Orphans.js';
 import { registrationFile, reportFile, seedDropsFile, smokeFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
-import { registersModule, requestModules, storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { emitterTargetLayer, registersModule, requestModules, storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { smokeInputsHash, smokeState, type M12SmokeState, type SmokeFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Smoke.js';
 
 export function createAgent(): IAgentAsync {
@@ -126,7 +126,8 @@ export async function writeModuleReport(run: M12RunArgs, selected: readonly M12U
   for (const unit of selected) await read(unit.layer, unit.unitId);
   for (const unit of selected.filter(item => item.layer === 'controllers')) await read('tests', String(unit.definition.data.pageId ?? unit.unitId));
   // The module workflow engine is proved by the workflows phase (prepareWorkflows, d1_196): its outcome is a unit of the report.
-  if (selected.some(item => item.layer === 'workflows')) {
+  // d1_347 s6: a `target` of the engine file selects no unit but is about the engine: its outcome (a named refusal included) is in the report.
+  if (selected.some(item => item.layer === 'workflows') || emitterTargetLayer(project, moduleName, run.target) === 'workflows') {
     const engine = await readUnitStatus(project, moduleName, 'workflows', 'engine');
     if (engine) units.push(engine);
   }
