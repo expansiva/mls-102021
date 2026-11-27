@@ -91,6 +91,15 @@ void test('d1_217 s2: the recorded route passes the gate and calls the usecase i
   assert.ok(requestGate(`${RECORDED}\nconst gone = await fetch('https://example.test');\n`, gate).some(item => item.includes('fetch')));
 });
 
+void test('d1_347 s1: a served route needs no runInTransaction when the platform opens the transaction (serveCm), and still needs it when it does not', async () => {
+  const loaded = await loadRequestContext(ctxOf(files()), unit());
+  const gate = { header: RECORDED.split('\n')[0], contractsInterface: loaded.contractsInterface, routes: loaded.routes, project: PROJECT, moduleName: MODULE, pageId: 'purchasing', waived: new Set<string>(), serveUses: loaded.serveUses };
+  const noTransaction = RECORDED.replace('ctx.data.moduleData.runInTransaction(async () => {', '(async () => {').replace('    });\n    return', '    })();\n    return');
+  assert.ok(requestGate(noTransaction, gate).some(item => item.includes('runInTransaction')), 'the model opens it: as before');
+  assert.ok(!requestGate(noTransaction, { ...gate, platformTransaction: true }).some(item => item.includes('runInTransaction')), 'the platform opens it');
+  assert.ok(requestGate(noTransaction, { ...gate, platformTransaction: true, serveUses: [] }).some(item => item.includes('runInTransaction')), 'only a served route is exempt');
+});
+
 void test('d1_217 s2: the typing of the answer is set by code and imports nothing for a type the file declares', async () => {
   const loaded = await loadRequestContext(ctxOf(files()), unit());
   const loose = RECORDED.replace(/export const requests: [\s\S]*? = \{/u, 'export const requests = {').replace("import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';\n", '');

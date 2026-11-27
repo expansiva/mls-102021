@@ -274,6 +274,18 @@ export function typeMemberNames(body: string): string[] | null {
 }
 
 /**
+ * d1_347: the receivers of a connection call in the file. The old ones are the port `gateway` / `<X>Gateway`; the platform client `cm(ctx)` (P:l1/server/layer_1_external/connections/cm) is
+ * either called in place (`cm(ctx).op(`) or held in a variable (`const client = cm(ctx)`). A gate that looks for the call looks through all of them.
+ */
+export function connectionReceivers(clean: string): string {
+  const held = [...clean.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*cm\s*\(/gu)].map(match => match[1].replace(/\$/gu, '\\$'));
+  return ['gateway', '[A-Za-z_$][\\w$]*Gateway', 'cm\\s*\\([^()]*\\)', ...held].join('|');
+}
+
+/** The members of the `ConnectionResult` the platform client returns (`cm(ctx).op()` never throws). */
+const CONNECTION_RESULT_MEMBERS = new Set(['ok', 'output', 'code', 'message', 'missing']);
+
+/**
  * d1_313: a field read from the answer of a gateway call that no member of the catalog's output type has: `'result' in identity`, `identity.reportedName`. The `in` form
  * compiles whatever the name is, and the usecase then fails at run time on every answer (updateTelegramBot threw 502 on every check).
  */
@@ -290,6 +302,20 @@ export function gatewayOutputFieldProblems(code: string, outputs: readonly M12Ga
       for (const match of clean.matchAll(new RegExp(`(?<![\\w$.])${variable.replace(/\$/gu, '\\$')}\\s*\\[\\s*['"]([A-Za-z_$][\\w$]*)['"]\\s*\\]`, 'gu'))) read.add(match[1]);
       for (const field of [...read].sort()) {
         if (!known.has(field)) problems.push(`GATEWAY_OUTPUT_FIELD: \`${variable}\` is the answer of \`gateway.${output.operationId}\`; its type has only ${[...known].map(name => `\`${name}\``).join(', ')}, and the file reads \`${field}\`. Read the fields the catalog type names (each member of a union is an answer the call can give).`);
+      }
+    }
+    // d1_347: the answer of `cm(ctx).<op>(…)` is a `ConnectionResult`: the output is under `.output`, and the result has only ok, output, code, message.
+    const results = [...clean.matchAll(new RegExp(`\\b(?:const|let)\\s+([A-Za-z_$][\\w$]*)(?:\\s*:[^=]+)?\\s*=\\s*await\\s+(?:${connectionReceivers(clean)})\\s*\\.${output.operationId}\\s*\\(`, 'gu'))].map(match => match[1]).filter(variable => !assigned.includes(variable));
+    for (const variable of new Set(results)) {
+      const name = variable.replace(/\$/gu, '\\$');
+      for (const match of clean.matchAll(new RegExp(`(?<![\\w$.])${name}\\s*\\??\\.([A-Za-z_$][\\w$]*)`, 'gu'))) {
+        if (!CONNECTION_RESULT_MEMBERS.has(match[1])) problems.push(`GATEWAY_RESULT_FIELD: \`${variable}\` is the \`ConnectionResult\` of \`cm(ctx).${output.operationId}\`: it has \`ok\`, \`output\`, \`code\` and \`message\`, and the file reads \`${variable}.${match[1]}\`. The answer of the operation is under \`${variable}.output\`.`);
+      }
+      const read = new Set<string>();
+      for (const match of clean.matchAll(new RegExp(`(?<![\\w$.])${name}\\s*\\??\\.output\\s*\\??\\.([A-Za-z_$][\\w$]*)`, 'gu'))) read.add(match[1]);
+      for (const match of clean.matchAll(new RegExp(`['"]([A-Za-z_$][\\w$]*)['"]\\s+in\\s+${name}\\s*\\.output\\b`, 'gu'))) read.add(match[1]);
+      for (const field of [...read].sort()) {
+        if (!known.has(field)) problems.push(`GATEWAY_OUTPUT_FIELD: \`${variable}.output\` is the answer of \`cm(ctx).${output.operationId}\`; its type has only ${[...known].map(name => `\`${name}\``).join(', ')}, and the file reads \`${field}\`.`);
       }
     }
   }
@@ -367,7 +393,7 @@ export function gatewayInputCastProblems(code: string, operations: readonly stri
   const clean = withoutComments(code);
   const problems: string[] = [];
   for (const operation of operations) {
-    for (const match of clean.matchAll(new RegExp(`\\b(?:gateway|[A-Za-z_$][\\w$]*Gateway)\\s*\\.${operation}\\s*\\(`, 'gu'))) {
+    for (const match of clean.matchAll(new RegExp(`(?<![\\w$.])(?:${connectionReceivers(clean)})\\s*\\.${operation}\\s*\\(`, 'gu'))) {
       let depth = 0;
       let argument = '';
       for (let at = (match.index ?? 0) + match[0].length; at < clean.length; at += 1) {
@@ -806,7 +832,7 @@ export function gatewayBypassProblems(code: string): string[] {
   if (/\bXMLHttpRequest\b/u.test(code)) names.add('XMLHttpRequest');
   if (names.size === 0) return [];
   const listed = [...names].map(name => `\`${name}\``).join(', ');
-  return [`GATEWAY_BYPASS: ${listed} reaches a connection outside its gateway. Resolve the gateway (\`resolveRepository<<Connection>Gateway>(ctx, '<Connection>Gateway')\`, imported from \`layer_1_external/adapters/integration/outbound.js\`) and call its method. Do not write HTTP.`];
+  return [`GATEWAY_BYPASS: ${listed} reaches a connection outside its gateway. For the cm connection the call is \`cm(ctx).<operation>(input)\` of the platform client (it returns a ConnectionResult, it never throws). Otherwise resolve the gateway (\`resolveRepository<<Connection>Gateway>(ctx, '<Connection>Gateway')\`, imported from \`layer_1_external/adapters/integration/outbound.js\`) and call its method. Do not write HTTP.`];
 }
 
 /**

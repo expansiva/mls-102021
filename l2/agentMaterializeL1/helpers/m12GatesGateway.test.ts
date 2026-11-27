@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { gatewayBypassProblems, repositoryProblems, undeclaredInputProblems, usecaseGate } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { consumerCallProblems, gatewayBypassProblems, gatewayInputCastProblems, gatewayOutputFieldProblems, repositoryProblems, undeclaredInputProblems, usecaseGate } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 
 const HEADER = '/// <mls fileReference="_102099_/l1/fila/layer_2_application/usecases/readItem.ts" enhancement="_blank"/>';
 const GATE = { header: HEADER, functionName: 'readItem', project: 102099, moduleName: 'fila', ruleIds: [] as string[], ports: ['ItemRepository', 'CmGateway'], gateways: ['CmGateway'] };
@@ -70,4 +70,37 @@ test('a comment that ends with `input.` before a code line is not a read of an u
   const problems = undeclaredInputProblems(real);
   assert.equal(problems.length, 1, problems.join('\n'));
   assert.ok(problems[0].includes('`input.zzz`'), problems[0]);
+});
+
+// d1_347 s1: the platform client `cm(ctx)` is read by the gates that read `gateway.<op>(`.
+const CM_USECASE = file([
+  "import { cm } from '/_102034_/l1/server/layer_1_external/connections/cm/index.js';",
+  'export async function readItem(input: { id: string }, ctx: RequestContext) {',
+  '  const answer = await cm(ctx).readAgent({ agentId: input.id });',
+  '  if (!answer.ok) throw new Error(answer.message);',
+  '  return answer.output.name;',
+  '}',
+].join('\n'));
+
+void test('d1_347: the call of `cm(ctx).<op>(` is the call the def asks for, held in a variable or not', () => {
+  const calls = [{ connectionId: 'cm', operationId: 'readAgent' }];
+  assert.deepEqual(consumerCallProblems(CM_USECASE, calls), []);
+  const held = CM_USECASE.replace('await cm(ctx).readAgent(', 'await client.readAgent(').replace('  const answer', '  const client = cm(ctx);\n  const answer');
+  assert.deepEqual(consumerCallProblems(held, calls), []);
+  assert.equal(consumerCallProblems(file('export async function readItem() { return 1; }'), calls).length, 1);
+});
+
+void test('d1_347: the answer of `cm(ctx).<op>` is a ConnectionResult: the output is under `.output`, and a field of the output that the type does not have is named', () => {
+  const outputs = [{ operationId: 'readAgent', fields: ['agentId', 'name'] }];
+  assert.deepEqual(gatewayOutputFieldProblems(CM_USECASE, outputs as never), []);
+  const wrong = CM_USECASE.replace('answer.output.name', 'answer.output.title');
+  assert.match(gatewayOutputFieldProblems(wrong, outputs as never).join(' '), /GATEWAY_OUTPUT_FIELD: `answer\.output` is the answer of `cm\(ctx\)\.readAgent`.*reads `title`/u);
+  const flat = CM_USECASE.replace('answer.output.name', 'answer.name');
+  assert.match(gatewayOutputFieldProblems(flat, outputs as never).join(' '), /GATEWAY_RESULT_FIELD: `answer` is the `ConnectionResult`.*reads `answer\.name`/u);
+});
+
+void test('d1_347: a cast of the argument of `cm(ctx).<op>(` is refused like the one of a gateway', () => {
+  const cast = CM_USECASE.replace('{ agentId: input.id }', '{ agentId: input.id } as ReadInput');
+  assert.ok(gatewayInputCastProblems(cast, ['readAgent']).length > 0);
+  assert.deepEqual(gatewayInputCastProblems(CM_USECASE, ['readAgent']), []);
 });
