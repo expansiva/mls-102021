@@ -3,22 +3,56 @@
   "note": "d1_336: the seed has no open conversation of an active bot (the open conversations point at bots that are not configured, deactivated or paused), and the process refuses before it reaches the outside system. These scenarios put the store in the state a person leaves it in, by the routes of the module, before the arrival.",
   "scenarios": [
     {
+      "id": "deliver-active-bot",
+      "row": 5,
+      "steps": [],
+      "arrival": {
+        "route": "telegram.telegram.messageArrived",
+        "variantIncludes": "message.text"
+      }
+    },
+    {
       "id": "send-open-conversation-active-bot",
       "row": 3,
-      "steps": [{ "route": "telegram.bots.resumeBot", "input": { "id": "<seed:TelegramBot.id>", "version": 1 } }],
-      "arrival": { "route": "telegram.cm.sendChannelMessage", "variant": "messageRef+text+to.conversationRef+writtenAt" }
+      "steps": [
+        {
+          "route": "telegram.bots.resumeBot",
+          "input": {
+            "id": "<seed:TelegramBot.id>",
+            "version": 1
+          }
+        }
+      ],
+      "arrival": {
+        "route": "telegram.cm.sendChannelMessage",
+        "variant": "messageRef+text+to.conversationRef+writtenAt"
+      }
     },
     {
       "id": "disable-bot-active",
       "row": 3,
-      "steps": [{ "route": "telegram.bots.resumeBot", "input": { "id": "<seed:TelegramBot.id>", "version": 1 } }],
-      "arrival": { "route": "telegram.cm.disableChannel", "variant": "reason+target.botRef" }
+      "steps": [
+        {
+          "route": "telegram.bots.resumeBot",
+          "input": {
+            "id": "<seed:TelegramBot.id>",
+            "version": 1
+          }
+        }
+      ],
+      "arrival": {
+        "route": "telegram.cm.disableChannel",
+        "variant": "reason+target.botRef"
+      }
     },
     {
       "id": "identity-open-conversation",
       "row": 3,
       "steps": [],
-      "arrival": { "route": "telegram.cm.setChannelConversationIdentity", "variant": "conversationRef+displayName+identity.email+since" }
+      "arrival": {
+        "route": "telegram.cm.setChannelConversationIdentity",
+        "variant": "conversationRef+displayName+identity.email+since"
+      }
     }
   ]
 }

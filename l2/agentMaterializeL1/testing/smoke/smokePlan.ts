@@ -8,6 +8,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 
+import { moduleAdapterIds } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokePort.js';
 import { hasUnresolved, sampleOf, typeNodeOf, typeTableOf, type TypeTable } from '/_102021_/l2/agentMaterializeL1/testing/smoke/typeModel.js';
 
 export interface SmokeRoute {
@@ -41,6 +42,8 @@ export interface SmokeGatewayMethod {
 export interface SmokeGateway {
   name: string;
   methods: SmokeGatewayMethod[];
+  /** d1_336: the module declares this system and writes its adapter: in the failure pass the REAL gateway and adapter run, on an HTTP 401 with a body. */
+  real?: boolean;
 }
 
 export interface SmokePlan {
@@ -143,7 +146,7 @@ function seedTargets(tree: string, module: string, pageId: string): Map<string, 
 }
 
 /** The gateways of `outbound.ts` with the answers made from the catalog types the file imports. */
-function gatewaysOf(tree: string, project: number, module: string, base: string): SmokeGateway[] {
+function gatewaysOf(tree: string, project: number, module: string, base: string, adapterIds: readonly string[] = []): SmokeGateway[] {
   const file = path.join(tree, 'l1', module, 'layer_1_external', 'adapters', 'integration', 'outbound.ts');
   const source = readIf(file);
   if (!source) return [];
@@ -160,12 +163,12 @@ function gatewaysOf(tree: string, project: number, module: string, base: string)
     for (const member of statement.members) {
       if (!ts.isMethodSignature(member) || !ts.isIdentifier(member.name) || !member.type || !ts.isTypeReferenceNode(member.type) || !member.type.typeArguments?.[0]) continue;
       const output = member.type.typeArguments[0];
-      const marked = (flag: 'success' | 'failure') => sampleOf(output, table, { prefer: flag });
+      const marked = (flag: 'success' | 'failure') => sampleOf(output, table, { prefer: flag, optional: true, filled: true });
       const success = marked('success');
       const failure = marked('failure');
       methods.push({ name: member.name.text, ...(hasUnresolved(output, table) ? { unresolved: true } : {}), success, failure: JSON.stringify(failure) === JSON.stringify(success) ? null : failure, outputType: output.getText(parsed) });
     }
-    gateways.push({ name: statement.name.text, methods });
+    gateways.push({ name: statement.name.text, methods, ...(adapterIds.some(id => `${id.charAt(0).toUpperCase()}${id.slice(1)}Gateway` === statement.name.text) ? { real: true } : {}) });
   }
   return gateways;
 }
@@ -270,5 +273,5 @@ export function planSmoke(tree: string, project: number, module: string, base: s
   const arrivals = arrivalRoutes(tree, module, base);
   const registered = readIf(path.join(tree, 'l1', module, 'layer_1_external', 'adapters', 'persistence', 'registerRepositories.ts')) ?? '';
   const repositories = [...registered.matchAll(/registerRepository\(\s*['"](\w+Repository)['"]/gu)].map(match => match[1]);
-  return { module, routes: [...routes, ...arrivals.routes], gateways: gatewaysOf(tree, project, module, base), repositories, typeSources: { ...typeSources, ...arrivals.typeSources } };
+  return { module, routes: [...routes, ...arrivals.routes], gateways: gatewaysOf(tree, project, module, base, moduleAdapterIds(tree, module)), repositories, typeSources: { ...typeSources, ...arrivals.typeSources } };
 }

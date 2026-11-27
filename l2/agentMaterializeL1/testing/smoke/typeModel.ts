@@ -78,7 +78,7 @@ export function hasUnresolved(node: ts.TypeNode, table: TypeTable, seen: Readonl
 }
 
 /** The smallest valid value. `prefer`: for a union, the member that has a literal `true` (success) or `false` (failure) field, when asked. `variant`: otherwise the nth member of every union (d1_330: each way to call an arrival). */
-export function sampleOf(node: ts.TypeNode, table: TypeTable, options: { prefer?: 'success' | 'failure'; variant?: number; optional?: boolean } = {}, seen: ReadonlySet<string> = new Set(), depth = 0): unknown {
+export function sampleOf(node: ts.TypeNode, table: TypeTable, options: { prefer?: 'success' | 'failure'; variant?: number; optional?: boolean; filled?: boolean } = {}, seen: ReadonlySet<string> = new Set(), depth = 0): unknown {
   if (depth > 8) return undefined;
   const { node: type, seen: next } = resolved(node, table, seen);
   switch (type.kind) {
@@ -99,10 +99,10 @@ export function sampleOf(node: ts.TypeNode, table: TypeTable, options: { prefer?
     if (literal.kind === ts.SyntaxKind.FalseKeyword) return false;
     return null;
   }
-  if (ts.isArrayTypeNode(type)) return [];
+  if (ts.isArrayTypeNode(type)) return options.filled ? [sampleOf(type.elementType, table, options, next, depth + 1)] : [];
   if (ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
     const name = type.typeName.text;
-    if (name === 'Array' || name === 'ReadonlyArray') return [];
+    if (name === 'Array' || name === 'ReadonlyArray') return options.filled && type.typeArguments?.[0] ? [sampleOf(type.typeArguments[0], table, options, next, depth + 1)] : [];
     if (name === 'Record') return {};
     if (name === 'Partial' || name === 'Readonly') return type.typeArguments?.[0] ? sampleOf(type.typeArguments[0], table, options, next, depth + 1) : {};
     return {};

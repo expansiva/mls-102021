@@ -41,10 +41,10 @@ export function processesText(report: SmokeReport): string[] {
     const steps = (item.port ?? []).filter(line => !line.startsWith('find')).length;
     lines.push(`| ${item.pass} | ${item.route}${item.variant ? ` [${item.variant}]` : ''} | ${setup} | ${item.verdict} ${item.code ?? ''} ${(item.message ?? '').slice(0, 60)} | ${item.second ? `${item.second.verdict} ${item.second.code ?? ''}` : '-'} | ${calls} | ${steps} step call(s) | ${rowsText(item.rows)} |`);
   }
-  const thrown = report.results.filter(item => item.stack);
+  const thrown = report.results.filter(item => item.stack || (item.thrown ?? []).length > 0);
   if (thrown.length) {
     lines.push('', '### Stacks of what threw', '');
-    for (const item of thrown) lines.push(`${item.pass} ${item.route}${item.variant ? ` [${item.variant}]` : ''}: ${item.code ?? ''}`, '```', (item.stack ?? '').split('\n').slice(0, 12).join('\n'), '```');
+    for (const item of thrown) lines.push(`${item.pass} ${item.route}${item.variant ? ` [${item.variant}]` : ''}: ${item.code ?? ''}`, '```', [item.stack ?? '', ...(item.thrown ?? []).map(entry => `thrown below the gateway (${entry.connection}.${entry.operation}):\n${entry.stack}`)].filter(Boolean).join('\n').split('\n').slice(0, 24).join('\n'), '```');
   }
   return lines;
 }

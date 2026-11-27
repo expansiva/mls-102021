@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { installMemoryPort } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokePort.js';
+import { installConnectionShim, installMemoryPort } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokePort.js';
 import { planSmoke, type SmokePlan } from '/_102021_/l2/agentMaterializeL1/testing/smoke/smokePlan.js';
 import { conformsTo, typeNodeOf, typeTableOf } from '/_102021_/l2/agentMaterializeL1/testing/smoke/typeModel.js';
 
@@ -35,8 +35,12 @@ export interface SmokeCaseResult {
   /** d1_336, arrivals: what the occurrence port was asked, and the rows of each repository of the module before, after the first and after the second delivery. */
   port?: string[];
   rows?: Record<string, number[]>;
+  /** d1_336: the last row written to each repository that changed (what the process left). */
+  written?: Record<string, unknown[]>;
   /** d1_336, scenarios: the steps that left the store in the state, and what each answered. */
   setup?: Array<{ route: string; verdict: string; status: number | null; code: string | null; message: string }>;
+  /** d1_336: what the adapter or the engine threw below the gateway (the platform caller turns it into `unavailable`), with the stack. */
+  thrown?: Array<{ connection: string; operation: string; stack: string }>;
 }
 
 export interface SmokeReport {
@@ -48,6 +52,8 @@ export interface SmokeReport {
   seconds: number;
   /** d1_336: the processes of the module ran on the occurrence port in memory (the engine of the copy was replaced). */
   memoryPort?: boolean;
+  /** d1_336: the gateways of the systems the module declares ran through its real adapter (failure pass). */
+  connectionShim?: boolean;
 }
 
 const REGISTER = `import { readdirSync, statSync, existsSync } from 'node:fs';
@@ -104,9 +110,10 @@ export async function resolve(specifier, context, nextResolve) {
 }
 `;
 
-function runnerSource(project: number, module: string, controllers: readonly string[], parts: { register: boolean; seeds: boolean }): string {
+function runnerSource(project: number, module: string, controllers: readonly string[], parts: { register: boolean; seeds: boolean; outbound: boolean }): string {
   const imports = controllers.map((name, index) => `import { routes as routes${index} } from '/_${project}_/l1/${module}/layer_1_external/adapters/http/controllers/${name}.js';`).join('\n');
   return `import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+${parts.outbound ? `import * as outbound from '/_${project}_/l1/${module}/layer_1_external/adapters/integration/outbound.js';` : 'const outbound = {};'}
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
 import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
 import { registerRepository, resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
@@ -160,6 +167,19 @@ function stubFor(gateway, pass) {
   return stub;
 }
 
+// A gateway of a system the module declares runs for real (its gateway, the connection shim and its adapter, on an HTTP 401 with a body) in the failure pass; every other is a stub.
+function useGateways(plan, pass) {
+  for (const gateway of plan.gateways) {
+    const factory = gateway.real && pass === 'failure' ? outbound['create' + gateway.name] : undefined;
+    registerRepository(gateway.name, factory ? ctx => factory(ctx) : () => stubFor(gateway, pass));
+  }
+}
+
+function resetShim() {
+  for (const key of Object.keys(globalThis.__smokeHttp ?? {})) delete globalThis.__smokeHttp[key];
+  if (globalThis.__smokeThrown) globalThis.__smokeThrown.length = 0;
+}
+
 let counter = 0;
 
 function describe(error) {
@@ -179,10 +199,12 @@ async function call(route, item, ctx, datasets, session, at) {
   }
 }
 
+let lastRows = {};
 async function rowCounts(plan, ctx) {
   const out = {};
+  lastRows = {};
   for (const name of plan.repositories ?? []) {
-    try { const repository = resolveRepository(ctx, name); const rows = await repository.list({}); out[name] = Array.isArray(rows) ? rows.length : -1; } catch { out[name] = -1; }
+    try { const repository = resolveRepository(ctx, name); const rows = await repository.list({}); out[name] = Array.isArray(rows) ? rows.length : -1; if (Array.isArray(rows)) lastRows[name] = rows.slice(-2); } catch { out[name] = -1; }
   }
   return out;
 }
@@ -203,8 +225,9 @@ async function main() {
       const rows = rowsOf(base);
       for (let at = 0; at < rows; at += 1) {
         const item = rows > 1 ? { ...base, variant: (base.variant ? base.variant + ' ' : '') + '@row' + at } : base;
-        for (const gateway of plan.gateways) registerRepository(gateway.name, () => stubFor(gateway, pass));
+        useGateways(plan, pass);
         for (const key of Object.keys(calls)) delete calls[key];
+        resetShim();
         globalThis.__smokePort?.reset();
         const scope = item.actor ? [plan.module + ':' + item.actor] : [];
         const person = { mdmId: '00000000-0000-4000-8000-000000000001', name: 'Smoke Person' };
@@ -220,13 +243,14 @@ async function main() {
         const first = await call(route, item, ctx, datasets, session, at);
         let line = { route: item.route, pass, kind: item.kind, variant: item.variant ?? null, ...first };
         if (item.arrival) {
-          const afterFirst = { ...calls };
+          const afterFirst = { ...calls, ...Object.fromEntries(Object.entries(globalThis.__smokeHttp ?? {}).map(([name, count]) => ['http.' + name, count])) };
           const rowsFirst = await rowCounts(plan, ctx);
           // The sender retries the same message (same idempotency key) on the same store: what the process does the second time.
           const second = await call(route, item, ctx, datasets, session, at);
           const rowsSecond = await rowCounts(plan, ctx);
-          const names = [...new Set([...Object.keys(afterFirst), ...Object.keys(calls)])];
-          line = { ...line, second: { verdict: second.verdict, status: second.status, code: second.code, message: second.message, stack: second.stack }, calls: Object.fromEntries(names.map(name => [name, [afterFirst[name] ?? 0, calls[name] ?? 0]])), port: globalThis.__smokePort?.log() ?? [], rows: Object.fromEntries(Object.keys(rowsSecond).map(name => [name, [before?.[name] ?? 0, rowsFirst[name], rowsSecond[name]]])) };
+          const callsNow = { ...calls, ...Object.fromEntries(Object.entries(globalThis.__smokeHttp ?? {}).map(([name, count]) => ['http.' + name, count])) };
+          const names = [...new Set([...Object.keys(afterFirst), ...Object.keys(callsNow)])];
+          line = { ...line, second: { verdict: second.verdict, status: second.status, code: second.code, message: second.message, stack: second.stack }, calls: Object.fromEntries(names.map(name => [name, [afterFirst[name] ?? 0, callsNow[name] ?? 0]])), thrown: [...(globalThis.__smokeThrown ?? [])], port: globalThis.__smokePort?.log() ?? [], rows: Object.fromEntries(Object.keys(rowsSecond).map(name => [name, [before?.[name] ?? 0, rowsFirst[name], rowsSecond[name]]])), written: Object.fromEntries(Object.entries(lastRows).filter(([name]) => rowsSecond[name] !== (before?.[name] ?? 0)).map(([name, rows]) => [name, JSON.parse(JSON.stringify(rows)).slice(-1)])) };
         }
         process.stdout.write('RESULT ' + JSON.stringify(line) + '\\n');
       }
@@ -235,13 +259,14 @@ async function main() {
   // Scenarios (d1_336): steps by the routes of the module that leave the store in a state, then the arrival, twice, as above.
   for (const pass of ['happy', 'failure']) {
     for (const scenario of plan.scenarios ?? []) {
-      const base = plan.routes.find(item => item.arrival && item.route === scenario.arrival.route && (!scenario.arrival.variant || (item.variant ?? '') === scenario.arrival.variant));
+      const base = plan.routes.find(item => item.arrival && item.route === scenario.arrival.route && (!scenario.arrival.variant || (item.variant ?? '') === scenario.arrival.variant) && (!scenario.arrival.variantIncludes || (item.variant ?? '').includes(scenario.arrival.variantIncludes)));
       const route = base && ROUTES.find(candidate => candidate.key === base.route);
-      const label = (scenario.arrival.variant ? scenario.arrival.variant + ' ' : '') + '[scenario:' + scenario.id + ']';
+      const label = (base?.variant ? base.variant + ' ' : '') + '[scenario:' + scenario.id + ']';
       if (!base || !route) { process.stdout.write('RESULT ' + JSON.stringify({ route: scenario.arrival.route, pass, kind: 'arrival', variant: label, verdict: 'error', status: null, code: 'SCENARIO_NOT_PLANNED', message: 'the arrival of the scenario is not in the plan', output: null }) + '\\n'); continue; }
       const at = scenario.row ?? 0;
-      for (const gateway of plan.gateways) registerRepository(gateway.name, () => stubFor(gateway, pass));
+      useGateways(plan, pass);
       for (const key of Object.keys(calls)) delete calls[key];
+      resetShim();
       globalThis.__smokePort?.reset();
       const person = { mdmId: '00000000-0000-4000-8000-000000000001', name: 'Smoke Person' };
       const sessionOf = actor => { const scope = actor ? [plan.module + ':' + actor] : []; return { actorId: actor || undefined, actorScope: scope, actorSession: { actorId: actor || undefined, scope }, person, organizationId: '00000000-0000-4000-8000-0000000000aa' }; };
@@ -261,12 +286,13 @@ async function main() {
       const session = sessionOf('');
       const before = await rowCounts(plan, ctx);
       const first = await call(route, base, ctx, datasets, session, at);
-      const afterFirst = { ...calls };
+      const afterFirst = { ...calls, ...Object.fromEntries(Object.entries(globalThis.__smokeHttp ?? {}).map(([name, count]) => ['http.' + name, count])) };
       const rowsFirst = await rowCounts(plan, ctx);
       const second = await call(route, base, ctx, datasets, session, at);
       const rowsSecond = await rowCounts(plan, ctx);
-      const names = [...new Set([...Object.keys(afterFirst), ...Object.keys(calls)])];
-      process.stdout.write('RESULT ' + JSON.stringify({ route: base.route, pass, kind: 'arrival', variant: label, ...first, setup, second: { verdict: second.verdict, status: second.status, code: second.code, message: second.message, stack: second.stack }, calls: Object.fromEntries(names.map(name => [name, [afterFirst[name] ?? 0, calls[name] ?? 0]])), port: globalThis.__smokePort?.log() ?? [], rows: Object.fromEntries(Object.keys(rowsSecond).map(name => [name, [before[name] ?? 0, rowsFirst[name], rowsSecond[name]]])) }) + '\\n');
+      const callsNow = { ...calls, ...Object.fromEntries(Object.entries(globalThis.__smokeHttp ?? {}).map(([name, count]) => ['http.' + name, count])) };
+      const names = [...new Set([...Object.keys(afterFirst), ...Object.keys(callsNow)])];
+      process.stdout.write('RESULT ' + JSON.stringify({ route: base.route, pass, kind: 'arrival', variant: label, ...first, setup, second: { verdict: second.verdict, status: second.status, code: second.code, message: second.message, stack: second.stack }, calls: Object.fromEntries(names.map(name => [name, [afterFirst[name] ?? 0, callsNow[name] ?? 0]])), thrown: [...(globalThis.__smokeThrown ?? [])], port: globalThis.__smokePort?.log() ?? [], rows: Object.fromEntries(Object.keys(rowsSecond).map(name => [name, [before[name] ?? 0, rowsFirst[name], rowsSecond[name]]])), written: Object.fromEntries(Object.entries(lastRows).filter(([name]) => rowsSecond[name] !== (before[name] ?? 0)).map(([name, rows]) => [name, JSON.parse(JSON.stringify(rows)).slice(-1)])) }) + '\\n');
     }
   }
 }
@@ -312,12 +338,13 @@ export function runSmoke(input: { tree: string; project: number; module: string;
   mkdirSync(input.workDir, { recursive: true });
   // The copy of the tree gets the occurrence port in memory in the place of the production one (d1_336); the repository is not touched.
   const memoryPort = installMemoryPort(input.tree, input.project, input.module);
+  const connectionShim = installConnectionShim(input.tree, input.project, input.module);
   const controllersDir = path.join(input.tree, 'l1', input.module, 'layer_1_external', 'adapters', 'http', 'controllers');
   const controllers = existsSync(controllersDir) ? readdirSync(controllersDir).filter(name => name.endsWith('.ts') && !name.endsWith('.defs.ts') && !name.endsWith('.test.ts')).map(name => name.replace(/\.ts$/u, '')).sort() : [];
   writeFileSync(path.join(input.workDir, 'register.mjs'), REGISTER);
   writeFileSync(path.join(input.workDir, 'hooks.mjs'), HOOKS);
   const persistence = path.join(input.tree, 'l1', input.module, 'layer_1_external', 'adapters', 'persistence');
-  writeFileSync(path.join(input.workDir, 'run.ts'), runnerSource(input.project, input.module, controllers, { register: existsSync(path.join(persistence, 'registerRepositories.ts')), seeds: existsSync(path.join(persistence, 'seeds.ts')) }));
+  writeFileSync(path.join(input.workDir, 'run.ts'), runnerSource(input.project, input.module, controllers, { outbound: existsSync(path.join(input.tree, 'l1', input.module, 'layer_1_external', 'adapters', 'integration', 'outbound.ts')), register: existsSync(path.join(persistence, 'registerRepositories.ts')), seeds: existsSync(path.join(persistence, 'seeds.ts')) }));
   writeFileSync(path.join(input.workDir, 'plan.json'), JSON.stringify({ module: plan.module, routes: plan.routes, gateways: plan.gateways, repositories: plan.repositories, scenarios: scenariosOf(input.module) }));
   if (controllers.length === 0 || plan.routes.length === 0) return { module: input.module, routes: plan.routes.length, executed: 0, results: [], raw: controllers.length === 0 ? 'no controllers in the module' : 'no routes in the contracts', seconds: Math.round((Date.now() - started) / 100) / 10 };
   const run = spawnSync(path.join(input.base, 'node_modules/.bin/tsx'), ['--import', path.join(input.workDir, 'register.mjs'), '--import', path.join(input.base, 'test/setup-l2.ts'), path.join(input.workDir, 'run.ts'), path.join(input.workDir, 'plan.json')], {
@@ -339,5 +366,5 @@ export function runSmoke(input: { tree: string; project: number; module: string;
     const failed = line.verdict === 'failed' || line.status === 501 || line.code === 'NOT_IMPLEMENTED';
     return { ...line, verdict: failed ? 'failed' as const : line.verdict, conforms };
   });
-  return { module: input.module, routes: plan.routes.length, executed: results.length, results, raw: raw.slice(0, 20000), seconds: Math.round((Date.now() - started) / 100) / 10, memoryPort };
+  return { module: input.module, routes: plan.routes.length, executed: results.length, results, raw: raw.slice(0, 20000), seconds: Math.round((Date.now() - started) / 100) / 10, memoryPort, connectionShim };
 }
