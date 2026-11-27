@@ -110,7 +110,7 @@ export async function readSmokeState(project: number, moduleName: string): Promi
 }
 
 /** The report of one module from the receipts that exist (`finalize80` and `{"report":true}`): reads, never generates. */
-export async function writeModuleReport(run: M12RunArgs, selected: readonly M12Unit[], problems: ReadonlyArray<{ defRef: string; code: string; detail: string }>): Promise<{ report: M12Report }> {
+export async function writeModuleReport(run: M12RunArgs, selected: readonly M12Unit[], problems: Array<{ defRef: string; code: string; detail: string }>): Promise<{ report: M12Report }> {
   const { project, module: moduleName } = run;
   const units: M12UnitStatus[] = [];
   const missing: string[] = [];
