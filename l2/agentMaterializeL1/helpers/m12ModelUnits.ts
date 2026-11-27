@@ -186,6 +186,8 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
           let move = await dragOf(unit, prior, parts);
           // A scope run never rewrites a file that exists (it reuses it); here it only compiles it: the def or the receipt moving does not send it to the model from scratch, the compiler decides (kept, or repaired).
           if (againstEngine) move = 'deps';
+          // d1_349 s4: a target without "force" also checks a file whose inputs did not move: the gate of now may refuse a file an older gate let pass (the compiler and the gate decide: kept, or repaired). Nothing is generated from scratch for it.
+          if (move === 'same' && run.target) move = 'deps';
           // d1_331: the operator asserts that the def and the L4 did not move; only a receipt without halves (stamping was not possible) is taken so.
           if (move === 'other' && run.asserted && await assertedOk(unit, prior)) { move = 'deps'; asserted = true; }
           if (move === 'other') decision = { kind: 'generate' };

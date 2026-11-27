@@ -25,6 +25,7 @@ import { usecaseInputsOf, type M12InputField } from '/_102021_/l2/agentMateriali
 import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import { stepCallProblems, stepCallsOf, withUsecases, type StepCall } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/stepCalls.js';
 import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/engineImports.js';
+import { callerModuleProblems } from '/_102021_/l2/agentMaterializeL1/helpers/callerModule.js';
 import { neverReturnsProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/neverReturns.js';
 import { enumFieldValues } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
 import { processReceives } from '/_102021_/l2/agentMaterializeL1/helpers/workflowReach.js';
@@ -870,6 +871,7 @@ export function workflowGate(code: string, input: { siblingImports?: readonly st
   if (/\bfetch\s*\(/u.test(code)) problems.push('No fetch().');
   if (/\blocalStorage\b|\bsessionStorage\b/u.test(code)) problems.push('No browser storage.');
   if (/catch\s*(\([^)]*\))?\s*\{\s*\}/u.test(code)) problems.push('No empty catch: an error names its cause.');
+  problems.push(...callerModuleProblems(code, input.moduleName));
   return problems;
 }
 

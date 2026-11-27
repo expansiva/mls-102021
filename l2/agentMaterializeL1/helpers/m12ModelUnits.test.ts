@@ -385,6 +385,15 @@ void test('d1_329: a target, only a dependency moved, the file does not compile:
   assert.equal(await readOptional(usecaseTs), broken);
 });
 
+void test('d1_349 s4: a target also checks a file whose inputs did not move: the gate of now refuses it (repair), or it is kept', async () => {
+  const broken = 'export const openItem = 1; // FORCE_COMPILE_ERROR\n';
+  await seedReceipt(broken, 'none');
+  assert.deepEqual(workersOf(await dispatchRun(BY_TARGET)), [{ project: PROJECT, module: MODULE, unitId: 'openItem', attempt: 2, force: true }]);
+  await seedReceipt(KEPT_TEXT, 'none');
+  assert.deepEqual(workersOf(await dispatchRun(BY_TARGET)), []);
+  assert.equal(await readOptional(usecaseTs), KEPT_TEXT);
+});
+
 void test('d1_329: a target, the def side moved, no halves, or "force": true: generated as before', async () => {
   for (const change of ['own', 'noParts'] as const) {
     await seedReceipt(KEPT_TEXT, change);

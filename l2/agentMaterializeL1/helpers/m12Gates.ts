@@ -3,6 +3,7 @@
 // Deterministic gates on what a model returns, before anything is written. Each problem is one line the
 // repair prompt can act on.
 
+import { callerModuleProblems } from '/_102021_/l2/agentMaterializeL1/helpers/callerModule.js';
 import { isCatalogImport } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { maskCode } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
 import { codeOnly, withoutComments } from '/_102021_/l2/agentMaterializeL1/helpers/codeTokens.js';
@@ -1082,6 +1083,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   else if (usecaseParameterCount(code, input.functionName) !== 2) {
     problems.push(`\`${input.functionName}\` takes exactly two parameters, \`(input, ctx: RequestContext)\`: every usecase of the module is called that way. Resolve repositories inside with \`resolveRepository<Port>(ctx, '<Port>')\`; drop the \`ports\` parameter of the scaffold.`);
   }
+  problems.push(...callerModuleProblems(code, input.moduleName));
   const ownModule = `/_${input.project}_/l1/${input.moduleName}/`;
   for (const specifier of importSpecifiers(code)) {
     if (!specifier.startsWith('/') || !specifier.endsWith('.js')) {
