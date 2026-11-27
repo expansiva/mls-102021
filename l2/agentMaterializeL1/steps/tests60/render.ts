@@ -61,3 +61,17 @@ export function renderPageTests(input: { file: M12FileInfo; moduleName: string; 
     '',
   ].join('\n');
 }
+
+/**
+ * d1_347 s6 (the essential of d1_334): the cases of a page test file this generator wrote (`export const pageTests = {...} as const;`), read back as they are. Null when the text is not that shape.
+ */
+export function readPageTestCases(text: string): M12TestCase[] | null {
+  const match = /export const pageTests = (\{[\s\S]*\}) as const;/u.exec(text);
+  if (!match) return null;
+  try {
+    const data = JSON.parse(match[1]) as { cases?: unknown };
+    return normalizeTestCases(data.cases);
+  } catch {
+    return null;
+  }
+}

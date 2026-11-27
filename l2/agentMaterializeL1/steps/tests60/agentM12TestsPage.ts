@@ -10,7 +10,8 @@ import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { parseM12WorkerArgs, recordM12ArgsRefusal, repairOrGiveUp, type M12WorkerArgs } from '/_102021_/l2/agentMaterializeL1/helpers/m12Worker.js';
 import { M12_TESTS_SCHEMA, M12_TESTS_TOOL, SERVE_ROUTE_NO_PAGE_TEST, loadTestsContext } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import { normalizeTestCases, renderPageTests } from '/_102021_/l2/agentMaterializeL1/steps/tests60/render.js';
-import { testsInputHash } from '/_102021_/l2/agentMaterializeL1/steps/tests60/agentM12Tests.js';
+import { testsInputParts } from '/_102021_/l2/agentMaterializeL1/steps/tests60/agentM12Tests.js';
+import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: M12_TESTS_PAGE_AGENT_NAME, agentProject: 102021, agentFolder: 'agentMaterializeL1/steps/tests60', agentDescription: 'Propose the monitor cases of one page backend', visibility: 'private', beforePromptStep, afterPromptStep };
@@ -83,7 +84,8 @@ async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCon
       throw error;
     }
     const controllerStatus = await readUnitStatus(args.project, args.module, 'controllers', controller.unitId);
-    inputHash = await testsInputHash(data.inputs, controllerStatus?.outputs ?? {});
+    const parts = await testsInputParts(data.inputs, controllerStatus?.outputs ?? {});
+    inputHash = parts.hash;
     const payload = (m12ToolPayload(step, M12_TESTS_TOOL) ?? {}) as { cases?: unknown };
     await writeDraft(args.project, args.module, 'tests', args.unitId, DRAFT, JSON.stringify(payload.cases ?? null, null, 2));
     let cases;
@@ -92,7 +94,7 @@ async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCon
     if (problems.length) return fail(problems);
     const file = pageTestsFile(args.project, args.module, data.pageId);
     const hash = await writeText(file, renderPageTests({ file, moduleName: args.module, pageId: data.pageId, actor: data.actor, cases }));
-    await writeUnitStatus(args.project, args.module, { layer: 'tests', unitId: args.unitId, defRef: '', status: 'done', code: '', attempt: args.attempt, diagnostic: '', inputHash, outputs: { [fileRef(file)]: hash } });
+    await writeUnitStatus(args.project, args.module, { layer: 'tests', unitId: args.unitId, defRef: '', status: 'done', code: '', attempt: args.attempt, diagnostic: '', inputHash, ...(stage2.on ? { inputParts: { own: parts.own, deps: parts.deps } } : {}), outputs: { [fileRef(file)]: hash } });
     return [updateM12Status(context, parentStep, step, hookSequential, 'completed', `Monitor tests ${data.pageId}: ${fileRef(file)} (${cases.length} cases)`, true)];
   } catch (error) {
     return fail([errorText(error)]);

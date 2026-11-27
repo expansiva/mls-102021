@@ -6,8 +6,10 @@
 
 import { SERVE_ROUTE_NO_PAGE_TEST, loadTestsContext } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import type { M12Request } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
-import { reuseDecision } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
-import { pageTestsFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { readOptional, readUnitStatus, reuseDecision } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
+import { testsInputParts, testsKeepPlan } from '/_102021_/l2/agentMaterializeL1/steps/tests60/agentM12Tests.js';
+import { fileRef, pageTestsFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { requestModules, storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 
@@ -38,9 +40,17 @@ export async function pendingModelWork(project: number, moduleName: string, requ
     if (unit.layer === 'controllers') {
       const pageId = String(unit.definition.data.pageId ?? unit.unitId);
       try {
-        await loadTestsContext(ctx, unit);
+        const data = await loadTestsContext(ctx, unit);
         const onDisk = (await reuseDecision([pageTestsFile(project, moduleName, pageId)], false)).kind === 'reuse';
         // A tests page is written again from scratch (no keep): a `target` or `force` on it, or no file.
+        if (stage2.on && onDisk && request.target && !scratch) {
+          // d1_347 s6: in stage 2 a target keeps the cases of a page whose receipt has both halves and whose prompt did not move (the gate decides: kept, or repaired with a call).
+          const prior = await readUnitStatus(project, moduleName, 'tests', pageId);
+          const ready = await readUnitStatus(project, moduleName, 'controllers', unit.unitId);
+          const parts = await testsInputParts(data.inputs, ready?.outputs ?? {});
+          const file = pageTestsFile(project, moduleName, pageId);
+          if (await testsKeepPlan({ on: true, scratch: false, prior, own: parts.own, file: fileRef(file), fileText: await readOptional(file) }) === 'keep') { work.keepOrRepair.push(`tests/${pageId}`); continue; }
+        }
         if (scratch || request.target || !onDisk) work.generate.push(`tests/${pageId}`);
       } catch (error) {
         if (String((error as Error).message).startsWith(SERVE_ROUTE_NO_PAGE_TEST)) work.skipped.push(`tests/${pageId}`);

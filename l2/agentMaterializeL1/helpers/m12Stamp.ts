@@ -9,6 +9,10 @@ import { readUnitStatus, reuseDecision, writeUnitStatus } from '/_102021_/l2/age
 import { unitInputParts } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { requestModules, storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { stage2 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
+import { pageTestsFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { testsInputParts } from '/_102021_/l2/agentMaterializeL1/steps/tests60/agentM12Tests.js';
+import { loadTestsContext } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 
 /** The layers whose units the model writes through `modelDispatcherAgent`: the ones the rule of d1_329 applies to. */
 const STAMPED_LAYERS = ['external', 'adapter', 'usecases', 'workflows', 'requests'] as const;
@@ -30,6 +34,29 @@ export async function stampModule(project: number, moduleName: string, scope: st
       await writeUnitStatus(project, moduleName, { ...status, inputParts: { own: parts.own, deps: parts.deps } });
     }
     count.stamped += 1;
+  }
+  // d1_347 s6 (stage 2, the essential of d1_334): the test of a page gets its halves too, so a `target` of a controller that only moved keeps the cases. Same rule: the receipt still matches its inputs.
+  if (stage2.on) {
+    for (const controller of selected.filter(item => item.layer === 'controllers')) {
+      const pageId = String(controller.definition.data.pageId ?? controller.unitId);
+      const name = `tests/${pageId}`;
+      const prior = await readUnitStatus(project, moduleName, 'tests', pageId);
+      const onDisk = (await reuseDecision([pageTestsFile(project, moduleName, pageId)], false)).kind === 'reuse';
+      if (!prior || !onDisk || (prior.status !== 'done' && prior.status !== 'reused')) { count.noReceipt += 1; continue; }
+      if (prior.inputParts) { count.already += 1; continue; }
+      let parts: Awaited<ReturnType<typeof testsInputParts>>;
+      try {
+        const data = await loadTestsContext(ctx, controller);
+        const ready = await readUnitStatus(project, moduleName, 'controllers', controller.unitId);
+        parts = await testsInputParts(data.inputs, ready?.outputs ?? {});
+      } catch { count.mismatch.push(name); continue; }
+      if (parts.hash !== prior.inputHash) { count.mismatch.push(name); continue; }
+      if (!dry) {
+        const { schemaVersion: _version, updatedAt: _at, ...status } = prior;
+        await writeUnitStatus(project, moduleName, { ...status, inputParts: { own: parts.own, deps: parts.deps } });
+      }
+      count.stamped += 1;
+    }
   }
   return count;
 }
