@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/steps/seedRows25/context.ts" enhancement="_blank"/>
 
 import { mdm } from '/_102034_/l4/ontology/mdm.defs.js';
-import type { MdmScalarKind } from '/_102034_/l1/mdm/defs/ontologyTypes.js';
+import { scalarForm } from '/_102021_/l2/helpers/l1Defs/scalarTypes.js';
 
 // Rows for a seed table whose l4 entity says the module seed loads it. The def stays without a rows key.
 
@@ -99,17 +99,15 @@ export function readOntologyLiteral(source: string): Record<string, unknown> | n
 }
 
 /**
- * d1_345: the seed reads the type of a field from the platform, not from a list of its own. `MdmScalarKind` (P:l1/mdm/defs/ontologyTypes.ts) is the set of scalar forms an L4 field takes; the
- * table below is typed by it, so a scalar the platform adds does not compile here until the seed says what its value is. `json` is not a platform type: the one L4 that uses it (agents.Tool)
+ * d1_345, d1_346: the seed reads the type of a field from the platform, not from a list of its own. `MdmScalarKind` (P:l1/mdm/defs/ontologyTypes.ts) is the set of scalar forms an L4 field takes; the
+ * table (`helpers/l1Defs/scalarTypes.ts`, shared with the entity and the column) is typed by it, so a scalar the platform adds does not compile until the table says what its value is. `json` is not a platform type: the one L4 that uses it (agents.Tool)
  * is read as a value the seed can fill with an empty object.
  */
-const SCALAR_COLUMN: Record<MdmScalarKind, SeedColumn['type']> = {
-  string: 'string', text: 'string', integer: 'integer', number: 'number', money: 'number', boolean: 'boolean', date: 'string', timestamp: 'timestamp', uuid: 'uuid',
-};
 
 function columnType(meta: Record<string, unknown>): SeedColumn['type'] {
   const type = typeof meta.type === 'string' ? meta.type : '';
-  if (Object.prototype.hasOwnProperty.call(SCALAR_COLUMN, type)) return SCALAR_COLUMN[type as MdmScalarKind];
+  const form = scalarForm(type);
+  if (form) return form.seed;
   if (type === 'record') return 'uuid';
   if (type === 'enum') return 'enum';
   if (type === 'object') return 'object';

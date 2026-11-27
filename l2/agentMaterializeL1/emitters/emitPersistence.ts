@@ -7,6 +7,7 @@
  * destructive step is a block, never a DROP. The plan is not an applied migration.
  */
 
+import { scalarForm } from '/_102021_/l2/helpers/l1Defs/scalarTypes.js';
 import { connectionCatalogSource, l1OwnerOfRef } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { platformClientConnections } from '/_102021_/l2/agentMaterializeL1/helpers/m12Stage2.js';
 import { catalogOperations, type CatalogOperation } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
@@ -1274,9 +1275,8 @@ function normalizeKeys(value: unknown): string[][] | null {
 }
 
 function postgresType(type: string): string {
-  if (type === 'integer' || type === 'number') return 'INTEGER';
-  if (type === 'boolean') return 'BOOLEAN';
-  if (type === 'timestamp') return 'TIMESTAMPTZ';
+  const form = scalarForm(type);
+  if (form) return form.sql;
   if (type === 'object') return 'JSONB';
   return 'TEXT';
 }

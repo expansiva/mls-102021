@@ -6,6 +6,7 @@
  * is a named failure, not an import of a file that does not exist.
  */
 
+import { scalarForm } from '/_102021_/l2/helpers/l1Defs/scalarTypes.js';
 import {
   isRecord,
   outputPathFromDefPath,
@@ -1261,8 +1262,8 @@ function fieldTs(type: string, values: readonly string[], aliases: ReadonlySet<s
   if (array && aliases.has(array[1])) return type;
   if (type.includes('|') || type.includes('"')) return type.split('"').join("'");
   if (type === 'enum' && values.length > 0) return values.map(value => `'${value}'`).join(' | ');
-  if (type === 'integer' || type === 'number') return 'number';
-  if (type === 'boolean') return 'boolean';
+  const form = scalarForm(type);
+  if (form) return form.ts;
   if (type === 'object') return 'Record<string, unknown>';
   return 'string';
 }
