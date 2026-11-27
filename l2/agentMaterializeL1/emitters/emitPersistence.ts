@@ -273,6 +273,8 @@ async function emitRegistration(definition: M1Definition, output: string, read: 
     const portId = text(adapter.portId);
     const artifactId = text(adapter.adapterArtifactId);
     if (!ident(portId) || !artifactId) return { code: 'REGISTRATION_UNBOUND', detail: 'An adapter row has no port.' };
+    // d1_347 s3: the port of a platform client (CmGateway) is not registered: the module reaches the cm through `cm(ctx)`.
+    if (platformGatewayPorts().has(portId)) continue;
     const defPath = definition.dependencies.find(path => path.endsWith(`/${artifactId}.defs.ts`) || path.endsWith(`/${artifactId.charAt(0).toLowerCase()}${artifactId.slice(1)}.defs.ts`));
     const matched = definition.dependencies.find(path => {
       const base = path.split('/').pop() ?? '';
@@ -402,16 +404,27 @@ interface ConnectionRow {
  * mechanism stay a gap. A def that also lists `connections` writes the gateways in the same file:
  * the receipt carries the same gap beside the file (one return cannot be both a failure and a source).
  */
+/**
+ * d1_347 s3: the connections whose client the platform gives (`cm(ctx)`, P:l1/server/layer_1_external/connections/cm): the module writes no bridge for them and registers no port for them.
+ * A bridge a module already has stays as it is until that module is regenerated (a unit that calls it still resolves `<X>Gateway`): this only stops the emitter from writing it again.
+ */
+export const PLATFORM_CLIENT_CONNECTIONS: string[] = ['cm'];
+
+const platformGatewayPorts = (): Set<string> => new Set(PLATFORM_CLIENT_CONNECTIONS.map(id => `${id.charAt(0).toUpperCase()}${id.slice(1)}Gateway`));
+
 async function emitOutbound(definition: M1Definition, output: string, read: StructureRead): Promise<PersistenceEmit | EmitFailure> {
   const events = Array.isArray(definition.data.events) ? definition.data.events.filter(isRecord) : [];
   const pending = events.map(event => text(event.pending)).find(Boolean) || pendingOf(definition.data);
   if (pending) return { code: pending, detail: `${definition.artifactId} is pending ${pending}. No publisher was written.` };
-  const connections = connectionRows(definition.data.connections);
+  const declared = connectionRows(definition.data.connections);
+  const connections = declared.filter(row => !PLATFORM_CLIENT_CONNECTIONS.includes(row.connectionId));
   const publishing = events.filter(isModuleEventBinding);
   const others = events.filter(event => !publishing.includes(event));
   const unbound = others.filter(event => !text(event.mechanism)).map(event => text(event.eventId) || '(unnamed)');
   const named = others.map(event => `${text(event.eventId) || '(unnamed)'}:${text(event.mechanism)}`);
   if (connections.length === 0 && publishing.length === 0) {
+    // Only the connection of the platform client: there is nothing this file would hold (the module calls `cm(ctx)`).
+    if (declared.length > 0 && others.length === 0) return { code: 'CM_FROM_PLATFORM', detail: `CM_FROM_PLATFORM: ${declared.map(row => `${row.connectionId}.${row.operationId}`).join(', ')} is called through the platform client (cm(ctx)); the module has no bridge to write.` };
     if (unbound.length > 0) return { code: 'MECHANISM_UNBOUND', detail: `${unbound.join(', ')} have no mechanism. No publisher was written.` };
     return { code: 'MECHANISM_INCOMPATIBLE', detail: `${named.join(', ')} is not a binding. No publisher was written.` };
   }

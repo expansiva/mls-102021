@@ -33,7 +33,7 @@ import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connect
 export const M12_RECIPE_VERSION = '2026-10-16-m12-recipe-v22';
 
 /** Declared platform gaps: nothing is written and the app still boots (closed list, as agentMaterializeL1 m1_47). */
-const PLATFORM_GAPS = new Set(['MECHANISM_UNBOUND', 'NO_CONSUMER']);
+const PLATFORM_GAPS = new Set(['MECHANISM_UNBOUND', 'NO_CONSUMER', 'CM_FROM_PLATFORM']);
 
 /** The copied handler id of each artifact type: the final recipe (implement where it exists, else structure). */
 const RECIPE_OF_TYPE: Readonly<Record<string, string>> = {
