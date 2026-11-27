@@ -18,6 +18,7 @@ export interface SmokeCaseLike {
   verdict: 'ok' | 'refused' | 'error' | 'failed' | 'skipped';
   status?: number | null;
   code?: string | null;
+  message?: string | null;
   conforms: string[];
 }
 
@@ -47,7 +48,7 @@ export interface SmokeAcceptedFile {
 }
 
 export interface SmokeBlock {
-  kind: 'failed' | 'error' | 'typed' | 'difference';
+  kind: 'failed' | 'error' | 'typed' | 'difference' | 'input';
   key: string;
   detail: string;
 }
@@ -100,6 +101,11 @@ export function evaluateSmoke(input: {
     if (item.verdict === 'failed') blocks.push({ kind: 'failed', key: caseKey(item), detail: `${item.status ?? ''} ${item.code ?? ''}`.trim() || 'a 5xx or 501' });
     else if (item.verdict === 'error') blocks.push({ kind: 'error', key: caseKey(item), detail: item.code ?? 'exception' });
     else if (item.verdict === 'ok' && item.conforms.length > 0) blocks.push({ kind: 'typed', key: caseKey(item), detail: item.conforms.slice(0, 2).join('; ') });
+  }
+  // d1_348: the body of a real arrival (`real:`) or a body that grew (`+grown`) is what a system outside sends: refused by the validation of the route is a defect of the controller, never a report line.
+  for (const item of arrivals) {
+    const grown = /(^real:|\+grown\b)/u.test(item.variant ?? '');
+    if (grown && item.verdict === 'refused' && item.code === 'VALIDATION_ERROR') blocks.push({ kind: 'input', key: caseKey(item), detail: item.message ?? 'refused by the validation of the input' });
   }
   const used: SmokeAcceptedEntry[] = [];
   for (const difference of input.differences) {

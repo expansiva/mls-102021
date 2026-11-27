@@ -244,11 +244,37 @@ function arrivalRoutes(tree: string, module: string, base: string): { routes: Sm
           samples.set(leafPaths(input).sort().join('+'), input);
         }
       }
+      // d1_348: a system the module declares (not the platform's) sends a body that grows: the same call with a key the type does not list at the top and in every object.
+      const outside = candidates[1] !== undefined && source === readIf(candidates[1]);
+      if (outside) for (const [label, input] of [...samples]) samples.set(`${label}+grown`, grownBody(input));
       const hookSeed = candidates[1] === undefined || source !== readIf(candidates[1]) ? undefined : hookSeedOf(line, entities);
       for (const [label, input] of samples) routes.push({ page, route: request.route, kind: 'arrival', actor: '', input: input as Record<string, unknown>, inputType, outputType, arrival: true, connection, operation, ...(hookSeed ? { hookSeed } : {}), ...(samples.size > 1 ? { variant: label } : {}) });
     }
   }
+  // d1_348: the bodies a real system sent (the file of the scenarios of the module, `realBodies`): as they came, one case each, beside the minimum.
+  for (const real of realBodiesOf(module)) {
+    const like = routes.find(item => item.route === real.route);
+    if (like) routes.push({ ...like, input: real.input, variant: `real:${real.variant}` });
+  }
   return { routes, typeSources };
+}
+
+/** A body with a key the type does not list at the top and inside every object (arrays keep their items). */
+function grownBody(value: unknown, top = true): unknown {
+  if (Array.isArray(value)) return value.map(item => grownBody(item, false));
+  if (!value || typeof value !== 'object') return value;
+  const grown: Record<string, unknown> = Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, grownBody(item, false)]));
+  grown[top ? 'smokeUnknownTop' : 'smokeUnknown'] = 1;
+  return grown;
+}
+
+/** `realBodies` of `testing/smoke/scenarios/<module>.json`: `{ route, variant, input }` each. */
+function realBodiesOf(module: string): Array<{ route: string; variant: string; input: Record<string, unknown> }> {
+  const file = path.join(path.dirname(new URL(import.meta.url).pathname), 'scenarios', `${module}.json`);
+  try {
+    const parsed = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as { realBodies?: Array<{ route?: string; variant?: string; input?: Record<string, unknown> }> } : {};
+    return (parsed.realBodies ?? []).flatMap(item => item.route && item.variant && item.input ? [{ route: item.route, variant: item.variant, input: item.input }] : []);
+  } catch { return []; }
 }
 
 /** The plan of the smoke of `module` in `tree`; `base` is the root with the platform projects (`mls-102034`…). */

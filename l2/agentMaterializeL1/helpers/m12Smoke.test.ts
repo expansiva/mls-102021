@@ -109,3 +109,10 @@ void test('d1_335: there is no "accept all": the option is refused, and each --a
   assert.deepEqual([ok.module, ok.subject, ok.write, ok.by], ['m', '/repo', true, 'dono']);
   assert.equal(parseSmokeArgs(['m', 'abc123', '--against', 'def456']).against, 'def456');
 });
+
+void test('d1_348: a real body or a grown body refused by the validation of the route blocks; the minimum body refused, or another code, does not', () => {
+  const arrival = (variant: string, code: string): SmokeCaseLike => ({ pass: 'happy', route: 'telegram.telegram.messageArrived', kind: 'arrival', variant, verdict: 'refused', status: null, code, message: 'message.from.is_bot is not permitted.', conforms: [] });
+  const verdict = evaluateSmoke({ results: [arrival('real:update-start @row0', 'VALIDATION_ERROR'), arrival('update_id+grown @row0', 'VALIDATION_ERROR'), arrival('update_id @row0', 'VALIDATION_ERROR'), arrival('real:update-start @row1', 'refused')], differences: [], accepted: [], against: null });
+  assert.deepEqual(verdict.blocks.map(item => [item.kind, item.key]), [['input', 'happy telegram.telegram.messageArrived [real:update-start @row0]'], ['input', 'happy telegram.telegram.messageArrived [update_id+grown @row0]']]);
+  assert.match(verdict.blocks[0].detail, /is_bot is not permitted/u);
+});

@@ -79,7 +79,11 @@ export const hub = {
 
 void test('d1_330 s1: an operation the module serves is planned from the catalog type, one case per way a union input is called, refs bound to the stored record by the name', () => {
   const plan = planSmoke(arrivalTree(), 102099, 'demo', '/nowhere');
-  const arrivals = plan.routes.filter(item => item.arrival);
+  const arrivals = plan.routes.filter(item => item.arrival && !(item.variant ?? '').endsWith('+grown'));
+  // d1_348: a system the module declares sends a body that grows: each case is also planned with a key the type does not list, at the top and inside every object.
+  const grown = plan.routes.filter(item => item.arrival && (item.variant ?? '').endsWith('+grown'));
+  assert.equal(grown.length, 2);
+  assert.deepEqual(grown[0].input, { target: { ticketRef: '<seed:Ticket.id>', smokeUnknown: 1 }, reason: 'sample', smokeUnknownTop: 1 });
   assert.deepEqual(arrivals.map(item => [item.route, item.kind, item.variant, item.input]), [
     ['demo.hub.close', 'arrival', 'reason+target.ticketRef', { target: { ticketRef: '<seed:Ticket.id>' }, reason: 'sample' }],
     ['demo.hub.close', 'arrival', 'reason+target.botRef', { target: { botRef: '<seed:TicketBot.id>' }, reason: 'sample' }],

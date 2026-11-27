@@ -484,7 +484,7 @@ async function emitAdapter(
       '];',
       '',
       ...adapted.map(renderAdapter),
-      ...(adapted.length > 0 ? [scopeSource(), authorizeSource(!!authorityDep), validateSource(), ''] : []),
+      ...(adapted.length > 0 ? [scopeSource(), authorizeSource(!!authorityDep), validateSource(adapted.some(route => route.openPaths?.includes(OPEN_INPUT))), ''] : []),
   ].join('\n');
   const undeclared = auditImports(source, imports);
   if (undeclared) return { code: 'IMPORT_UNDECLARED', detail: undeclared };
@@ -622,6 +622,8 @@ const SERVE_MARK = /^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/;
 /** d1_225: what the runtime passes to a route that receives an event (`ModuleEventEnvelope`): the message type names these, `payload` holds the record. */
 export const CONSUME_ENVELOPE_PATHS = ['eventId', 'ref', 'ref.module', 'ref.eventId', 'publishedAt', 'payload'] as const;
 const CONSUME_OPEN_PATH = 'payload';
+/** d1_348: the whole input is open (any key at any level that the type does not list is ignored): what a system outside the platform sends is its own to grow, and the route reads what it knows. */
+const OPEN_INPUT = '*';
 
 /** `serves` on the request-service row of this route. Null when the row does not carry the mark. */
 function servesOf(serviceText: string, route: string): string | null {
@@ -737,6 +739,8 @@ async function resolveServeRoute(
       allowedInputPaths: members.allowedPaths,
       nullableInputPaths: members.nullablePaths,
       unions: members.unions,
+      // d1_348: a system the module declares (its own or a sibling's, never the platform's cm) is called with a body that system grows: the input is open at every level, the known fields are still checked.
+      ...(found && found.origin !== 'platform' ? { openPaths: [OPEN_INPUT] } : {}),
       ...(stage2.on && connectionId === 'cm' ? { platformServe: { operationId } } : {}),
     },
   };
@@ -864,7 +868,7 @@ function authorizeSource(mapped: boolean): string {
   ].join('\n');
 }
 
-export function validateSource(): string {
+export function validateSource(openAll = false): string {
   return [
     '// `null` is accepted only where the contract type declares it; elsewhere it is refused, never read as absent.',
     '// A required member is a present key. `\'\'` is a string, refused only when a closed union omits it.',
@@ -876,7 +880,9 @@ export function validateSource(): string {
     '    if (!value || typeof value !== \'object\') return \'\';',
     '    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {',
     "      const path = prefix ? prefix + '.' + key : key;",
-    "      if (!allowed.includes(path)) { if (open.some(root => path === root || path.startsWith(root + '.'))) continue; return path + ' is not permitted.'; }",
+    openAll
+      ? "      if (!allowed.includes(path)) { if (open.includes('*') || open.some(root => path === root || path.startsWith(root + '.'))) continue; return path + ' is not permitted.'; }"
+      : "      if (!allowed.includes(path)) { if (open.some(root => path === root || path.startsWith(root + '.'))) continue; return path + ' is not permitted.'; }",
     "      if (child === null && !nullable.includes(path)) return path + ' must not be null.';",
     '      const permitted = unions[path];',
     '      if (permitted && child !== null && (typeof child !== \'string\' || !permitted.includes(child))) return path + \' is not a permitted value.\';',

@@ -1,6 +1,6 @@
 {
   "module": "telegram",
-  "note": "d1_336: the seed has no open conversation of an active bot (the open conversations point at bots that are not configured, deactivated or paused), and the process refuses before it reaches the outside system. These scenarios put the store in the state a person leaves it in, by the routes of the module, before the arrival.",
+  "note": "d1_336: the seed has no open conversation of an active bot (the open conversations point at bots that are not configured, deactivated or paused), and the process refuses before it reaches the outside system. These scenarios put the store in the state a person leaves it in, by the routes of the module, before the arrival. realBodies (d1_348): bodies the real system sent, as they came: is_bot, language_code, /start with its entities and a key at the top the module does not know.",
   "scenarios": [
     {
       "id": "deliver-active-bot",
@@ -52,6 +52,43 @@
       "arrival": {
         "route": "telegram.cm.setChannelConversationIdentity",
         "variant": "conversationRef+displayName+identity.email+since"
+      }
+    }
+  ],
+  "realBodies": [
+    {
+      "route": "telegram.telegram.messageArrived",
+      "variant": "update-start",
+      "input": {
+        "update_id": 1001,
+        "message": {
+          "message_id": 7,
+          "date": 1764230000,
+          "chat": {
+            "id": 555,
+            "type": "private",
+            "first_name": "Ana",
+            "username": "ana"
+          },
+          "from": {
+            "id": 555,
+            "is_bot": false,
+            "first_name": "Ana",
+            "username": "ana",
+            "language_code": "pt-BR"
+          },
+          "text": "/start",
+          "entities": [
+            {
+              "offset": 0,
+              "length": 6,
+              "type": "bot_command"
+            }
+          ]
+        },
+        "edited_message_hint": {
+          "anything": true
+        }
       }
     }
   ]
